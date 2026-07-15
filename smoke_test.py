@@ -23,6 +23,13 @@ M1.1 checks (Company Profile & Discovery Configuration):
     11. ICP Criteria creation         (POST /api/v1/company-profiles/{id}/icp-criteria)
     12. Knowledge Base entry creation (POST /api/v1/company-profiles/{id}/knowledge-base)
 
+M1 checks (Buyer Discovery Engine):
+    13. Search Templates reachable    (GET /api/v1/company-profiles/{id}/search-templates — system defaults seeded in 0003)
+    14. Discovery Search creation     (POST /api/v1/company-profiles/{id}/discovery-searches, pinned to the ICP from step 11)
+    15. Discovery Search run succeeds (POST .../discovery-searches/{id}/run using the manual_csv provider, synchronous)
+    16. Prospects list succeeds       (GET /api/v1/company-profiles/{id}/prospects — the run's prospect is present)
+    17. Prospect approve succeeds     (POST .../prospects/{id}/approve)
+
 Deliberately stdlib-only (urllib, not requests) so it runs on a bare
 `python3` with nothing to install, on any machine that has Python.
 
@@ -50,7 +57,7 @@ POLL_DELAY_SECONDS = 2
 
 _state: dict = {}
 _results: list = []
-TOTAL_STEPS = 12
+TOTAL_STEPS = 17
 
 
 def load_env(path: Path) -> dict:
@@ -347,6 +354,7 @@ def check_create_icp_criteria() -> str:
         raise RuntimeError(f"no id in response: {payload}")
     if payload.get("version") != 1:
         raise RuntimeError(f"expected version=1 for the first ICP on this profile, got {payload.get('version')}")
+    _state["icp_criteria_id"] = icp_id
     return f"created ICP criteria id={icp_id} version={payload.get('version')}"
 
 
@@ -371,8 +379,148 @@ def check_create_knowledge_base_entry() -> str:
     return f"created knowledge base entry id={entry_id}"
 
 
+# --- M1 checks: Buyer Discovery Engine -----------------------------------
+
+
+def check_search_templates() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    if not token or not profile_id:
+        raise RuntimeError("skipped — no token/company_profile_id from earlier steps")
+
+    status, raw = http_request(
+        "GET",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/search-templates",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    templates = json.loads(raw)
+    system_templates = [t for t in templates if t.get("is_system_default")]
+    if not system_templates:
+        raise RuntimeError(f"expected at least one system-seeded template, got: {templates}")
+    _state["search_template_id"] = system_templates[0]["id"]
+    return f"{len(templates)} template(s) visible, using system template id={system_templates[0]['id']}"
+
+
+def check_create_discovery_search() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    template_id = _state.get("search_template_id")
+    icp_id = _state.get("icp_criteria_id")
+    if not all([token, profile_id, template_id, icp_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/search_template_id/icp_criteria_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/discovery-searches",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={
+            "name": "Smoke Test Search",
+            "search_template_id": template_id,
+            # Pinned rather than relying on an active ICP - the ICP created
+            # in check_create_icp_criteria defaults to is_active=False, and
+            # this test shouldn't depend on that default changing.
+            "icp_criteria_id": icp_id,
+            "provider_keys": ["manual_csv"],
+        },
+    )
+    if status != 201:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    search_id = payload.get("id")
+    if not search_id:
+        raise RuntimeError(f"no id in response: {payload}")
+    _state["discovery_search_id"] = search_id
+    return f"created discovery search id={search_id}"
+
+
+def check_run_discovery_search() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    search_id = _state.get("discovery_search_id")
+    if not all([token, profile_id, search_id]):
+        raise RuntimeError("skipped — no token/company_profile_id/discovery_search_id from earlier steps")
+
+    # manual_csv needs its rows supplied via the search's query_spec at run
+    # time - update the search with one test row, then run it.
+    status, raw = http_request(
+        "PUT",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/discovery-searches/{search_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={
+            "query_spec": {
+                "rows": [
+                    {
+                        "name": "Smoke Test Buyer GmbH",
+                        "website": "https://smoke-test-buyer.example.com",
+                        "country": "Germany",
+                        "description": "Smoke test row for the manual_csv discovery provider.",
+                    }
+                ]
+            }
+        },
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status} updating search query_spec: {raw[:200]!r}")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/discovery-searches/{search_id}/run",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if status != 201:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    if payload.get("status") not in ("completed", "partially_completed"):
+        raise RuntimeError(f"unexpected job status: {payload}")
+    if payload.get("prospect_created_count", 0) < 1:
+        raise RuntimeError(f"expected at least 1 new prospect, got: {payload}")
+    return f"job {payload.get('id')} status={payload.get('status')} created {payload.get('prospect_created_count')} prospect(s)"
+
+
+def check_list_prospects() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    if not token or not profile_id:
+        raise RuntimeError("skipped — no token/company_profile_id from earlier steps")
+
+    status, raw = http_request(
+        "GET",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    prospects = json.loads(raw)
+    if not prospects:
+        raise RuntimeError("expected at least one prospect after running the discovery search")
+    _state["prospect_id"] = prospects[0]["id"]
+    return f"{len(prospects)} prospect(s) visible, using id={prospects[0]['id']}"
+
+
+def check_approve_prospect() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    prospect_id = _state.get("prospect_id")
+    if not all([token, profile_id, prospect_id]):
+        raise RuntimeError("skipped — no token/company_profile_id/prospect_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/approve",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    if payload.get("status") != "approved":
+        raise RuntimeError(f"expected status=approved, got: {payload}")
+    return f"prospect {prospect_id} approved"
+
+
 def main() -> int:
-    print("Sales Agent — M0 + M1.1 smoke test")
+    print("Sales Agent — M0 + M1.1 + M1 smoke test")
     print(f"backend={BACKEND_URL}  frontend={FRONTEND_URL}")
     print("(assumes `docker compose up --build` is already running)\n")
 
@@ -389,6 +537,11 @@ def main() -> int:
     all_passed &= step("Product creation succeeds", check_create_product)
     all_passed &= step("ICP Criteria creation succeeds", check_create_icp_criteria)
     all_passed &= step("Knowledge Base entry creation succeeds", check_create_knowledge_base_entry)
+    all_passed &= step("Search Templates reachable", check_search_templates)
+    all_passed &= step("Discovery Search creation succeeds", check_create_discovery_search)
+    all_passed &= step("Discovery Search run succeeds", check_run_discovery_search)
+    all_passed &= step("Prospects list succeeds", check_list_prospects)
+    all_passed &= step("Prospect approve succeeds", check_approve_prospect)
 
     print("\n--- Summary ---")
     for name, passed, detail in _results:

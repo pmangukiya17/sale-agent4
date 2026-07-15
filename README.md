@@ -75,7 +75,7 @@ make smoke-test               # run the automated smoke test (see below)
 
 ## Smoke test — mandatory before every milestone
 
-`smoke_test.py` (stdlib-only, no dependencies to install) checks the 12
+`smoke_test.py` (stdlib-only, no dependencies to install) checks the 17
 things every milestone is gated on, against an already-running stack:
 
 M0:
@@ -94,6 +94,13 @@ M1.1 (Company Profile & Discovery Configuration):
 11. ICP Criteria creation succeeds
 12. Knowledge Base entry creation succeeds
 
+M1 (Buyer Discovery Engine):
+13. Search Templates reachable (system-seeded defaults from migration 0003)
+14. Discovery Search creation succeeds (pinned to the ICP from step 11)
+15. Discovery Search run succeeds (manual_csv provider, synchronous, creates a prospect)
+16. Prospects list succeeds (the run's prospect is visible)
+17. Prospect approve succeeds
+
 Run it after `docker compose up --build` is up:
 
 ```bash
@@ -102,7 +109,7 @@ python3 smoke_test.py
 make smoke-test
 ```
 
-It prints PASS/FAIL per step and exits `0` only if all 12 pass. No new
+It prints PASS/FAIL per step and exits `0` only if all 17 pass. No new
 milestone work starts until this exits `0` on a clean `down -v && up --build`.
 
 ## What to verify once it's running

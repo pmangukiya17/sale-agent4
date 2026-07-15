@@ -11,6 +11,9 @@ import CompanyProducts from "./pages/CompanyProducts";
 import CompanyICP from "./pages/CompanyICP";
 import CompanyKnowledgeBase from "./pages/CompanyKnowledgeBase";
 import WorkspaceSettingsPage from "./pages/WorkspaceSettingsPage";
+import DiscoverySearches from "./pages/DiscoverySearches";
+import DiscoveryJobs from "./pages/DiscoveryJobs";
+import Prospects from "./pages/Prospects";
 
 export default function App() {
   return (
@@ -102,6 +105,36 @@ export default function App() {
           <ProtectedRoute>
             <DashboardLayout>
               <CompanyKnowledgeBase />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/businesses/:companyId/discovery/searches"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <DiscoverySearches />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/businesses/:companyId/discovery/jobs"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <DiscoveryJobs />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/businesses/:companyId/discovery/prospects"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <Prospects />
             </DashboardLayout>
           </ProtectedRoute>
         }

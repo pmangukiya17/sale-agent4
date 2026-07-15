@@ -64,3 +64,31 @@ class DateFormat(str, enum.Enum):
 class TimeFormat(str, enum.Enum):
     H12 = "12h"
     H24 = "24h"
+
+
+class DiscoveryJobStatus(str, enum.Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    PARTIALLY_COMPLETED = "partially_completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class ProspectStatus(str, enum.Enum):
+    NEW = "new"
+    DUPLICATE_REVIEW = "duplicate_review"
+    SCORED = "scored"
+    QUALIFIED = "qualified"
+    UNQUALIFIED = "unqualified"
+    IN_REVIEW = "in_review"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    ARCHIVED = "archived"
+
+
+class DecisionMakerLevel(str, enum.Enum):
+    FINAL_DECISION_MAKER = "final_decision_maker"
+    INFLUENCER = "influencer"
+    GATEKEEPER = "gatekeeper"
+    UNKNOWN = "unknown"

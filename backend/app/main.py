@@ -9,11 +9,18 @@ from app.api.routes import (
     companies,
     company_profiles,
     contacts,
+    discovery_jobs,
+    discovery_runs,
+    discovery_searches,
     health,
     icp_criteria,
     knowledge_base,
     products,
+    prospect_contacts,
+    prospect_timeline,
+    prospects,
     reference_data,
+    search_templates,
     workspace_settings,
 )
 from app.core.config import settings
@@ -99,3 +106,10 @@ app.include_router(icp_criteria.router, prefix=API_PREFIX)
 app.include_router(knowledge_base.router, prefix=API_PREFIX)
 app.include_router(workspace_settings.router, prefix=API_PREFIX)
 app.include_router(reference_data.router, prefix=API_PREFIX)
+app.include_router(search_templates.router, prefix=API_PREFIX)
+app.include_router(discovery_searches.router, prefix=API_PREFIX)
+app.include_router(discovery_jobs.router, prefix=API_PREFIX)
+app.include_router(discovery_runs.router, prefix=API_PREFIX)
+app.include_router(prospects.router, prefix=API_PREFIX)
+app.include_router(prospect_contacts.router, prefix=API_PREFIX)
+app.include_router(prospect_timeline.router, prefix=API_PREFIX)

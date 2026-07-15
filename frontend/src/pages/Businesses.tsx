@@ -75,6 +75,24 @@ export default function Businesses() {
               >
                 Knowledge Base
               </Link>
+              <Link
+                to={`/businesses/${company.id}/discovery/searches`}
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Discovery Searches
+              </Link>
+              <Link
+                to={`/businesses/${company.id}/discovery/jobs`}
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Discovery Jobs
+              </Link>
+              <Link
+                to={`/businesses/${company.id}/discovery/prospects`}
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Prospects
+              </Link>
             </div>
             {company.id !== activeCompanyId && (
               <button
