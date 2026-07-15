@@ -14,13 +14,21 @@ from app.api.routes import (
     discovery_searches,
     health,
     icp_criteria,
+    intelligence_snapshots,
     knowledge_base,
     products,
     prospect_contacts,
     prospect_timeline,
     prospects,
+    recommendations,
     reference_data,
+    research_jobs,
+    research_reports,
+    research_requests,
+    research_runs,
+    research_templates,
     search_templates,
+    signals,
     workspace_settings,
 )
 from app.core.config import settings
@@ -113,3 +121,11 @@ app.include_router(discovery_runs.router, prefix=API_PREFIX)
 app.include_router(prospects.router, prefix=API_PREFIX)
 app.include_router(prospect_contacts.router, prefix=API_PREFIX)
 app.include_router(prospect_timeline.router, prefix=API_PREFIX)
+app.include_router(research_templates.router, prefix=API_PREFIX)
+app.include_router(research_requests.router, prefix=API_PREFIX)
+app.include_router(research_jobs.router, prefix=API_PREFIX)
+app.include_router(research_runs.router, prefix=API_PREFIX)
+app.include_router(intelligence_snapshots.router, prefix=API_PREFIX)
+app.include_router(signals.router, prefix=API_PREFIX)
+app.include_router(recommendations.router, prefix=API_PREFIX)
+app.include_router(research_reports.router, prefix=API_PREFIX)

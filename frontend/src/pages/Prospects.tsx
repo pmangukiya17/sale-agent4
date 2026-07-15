@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { inputClass } from "../components/FormSection";
 
@@ -243,6 +243,12 @@ export default function Prospects() {
                   )}
 
                   <div className="flex gap-2">
+                    <Link
+                      to={`/businesses/${companyId}/prospects/${prospect.id}/research`}
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
+                    >
+                      Research
+                    </Link>
                     <button
                       onClick={() => runAction(prospect, "approve")}
                       className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"

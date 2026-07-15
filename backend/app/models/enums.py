@@ -92,3 +92,59 @@ class DecisionMakerLevel(str, enum.Enum):
     INFLUENCER = "influencer"
     GATEKEEPER = "gatekeeper"
     UNKNOWN = "unknown"
+
+
+# --- M2: AI Research & Prospect Intelligence --------------------------------
+# A separate status enum from DiscoveryJobStatus, even though the values
+# start identical - Research is a deliberately independent domain (per the
+# approved M2 design) and sharing a Postgres type would couple the two.
+
+
+class ResearchJobStatus(str, enum.Enum):
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    PARTIALLY_COMPLETED = "partially_completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class AIAnalysisType(str, enum.Enum):
+    COMPANY_PROFILE = "company_profile"
+    BUYER_PROFILE = "buyer_profile"
+    BUSINESS_SIGNALS = "business_signals"
+    SALES_INTELLIGENCE = "sales_intelligence"
+
+
+class SignalStatus(str, enum.Enum):
+    NEW = "new"
+    REVIEWED = "reviewed"
+    DISMISSED = "dismissed"
+
+
+class SignalImportance(str, enum.Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class SignalUrgency(str, enum.Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    IMMEDIATE = "immediate"
+
+
+class RecommendationType(str, enum.Enum):
+    PRODUCT_FIT = "product_fit"
+    SALES_ANGLE = "sales_angle"
+    TALKING_POINT = "talking_point"
+    OBJECTION_HANDLING = "objection_handling"
+    RISK_MITIGATION = "risk_mitigation"
+
+
+class RecommendationStatus(str, enum.Enum):
+    NEW = "new"
+    ACCEPTED = "accepted"
+    DISMISSED = "dismissed"

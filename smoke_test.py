@@ -30,6 +30,15 @@ M1 checks (Buyer Discovery Engine):
     16. Prospects list succeeds       (GET /api/v1/company-profiles/{id}/prospects — the run's prospect is present)
     17. Prospect approve succeeds     (POST .../prospects/{id}/approve)
 
+M2 checks (AI Research & Prospect Intelligence):
+    18. Research Templates reachable       (GET .../research-templates — system defaults seeded in 0004)
+    19. Research Request creation          (POST .../prospects/{id}/research-requests, pinned to a system template)
+    20. Research Request run succeeds      (POST .../research-requests/{id}/run using the manual_document provider,
+                                             synchronous — the deterministic AI stub analyzes the pasted text)
+    21. Intelligence Snapshot created      (GET .../intelligence-snapshots/current — version 1, populated from the AI stub)
+    22. Signals detected                   (GET .../signals — the pasted text's "expanding"/"hiring" keywords surfaced)
+    23. Research Report generation succeeds (POST .../research-reports/generate, built FROM the current snapshot)
+
 Deliberately stdlib-only (urllib, not requests) so it runs on a bare
 `python3` with nothing to install, on any machine that has Python.
 
@@ -57,7 +66,7 @@ POLL_DELAY_SECONDS = 2
 
 _state: dict = {}
 _results: list = []
-TOTAL_STEPS = 17
+TOTAL_STEPS = 23
 
 
 def load_env(path: Path) -> dict:
@@ -323,6 +332,10 @@ def check_create_product() -> str:
             "name": "Smoke Test 300GSM Cotton Terry Towel",
             "category": "Home Textiles",
             "moq": "1000 pieces",
+            # keywords/applications are what the M2 deterministic AI stub's
+            # sales-intelligence pass matches against RawDocument text to
+            # produce a product_fit Recommendation - see check_run_research_request.
+            "keywords": ["terry towel", "cotton"],
         },
     )
     if status != 201:
@@ -519,8 +532,162 @@ def check_approve_prospect() -> str:
     return f"prospect {prospect_id} approved"
 
 
+# --- M2 checks: AI Research & Prospect Intelligence ---------------------
+
+# Deliberately hits the deterministic AI stub's known keyword vocabulary
+# (see app/research/analysis/deterministic_stub.py): "manufacturer"/
+# "ISO 9001" -> company_profile, "procurement team" -> buyer_profile,
+# "expanding"/"new facility" and "hiring" -> business_signals, "terry
+# towel" -> sales_intelligence (matches the product's keywords set in
+# check_create_product).
+RESEARCH_TEST_TEXT = (
+    "We are a certified manufacturer with ISO 9001 certification. We are "
+    "currently expanding with a new facility in Gujarat. Our procurement "
+    "team and central buying office handle supplier onboarding, and we "
+    "are hiring a new sourcing manager. Our product catalog includes "
+    "cotton terry towel lines for the EU market."
+)
+
+
+def check_research_templates() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    if not token or not profile_id:
+        raise RuntimeError("skipped — no token/company_profile_id from earlier steps")
+
+    status, raw = http_request(
+        "GET",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/research-templates",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    templates = json.loads(raw)
+    system_templates = [t for t in templates if t.get("is_system_default")]
+    if not system_templates:
+        raise RuntimeError(f"expected at least one system-seeded research template, got: {templates}")
+    _state["research_template_id"] = system_templates[0]["id"]
+    return f"{len(templates)} template(s) visible, using system template id={system_templates[0]['id']}"
+
+
+def check_create_research_request() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    prospect_id = _state.get("prospect_id")
+    template_id = _state.get("research_template_id")
+    if not all([token, profile_id, prospect_id, template_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/prospect_id/research_template_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/research-requests",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={"research_template_id": template_id},
+    )
+    if status != 201:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    request_id = payload.get("id")
+    if not request_id:
+        raise RuntimeError(f"no id in response: {payload}")
+    _state["research_request_id"] = request_id
+    return f"created research request id={request_id}"
+
+
+def check_run_research_request() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    prospect_id = _state.get("prospect_id")
+    request_id = _state.get("research_request_id")
+    if not all([token, profile_id, prospect_id, request_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/prospect_id/research_request_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/research-requests/{request_id}/run",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={"documents": [{"document_type": "pasted_text", "extracted_text": RESEARCH_TEST_TEXT}]},
+    )
+    if status != 201:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    if payload.get("status") not in ("completed", "partially_completed"):
+        raise RuntimeError(f"unexpected job status: {payload}")
+    if payload.get("raw_document_count", 0) < 1:
+        raise RuntimeError(f"expected at least 1 raw document, got: {payload}")
+    return f"job {payload.get('id')} status={payload.get('status')} raw_document_count={payload.get('raw_document_count')}"
+
+
+def check_intelligence_snapshot() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    prospect_id = _state.get("prospect_id")
+    if not all([token, profile_id, prospect_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/prospect_id from earlier steps")
+
+    status, raw = http_request(
+        "GET",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/intelligence-snapshots/current",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    if payload.get("version") != 1:
+        raise RuntimeError(f"expected version=1 for the first snapshot, got {payload.get('version')}")
+    if payload.get("business_model") != "manufacturer":
+        raise RuntimeError(f"expected business_model='manufacturer' from the AI stub, got: {payload.get('business_model')}")
+    _state["intelligence_snapshot_id"] = payload.get("id")
+    return f"snapshot id={payload.get('id')} version={payload.get('version')} business_model={payload.get('business_model')}"
+
+
+def check_signals_detected() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    prospect_id = _state.get("prospect_id")
+    if not all([token, profile_id, prospect_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/prospect_id from earlier steps")
+
+    status, raw = http_request(
+        "GET",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/signals",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    signals = json.loads(raw)
+    signal_types = {s.get("signal_type") for s in signals}
+    if "expansion" not in signal_types or "hiring" not in signal_types:
+        raise RuntimeError(f"expected 'expansion' and 'hiring' signals from the AI stub, got types: {signal_types}")
+    return f"{len(signals)} signal(s) detected: {sorted(signal_types)}"
+
+
+def check_generate_research_report() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    prospect_id = _state.get("prospect_id")
+    if not all([token, profile_id, prospect_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/prospect_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/research-reports/generate",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={},
+    )
+    if status != 201:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    report_id = payload.get("id")
+    if not report_id:
+        raise RuntimeError(f"no id in response: {payload}")
+    if not payload.get("content"):
+        raise RuntimeError(f"expected non-empty content assembled from the intelligence snapshot, got: {payload}")
+    return f"generated research report id={report_id}"
+
+
 def main() -> int:
-    print("Sales Agent — M0 + M1.1 + M1 smoke test")
+    print("Sales Agent — M0 + M1.1 + M1 + M2 smoke test")
     print(f"backend={BACKEND_URL}  frontend={FRONTEND_URL}")
     print("(assumes `docker compose up --build` is already running)\n")
 
@@ -542,6 +709,12 @@ def main() -> int:
     all_passed &= step("Discovery Search run succeeds", check_run_discovery_search)
     all_passed &= step("Prospects list succeeds", check_list_prospects)
     all_passed &= step("Prospect approve succeeds", check_approve_prospect)
+    all_passed &= step("Research Templates reachable", check_research_templates)
+    all_passed &= step("Research Request creation succeeds", check_create_research_request)
+    all_passed &= step("Research Request run succeeds", check_run_research_request)
+    all_passed &= step("Intelligence Snapshot created", check_intelligence_snapshot)
+    all_passed &= step("Signals detected", check_signals_detected)
+    all_passed &= step("Research Report generation succeeds", check_generate_research_report)
 
     print("\n--- Summary ---")
     for name, passed, detail in _results:

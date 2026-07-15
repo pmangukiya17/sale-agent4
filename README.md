@@ -75,7 +75,7 @@ make smoke-test               # run the automated smoke test (see below)
 
 ## Smoke test — mandatory before every milestone
 
-`smoke_test.py` (stdlib-only, no dependencies to install) checks the 17
+`smoke_test.py` (stdlib-only, no dependencies to install) checks the 23
 things every milestone is gated on, against an already-running stack:
 
 M0:
@@ -101,6 +101,14 @@ M1 (Buyer Discovery Engine):
 16. Prospects list succeeds (the run's prospect is visible)
 17. Prospect approve succeeds
 
+M2 (AI Research & Prospect Intelligence):
+18. Research Templates reachable (system-seeded defaults from migration 0004)
+19. Research Request creation succeeds (pinned to the prospect from step 16)
+20. Research Request run succeeds (manual_document provider, synchronous — the deterministic AI stub analyzes the supplied text)
+21. Intelligence Snapshot created (version 1, populated from the AI stub's analysis)
+22. Signals detected (the AI stub's keyword matches surface as Signal rows)
+23. Research Report generation succeeds (built from the current Intelligence Snapshot)
+
 Run it after `docker compose up --build` is up:
 
 ```bash
@@ -109,7 +117,7 @@ python3 smoke_test.py
 make smoke-test
 ```
 
-It prints PASS/FAIL per step and exits `0` only if all 17 pass. No new
+It prints PASS/FAIL per step and exits `0` only if all 23 pass. No new
 milestone work starts until this exits `0` on a clean `down -v && up --build`.
 
 ## What to verify once it's running

@@ -14,6 +14,8 @@ import WorkspaceSettingsPage from "./pages/WorkspaceSettingsPage";
 import DiscoverySearches from "./pages/DiscoverySearches";
 import DiscoveryJobs from "./pages/DiscoveryJobs";
 import Prospects from "./pages/Prospects";
+import ResearchJobs from "./pages/ResearchJobs";
+import ProspectResearch from "./pages/ProspectResearch";
 
 export default function App() {
   return (
@@ -135,6 +137,26 @@ export default function App() {
           <ProtectedRoute>
             <DashboardLayout>
               <Prospects />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/businesses/:companyId/research/jobs"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <ResearchJobs />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/businesses/:companyId/prospects/:prospectId/research"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <ProspectResearch />
             </DashboardLayout>
           </ProtectedRoute>
         }

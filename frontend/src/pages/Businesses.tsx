@@ -93,6 +93,12 @@ export default function Businesses() {
               >
                 Prospects
               </Link>
+              <Link
+                to={`/businesses/${company.id}/research/jobs`}
+                className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+              >
+                Research Jobs
+              </Link>
             </div>
             {company.id !== activeCompanyId && (
               <button
