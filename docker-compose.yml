@@ -1,0 +1,56 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sales_agent}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sales_agent}
+      POSTGRES_DB: ${POSTGRES_DB:-sales_agent}
+    ports:
+      - "5433:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sales_agent}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+    # No command override here on purpose: the image's ENTRYPOINT
+    # (wait-for-db -> alembic upgrade head -> exec uvicorn) is the single
+    # source of truth for backend startup, so it behaves identically
+    # whether the container is started via compose or `docker run`, and
+    # there's no second copy of the startup sequence that can drift out
+    # of sync with the one baked into the image.
+
+  frontend:
+    build: ./frontend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      VITE_API_PROXY_TARGET: http://backend:8000
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+
+volumes:
+  db_data:
