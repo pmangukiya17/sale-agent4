@@ -75,15 +75,24 @@ make smoke-test               # run the automated smoke test (see below)
 
 ## Smoke test — mandatory before every milestone
 
-`smoke_test.py` (stdlib-only, no dependencies to install) checks the six
+`smoke_test.py` (stdlib-only, no dependencies to install) checks the 12
 things every milestone is gated on, against an already-running stack:
 
+M0:
 1. Backend starts (`/api/v1/health`)
 2. Frontend starts
 3. `/docs` responds
 4. Login succeeds (using `FIRST_ADMIN_EMAIL`/`FIRST_ADMIN_PASSWORD` from `.env`)
 5. Company creation succeeds
 6. Contact creation succeeds
+
+M1.1 (Company Profile & Discovery Configuration):
+7. Workspace Settings reachable (auto-bootstraps on first call)
+8. Company Profile creation succeeds
+9. Default Company Profile enforcement (marking a second profile as default unsets the first)
+10. Product creation succeeds
+11. ICP Criteria creation succeeds
+12. Knowledge Base entry creation succeeds
 
 Run it after `docker compose up --build` is up:
 
@@ -93,7 +102,7 @@ python3 smoke_test.py
 make smoke-test
 ```
 
-It prints PASS/FAIL per step and exits `0` only if all six pass. No new
+It prints PASS/FAIL per step and exits `0` only if all 12 pass. No new
 milestone work starts until this exits `0` on a clean `down -v && up --build`.
 
 ## What to verify once it's running

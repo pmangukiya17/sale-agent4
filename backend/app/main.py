@@ -4,7 +4,18 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.routes import auth, companies, contacts, health
+from app.api.routes import (
+    auth,
+    companies,
+    company_profiles,
+    contacts,
+    health,
+    icp_criteria,
+    knowledge_base,
+    products,
+    reference_data,
+    workspace_settings,
+)
 from app.core.config import settings
 from app.core.security import hash_password
 from app.db import base as _base  # noqa: F401  (imports every model so relationship() string refs resolve)
@@ -82,3 +93,9 @@ app.include_router(health.router, prefix=API_PREFIX)
 app.include_router(auth.router, prefix=API_PREFIX)
 app.include_router(companies.router, prefix=API_PREFIX)
 app.include_router(contacts.router, prefix=API_PREFIX)
+app.include_router(company_profiles.router, prefix=API_PREFIX)
+app.include_router(products.router, prefix=API_PREFIX)
+app.include_router(icp_criteria.router, prefix=API_PREFIX)
+app.include_router(knowledge_base.router, prefix=API_PREFIX)
+app.include_router(workspace_settings.router, prefix=API_PREFIX)
+app.include_router(reference_data.router, prefix=API_PREFIX)

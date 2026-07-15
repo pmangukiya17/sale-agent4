@@ -36,3 +36,31 @@ class FollowUpStatus(str, enum.Enum):
     SCHEDULED = "scheduled"
     SENT = "sent"
     CANCELLED = "cancelled"
+
+
+class ProductStatus(str, enum.Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
+class SearchDepth(str, enum.Enum):
+    QUICK = "quick"
+    STANDARD = "standard"
+    DEEP = "deep"
+
+
+class SearchFrequency(str, enum.Enum):
+    MANUAL = "manual"
+    DAILY = "daily"
+    WEEKLY = "weekly"
+
+
+class DateFormat(str, enum.Enum):
+    DD_MM_YYYY = "DD/MM/YYYY"
+    MM_DD_YYYY = "MM/DD/YYYY"
+    YYYY_MM_DD = "YYYY-MM-DD"
+
+
+class TimeFormat(str, enum.Enum):
+    H12 = "12h"
+    H24 = "24h"

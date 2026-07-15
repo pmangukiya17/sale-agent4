@@ -1,4 +1,5 @@
 from sqlalchemy import Enum, Float, String
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base_class import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -30,6 +31,14 @@ class Company(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         index=True,
     )
     notes: Mapped[str | None] = mapped_column(String(2000), nullable=True)
+
+    # Timezone/scheduling fields: not populated or used by anything yet.
+    # Added now so the Discovery Engine (auto-detects timezone) and a future
+    # Outlook scheduler (reads recipient timezone/hours) don't need a schema
+    # change later - just business logic.
+    timezone: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    working_days: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    business_hours: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     contacts: Mapped[list["Contact"]] = relationship(back_populates="company", cascade="all, delete-orphan")
     website_findings: Mapped[list["WebsiteFinding"]] = relationship(back_populates="company", cascade="all, delete-orphan")

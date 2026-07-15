@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.security import decode_access_token
 from app.db.session import get_db
+from app.models.company_profile import CompanyProfile
 from app.models.user import User
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -40,3 +41,20 @@ def get_current_active_admin(current_user: User = Depends(get_current_user)) -> 
     if current_user.role.value != "admin":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin privileges required")
     return current_user
+
+
+def get_owned_company_profile(
+    company_profile_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> CompanyProfile:
+    """
+    Shared scoping guard for every endpoint nested under
+    /company-profiles/{company_profile_id}/... (products, ICP criteria,
+    knowledge base). Returns 404 rather than 403 if the profile exists but
+    belongs to someone else, so ownership isn't leaked to the caller.
+    """
+    profile = db.get(CompanyProfile, company_profile_id)
+    if profile is None or profile.owner_user_id != current_user.id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Company profile not found")
+    return profile
