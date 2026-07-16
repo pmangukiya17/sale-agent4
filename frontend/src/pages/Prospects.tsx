@@ -249,6 +249,12 @@ export default function Prospects() {
                     >
                       Research
                     </Link>
+                    <Link
+                      to={`/businesses/${companyId}/prospects/${prospect.id}/strategy`}
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
+                    >
+                      Strategy
+                    </Link>
                     <button
                       onClick={() => runAction(prospect, "approve")}
                       className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"

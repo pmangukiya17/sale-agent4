@@ -16,6 +16,8 @@ import DiscoveryJobs from "./pages/DiscoveryJobs";
 import Prospects from "./pages/Prospects";
 import ResearchJobs from "./pages/ResearchJobs";
 import ProspectResearch from "./pages/ProspectResearch";
+import PersonalizationJobs from "./pages/PersonalizationJobs";
+import ProspectStrategy from "./pages/ProspectStrategy";
 
 export default function App() {
   return (
@@ -157,6 +159,26 @@ export default function App() {
           <ProtectedRoute>
             <DashboardLayout>
               <ProspectResearch />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/businesses/:companyId/personalization/jobs"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <PersonalizationJobs />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/businesses/:companyId/prospects/:prospectId/strategy"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <ProspectStrategy />
             </DashboardLayout>
           </ProtectedRoute>
         }
