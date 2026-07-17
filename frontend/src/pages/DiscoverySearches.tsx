@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { FormSection, Field, inputClass } from "../components/FormSection";
 import { Toggle } from "../components/Toggle";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type SearchDepth = "quick" | "standard" | "deep";
 type SearchFrequency = "manual" | "daily" | "weekly";
@@ -26,12 +27,34 @@ interface DiscoverySearch {
   name: string;
   search_template_id: string;
   icp_criteria_id: string | null;
+  query_spec: { rows?: CandidateBuyerRow[] } & Record<string, unknown>;
   provider_keys: string[];
   search_depth: SearchDepth;
   search_frequency: SearchFrequency;
   is_active: boolean;
   search_template: SearchTemplate;
 }
+
+// Mirrors what app/discovery/providers/manual_csv.py reads from
+// query_spec["rows"] - company-level fields only. Per-row `contacts` is
+// intentionally left out of this UI: contacts are already added separately
+// once a Prospect exists (M4's "Prospect Contact" flow), so duplicating
+// that here would grow this patch beyond finishing the M1 workflow.
+interface CandidateBuyerRow {
+  name: string;
+  website?: string;
+  country?: string;
+  industry?: string;
+  description?: string;
+}
+
+const emptyCandidateRow = (): CandidateBuyerRow => ({
+  name: "",
+  website: "",
+  country: "",
+  industry: "",
+  description: "",
+});
 
 interface DiscoveryJobProviderRun {
   provider_key: string;
@@ -86,6 +109,7 @@ export default function DiscoverySearches() {
   const [error, setError] = useState<string | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
   const [jobResults, setJobResults] = useState<Record<string, DiscoveryJob>>({});
+  const [candidateRows, setCandidateRows] = useState<Record<string, CandidateBuyerRow[]>>({});
 
   const load = () => {
     setIsLoading(true);
@@ -94,14 +118,64 @@ export default function DiscoverySearches() {
       apiClient.get(`/company-profiles/${companyId}/search-templates`),
       apiClient.get(`/company-profiles/${companyId}/icp-criteria`),
     ]).then(([searchRes, templateRes, icpRes]) => {
-      setSearches(searchRes.data);
+      const loadedSearches: DiscoverySearch[] = searchRes.data;
+      setSearches(loadedSearches);
       setTemplates(templateRes.data);
       setIcps(icpRes.data);
+      // Seed the candidate-buyer table from whatever was already saved on
+      // each search's query_spec.rows, without clobbering rows the user is
+      // actively editing in this session (only seed searches not seen yet).
+      setCandidateRows((prev) => {
+        const next = { ...prev };
+        for (const s of loadedSearches) {
+          if (!(s.id in next)) {
+            const savedRows = Array.isArray(s.query_spec?.rows) ? s.query_spec.rows : [];
+            next[s.id] = savedRows.length > 0 ? savedRows.map((r) => ({ ...emptyCandidateRow(), ...r })) : [emptyCandidateRow()];
+          }
+        }
+        return next;
+      });
       setIsLoading(false);
     });
   };
 
   useEffect(load, [companyId]);
+
+  const updateCandidateRow = (searchId: string, index: number, field: keyof CandidateBuyerRow, value: string) => {
+    setCandidateRows((prev) => {
+      const rows = [...(prev[searchId] ?? [emptyCandidateRow()])];
+      rows[index] = { ...rows[index], [field]: value };
+      return { ...prev, [searchId]: rows };
+    });
+  };
+
+  const addCandidateRow = (searchId: string) => {
+    setCandidateRows((prev) => ({
+      ...prev,
+      [searchId]: [...(prev[searchId] ?? []), emptyCandidateRow()],
+    }));
+  };
+
+  const removeCandidateRow = (searchId: string, index: number) => {
+    setCandidateRows((prev) => {
+      const rows = (prev[searchId] ?? []).filter((_, i) => i !== index);
+      return { ...prev, [searchId]: rows.length > 0 ? rows : [emptyCandidateRow()] };
+    });
+  };
+
+  // Rows with a non-empty name are the ones that count as "ready" - matches
+  // manual_csv.py's own validation (name is the only required field).
+  const readyCandidateRows = (searchId: string): CandidateBuyerRow[] =>
+    (candidateRows[searchId] ?? [])
+      .filter((r) => r.name.trim() !== "")
+      .map((r) => {
+        const row: CandidateBuyerRow = { name: r.name.trim() };
+        if (r.website?.trim()) row.website = r.website.trim();
+        if (r.country?.trim()) row.country = r.country.trim();
+        if (r.industry?.trim()) row.industry = r.industry.trim();
+        if (r.description?.trim()) row.description = r.description.trim();
+        return row;
+      });
 
   const update = <K extends keyof SearchForm>(key: K, value: SearchForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -133,12 +207,37 @@ export default function DiscoverySearches() {
     }
   };
 
-  const handleRun = async (searchId: string) => {
-    setRunningId(searchId);
+  const handleRun = async (search: DiscoverySearch) => {
     setError(null);
+
+    // manual_csv is the only implemented provider today, and it reads its
+    // candidates from query_spec.rows - validate + save that before running,
+    // same as manual_csv.py's own check ("each row must have a name"), so
+    // the error surfaces before the request instead of after.
+    if (search.provider_keys.includes("manual_csv")) {
+      const rows = readyCandidateRows(search.id);
+      if (rows.length === 0) {
+        setError("Add at least one candidate buyer with a name before running this search.");
+        return;
+      }
+      setRunningId(search.id);
+      try {
+        const putRes = await apiClient.put(`/company-profiles/${companyId}/discovery-searches/${search.id}`, {
+          query_spec: { rows },
+        });
+        setSearches((prev) => prev.map((s) => (s.id === search.id ? putRes.data : s)));
+      } catch (err: any) {
+        setError(err?.response?.data?.detail ?? "Could not save the candidate buyers for this search.");
+        setRunningId(null);
+        return;
+      }
+    } else {
+      setRunningId(search.id);
+    }
+
     try {
-      const res = await apiClient.post(`/company-profiles/${companyId}/discovery-searches/${searchId}/run`);
-      setJobResults((prev) => ({ ...prev, [searchId]: res.data }));
+      const res = await apiClient.post(`/company-profiles/${companyId}/discovery-searches/${search.id}/run`);
+      setJobResults((prev) => ({ ...prev, [search.id]: res.data }));
     } catch (err: any) {
       setError(err?.response?.data?.detail ?? "This search could not be run.");
     } finally {
@@ -148,6 +247,8 @@ export default function DiscoverySearches() {
 
   return (
     <div>
+      <Breadcrumbs items={[{ label: "Businesses", to: "/businesses" }, { label: "Discovery" }]} />
+
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Discovery Searches</h2>
@@ -261,6 +362,9 @@ export default function DiscoverySearches() {
       <div className="space-y-4">
         {searches.map((search) => {
           const job = jobResults[search.id];
+          const usesManualCsv = search.provider_keys.includes("manual_csv");
+          const rows = candidateRows[search.id] ?? [emptyCandidateRow()];
+          const readyCount = readyCandidateRows(search.id).length;
           return (
             <div key={search.id} className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
               <div className="mb-2 flex items-start justify-between">
@@ -271,13 +375,110 @@ export default function DiscoverySearches() {
                   </p>
                 </div>
                 <button
-                  onClick={() => handleRun(search.id)}
+                  onClick={() => handleRun(search)}
                   disabled={runningId === search.id}
                   className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-indigo-600 dark:hover:bg-indigo-500"
                 >
                   {runningId === search.id ? "Running…" : "Run"}
                 </button>
               </div>
+
+              {usesManualCsv && (
+                <div className="mt-3 rounded-md border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800">
+                  <div className="mb-2 flex items-center justify-between">
+                    <h4 className="text-sm font-medium text-slate-700 dark:text-slate-200">Candidate Buyers</h4>
+                    <span
+                      className={`text-xs font-medium ${
+                        readyCount > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"
+                      }`}
+                    >
+                      {readyCount > 0
+                        ? `${readyCount} candidate buyer${readyCount === 1 ? "" : "s"} ready`
+                        : "No candidate buyers added"}
+                    </span>
+                  </div>
+                  <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+                    Manual / CSV Import needs at least one row (Name is required). These are saved automatically when you click Run.
+                  </p>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="text-slate-500 dark:text-slate-400">
+                        <tr>
+                          <th className="px-2 py-1">Name *</th>
+                          <th className="px-2 py-1">Website</th>
+                          <th className="px-2 py-1">Country</th>
+                          <th className="px-2 py-1">Industry</th>
+                          <th className="px-2 py-1">Description</th>
+                          <th className="px-2 py-1"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {rows.map((row, i) => (
+                          <tr key={i} className="border-t border-slate-200 dark:border-slate-700">
+                            <td className="px-2 py-1">
+                              <input
+                                className={inputClass}
+                                value={row.name}
+                                placeholder="Acme GmbH"
+                                onChange={(e) => updateCandidateRow(search.id, i, "name", e.target.value)}
+                              />
+                            </td>
+                            <td className="px-2 py-1">
+                              <input
+                                className={inputClass}
+                                value={row.website ?? ""}
+                                placeholder="acme.com"
+                                onChange={(e) => updateCandidateRow(search.id, i, "website", e.target.value)}
+                              />
+                            </td>
+                            <td className="px-2 py-1">
+                              <input
+                                className={inputClass}
+                                value={row.country ?? ""}
+                                placeholder="Germany"
+                                onChange={(e) => updateCandidateRow(search.id, i, "country", e.target.value)}
+                              />
+                            </td>
+                            <td className="px-2 py-1">
+                              <input
+                                className={inputClass}
+                                value={row.industry ?? ""}
+                                placeholder="Textiles"
+                                onChange={(e) => updateCandidateRow(search.id, i, "industry", e.target.value)}
+                              />
+                            </td>
+                            <td className="px-2 py-1">
+                              <input
+                                className={inputClass}
+                                value={row.description ?? ""}
+                                placeholder="Optional notes"
+                                onChange={(e) => updateCandidateRow(search.id, i, "description", e.target.value)}
+                              />
+                            </td>
+                            <td className="px-2 py-1">
+                              <button
+                                type="button"
+                                onClick={() => removeCandidateRow(search.id, i)}
+                                className="text-slate-400 hover:text-red-600"
+                                aria-label="Remove row"
+                              >
+                                ✕
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => addCandidateRow(search.id)}
+                    className="mt-2 text-xs font-medium text-slate-600 underline hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+                  >
+                    + Add row
+                  </button>
+                </div>
+              )}
 
               {job && (
                 <div className="mt-3 rounded-md border border-slate-100 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800">

@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { FormSection, Field, inputClass } from "../components/FormSection";
@@ -83,12 +83,18 @@ export default function CompanyICP() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedMessage, setSavedMessage] = useState(false);
+  const savedMessageTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const latest = versions[0] ?? null;
 
-  const load = () => {
-    setIsLoading(true);
-    Promise.all([
+  // Shared fetch, used by both the initial mount (full-page loading screen)
+  // and the post-save refresh (silent - the form stays mounted, no loading
+  // screen, no scroll jump). `showLoadingScreen` is the only thing that
+  // differs between the two call sites.
+  const fetchData = (showLoadingScreen: boolean) => {
+    if (showLoadingScreen) setIsLoading(true);
+    return Promise.all([
       apiClient.get(`/company-profiles/${companyId}/icp-criteria`),
       apiClient.get("/buyer-types"),
       apiClient.get("/countries"),
@@ -100,11 +106,29 @@ export default function CompanyICP() {
       setBuyerTypes(buyerRes.data.map((b: { id: string; name: string }) => ({ id: b.id, label: b.name })));
       setCountries(countryRes.data.map((c: { id: string; name: string }) => ({ id: c.id, label: c.name })));
       setLanguages(langRes.data.map((l: { id: string; name: string }) => ({ id: l.id, label: l.name })));
-      setIsLoading(false);
+      if (showLoadingScreen) setIsLoading(false);
     });
   };
 
+  const load = () => {
+    void fetchData(true);
+  };
+  const refreshAfterSave = () => fetchData(false);
+
   useEffect(load, [companyId]);
+
+  // Clear any pending "Changes saved" auto-hide timer on unmount.
+  useEffect(() => {
+    return () => {
+      if (savedMessageTimeout.current) clearTimeout(savedMessageTimeout.current);
+    };
+  }, []);
+
+  const showSavedMessage = () => {
+    setSavedMessage(true);
+    if (savedMessageTimeout.current) clearTimeout(savedMessageTimeout.current);
+    savedMessageTimeout.current = setTimeout(() => setSavedMessage(false), 3000);
+  };
 
   const update = <K extends keyof ICPForm>(key: K, value: ICPForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -131,9 +155,11 @@ export default function CompanyICP() {
     if (!latest) return handleSaveAsNew(e);
     setIsSaving(true);
     setError(null);
+    setSavedMessage(false);
     try {
       await apiClient.put(`/company-profiles/${companyId}/icp-criteria/${latest.id}`, buildPayload());
-      load();
+      await refreshAfterSave();
+      showSavedMessage();
     } catch {
       setError("Could not save this ICP.");
     } finally {
@@ -145,9 +171,11 @@ export default function CompanyICP() {
     e.preventDefault();
     setIsSaving(true);
     setError(null);
+    setSavedMessage(false);
     try {
       await apiClient.post(`/company-profiles/${companyId}/icp-criteria`, buildPayload());
-      load();
+      await refreshAfterSave();
+      showSavedMessage();
     } catch {
       setError("Could not save this ICP.");
     } finally {
@@ -258,7 +286,10 @@ export default function CompanyICP() {
           </Field>
         </FormSection>
 
-        <div className="flex justify-end gap-3">
+        <div className="flex items-center justify-end gap-3">
+          {savedMessage && (
+            <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Changes saved</span>
+          )}
           <button
             type="button"
             onClick={handleSaveAsNew}
@@ -272,7 +303,7 @@ export default function CompanyICP() {
             disabled={isSaving}
             className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-indigo-600 dark:hover:bg-indigo-500"
           >
-            {latest ? "Save changes" : "Create ICP"}
+            {isSaving ? "Saving…" : latest ? "Save changes" : "Create ICP"}
           </button>
         </div>
       </form>

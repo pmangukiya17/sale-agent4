@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { inputClass } from "../components/FormSection";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 interface ResearchTemplate {
   id: string;
@@ -156,6 +157,14 @@ export default function ProspectResearch() {
 
   return (
     <div>
+      <Breadcrumbs
+        items={[
+          { label: "Businesses", to: "/businesses" },
+          { label: "Prospects", to: `/businesses/${companyId}/discovery/prospects` },
+          { label: "Research" },
+        ]}
+      />
+
       <h2 className="mb-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">Research &amp; Intelligence</h2>
       <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
         Everything AI Research knows about this prospect - versioned, evidenced, never overwritten.

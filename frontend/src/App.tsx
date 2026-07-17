@@ -18,6 +18,9 @@ import ResearchJobs from "./pages/ResearchJobs";
 import ProspectResearch from "./pages/ProspectResearch";
 import PersonalizationJobs from "./pages/PersonalizationJobs";
 import ProspectStrategy from "./pages/ProspectStrategy";
+import OutreachPlaybooks from "./pages/OutreachPlaybooks";
+import ProspectOutreach from "./pages/ProspectOutreach";
+import BusinessEmailSignature from "./pages/BusinessEmailSignature";
 
 export default function App() {
   return (
@@ -114,6 +117,16 @@ export default function App() {
         }
       />
       <Route
+        path="/businesses/:companyId/branding/email-signature"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <BusinessEmailSignature />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/businesses/:companyId/discovery/searches"
         element={
           <ProtectedRoute>
@@ -179,6 +192,26 @@ export default function App() {
           <ProtectedRoute>
             <DashboardLayout>
               <ProspectStrategy />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/businesses/:companyId/outreach/playbooks"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <OutreachPlaybooks />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/businesses/:companyId/prospects/:prospectId/contacts/:contactId/outreach"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <ProspectOutreach />
             </DashboardLayout>
           </ProtectedRoute>
         }

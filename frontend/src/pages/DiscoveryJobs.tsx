@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 interface DiscoveryJobProviderRun {
   provider_key: string;
@@ -67,6 +68,8 @@ export default function DiscoveryJobs() {
 
   return (
     <div>
+      <Breadcrumbs items={[{ label: "Businesses", to: "/businesses" }, { label: "Discovery Jobs" }]} />
+
       <h2 className="mb-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">Discovery Jobs</h2>
       <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
         Every past run, with per-provider metrics and the exact configuration that produced its results.

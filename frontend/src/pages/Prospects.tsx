@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { inputClass } from "../components/FormSection";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type ProspectStatus =
   | "new" | "duplicate_review" | "scored" | "qualified" | "unqualified"
@@ -68,6 +69,35 @@ const STATUS_COLORS: Record<ProspectStatus, string> = {
   archived: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400",
 };
 
+// Manual contact entry only - mirrors app/schemas/prospect_contact.py's
+// ProspectContactCreate exactly. Not automated contact discovery (that's
+// M5's territory); this just exposes the existing CRUD endpoint that
+// Outreach (M4) already depends on but nothing in the UI ever called.
+interface ContactForm {
+  name: string;
+  role: string;
+  department: string;
+  decision_maker_level: string;
+  email: string;
+  phone: string;
+}
+
+const EMPTY_CONTACT_FORM: ContactForm = {
+  name: "",
+  role: "",
+  department: "",
+  decision_maker_level: "unknown",
+  email: "",
+  phone: "",
+};
+
+const DECISION_MAKER_LEVELS: { value: string; label: string }[] = [
+  { value: "unknown", label: "Unknown" },
+  { value: "final_decision_maker", label: "Final decision maker" },
+  { value: "influencer", label: "Influencer" },
+  { value: "gatekeeper", label: "Gatekeeper" },
+];
+
 export default function Prospects() {
   const { companyId } = useParams();
   const [prospects, setProspects] = useState<Prospect[]>([]);
@@ -78,18 +108,98 @@ export default function Prospects() {
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const load = () => {
-    setIsLoading(true);
+  const [showContactForm, setShowContactForm] = useState<Record<string, boolean>>({});
+  const [contactForms, setContactForms] = useState<Record<string, ContactForm>>({});
+  const [contactSaving, setContactSaving] = useState<Record<string, boolean>>({});
+  const [contactErrors, setContactErrors] = useState<Record<string, string | null>>({});
+  const [contactSavedMessage, setContactSavedMessage] = useState<Record<string, boolean>>({});
+  const contactSavedTimeouts = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  // Shared fetch. `showLoadingScreen=true` is the initial/filtered load
+  // (full-page loading state, same as before); `false` is used after
+  // adding a contact so the list refreshes in place - no collapse to a
+  // loading screen, no scroll jump, same fix as CompanyICP's save flow.
+  const fetchProspects = (showLoadingScreen: boolean) => {
+    if (showLoadingScreen) setIsLoading(true);
     const params = new URLSearchParams();
     if (statusFilter) params.set("status", statusFilter);
     if (minScore) params.set("min_score", minScore);
-    apiClient
+    return apiClient
       .get(`/company-profiles/${companyId}/prospects?${params.toString()}`)
-      .then((res) => setProspects(res.data))
-      .finally(() => setIsLoading(false));
+      .then((res) => {
+        setProspects(res.data);
+        if (showLoadingScreen) setIsLoading(false);
+      });
   };
 
+  const load = () => {
+    void fetchProspects(true);
+  };
+  const refreshProspectsSilently = () => fetchProspects(false);
+
   useEffect(load, [companyId, statusFilter, minScore]);
+
+  // Clear any pending "Contact added" auto-hide timers on unmount.
+  useEffect(() => {
+    return () => {
+      Object.values(contactSavedTimeouts.current).forEach(clearTimeout);
+    };
+  }, []);
+
+  const toggleContactForm = (prospectId: string) => {
+    setContactErrors((prev) => ({ ...prev, [prospectId]: null }));
+    setShowContactForm((prev) => {
+      const opening = !prev[prospectId];
+      if (opening && !contactForms[prospectId]) {
+        setContactForms((f) => ({ ...f, [prospectId]: { ...EMPTY_CONTACT_FORM } }));
+      }
+      return { ...prev, [prospectId]: opening };
+    });
+  };
+
+  const updateContactForm = (prospectId: string, field: keyof ContactForm, value: string) => {
+    setContactForms((prev) => ({
+      ...prev,
+      [prospectId]: { ...(prev[prospectId] ?? EMPTY_CONTACT_FORM), [field]: value },
+    }));
+  };
+
+  const showContactSavedMessage = (prospectId: string) => {
+    setContactSavedMessage((prev) => ({ ...prev, [prospectId]: true }));
+    if (contactSavedTimeouts.current[prospectId]) clearTimeout(contactSavedTimeouts.current[prospectId]);
+    contactSavedTimeouts.current[prospectId] = setTimeout(() => {
+      setContactSavedMessage((prev) => ({ ...prev, [prospectId]: false }));
+    }, 3000);
+  };
+
+  const handleAddContact = async (e: FormEvent, prospectId: string) => {
+    e.preventDefault();
+    const form = contactForms[prospectId] ?? EMPTY_CONTACT_FORM;
+    if (!form.name.trim()) {
+      setContactErrors((prev) => ({ ...prev, [prospectId]: "Name is required." }));
+      return;
+    }
+    setContactErrors((prev) => ({ ...prev, [prospectId]: null }));
+    setContactSaving((prev) => ({ ...prev, [prospectId]: true }));
+    try {
+      await apiClient.post(`/company-profiles/${companyId}/prospects/${prospectId}/contacts`, {
+        name: form.name.trim(),
+        role: form.role.trim() || null,
+        department: form.department.trim() || null,
+        decision_maker_level: form.decision_maker_level,
+        email: form.email.trim() || null,
+        phone: form.phone.trim() || null,
+      });
+      await refreshProspectsSilently();
+      setContactForms((prev) => ({ ...prev, [prospectId]: { ...EMPTY_CONTACT_FORM } }));
+      setShowContactForm((prev) => ({ ...prev, [prospectId]: false }));
+      showContactSavedMessage(prospectId);
+    } catch {
+      setContactErrors((prev) => ({ ...prev, [prospectId]: "Could not save this contact." }));
+    } finally {
+      setContactSaving((prev) => ({ ...prev, [prospectId]: false }));
+    }
+  };
 
   const toggleExpand = async (prospect: Prospect) => {
     if (expandedId === prospect.id) {
@@ -119,6 +229,8 @@ export default function Prospects() {
 
   return (
     <div>
+      <Breadcrumbs items={[{ label: "Businesses", to: "/businesses" }, { label: "Prospects" }]} />
+
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Prospects</h2>
@@ -216,18 +328,114 @@ export default function Prospects() {
                     <p className="text-sm text-red-600">Rejected: {prospect.rejection_reason}</p>
                   )}
 
-                  {prospect.contacts.length > 0 && (
-                    <div>
-                      <p className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Contacts</p>
-                      <div className="space-y-1">
-                        {prospect.contacts.map((c) => (
-                          <p key={c.id} className="text-xs text-slate-500">
-                            {[c.name, c.role, c.department, c.decision_maker_level, c.email, c.phone].filter(Boolean).join(" · ")}
-                          </p>
-                        ))}
+                  <div>
+                    <div className="mb-1 flex items-center justify-between">
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Contacts</p>
+                      <div className="flex items-center gap-2">
+                        {contactSavedMessage[prospect.id] && (
+                          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Contact added</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => toggleContactForm(prospect.id)}
+                          className="text-xs font-medium text-slate-600 underline hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+                        >
+                          {showContactForm[prospect.id] ? "Cancel" : "+ Add contact"}
+                        </button>
                       </div>
                     </div>
-                  )}
+
+                    {prospect.contacts.length === 0 && !showContactForm[prospect.id] && (
+                      <p className="text-xs text-slate-500">No contacts yet.</p>
+                    )}
+
+                    {prospect.contacts.length > 0 && (
+                      <div className="mb-2 space-y-1">
+                        {prospect.contacts.map((c) => (
+                          <div key={c.id} className="flex items-center justify-between gap-2">
+                            <p className="text-xs text-slate-500">
+                              {[c.name, c.role, c.department, c.decision_maker_level, c.email, c.phone].filter(Boolean).join(" · ")}
+                            </p>
+                            <Link
+                              to={`/businesses/${companyId}/prospects/${prospect.id}/contacts/${c.id}/outreach`}
+                              className="shrink-0 rounded-md border border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
+                            >
+                              Outreach
+                            </Link>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {showContactForm[prospect.id] && (
+                      <form
+                        onSubmit={(e) => handleAddContact(e, prospect.id)}
+                        className="mt-2 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800"
+                      >
+                        {contactErrors[prospect.id] && (
+                          <p className="text-xs text-red-600">{contactErrors[prospect.id]}</p>
+                        )}
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <input
+                            className={inputClass}
+                            placeholder="Name"
+                            value={contactForms[prospect.id]?.name ?? ""}
+                            onChange={(e) => updateContactForm(prospect.id, "name", e.target.value)}
+                          />
+                          <input
+                            className={inputClass}
+                            placeholder="Job title / role"
+                            value={contactForms[prospect.id]?.role ?? ""}
+                            onChange={(e) => updateContactForm(prospect.id, "role", e.target.value)}
+                          />
+                          <input
+                            className={inputClass}
+                            placeholder="Department"
+                            value={contactForms[prospect.id]?.department ?? ""}
+                            onChange={(e) => updateContactForm(prospect.id, "department", e.target.value)}
+                          />
+                          <select
+                            className={inputClass}
+                            value={contactForms[prospect.id]?.decision_maker_level ?? "unknown"}
+                            onChange={(e) => updateContactForm(prospect.id, "decision_maker_level", e.target.value)}
+                          >
+                            {DECISION_MAKER_LEVELS.map((lvl) => (
+                              <option key={lvl.value} value={lvl.value}>{lvl.label}</option>
+                            ))}
+                          </select>
+                          <input
+                            className={inputClass}
+                            placeholder="Email"
+                            type="email"
+                            value={contactForms[prospect.id]?.email ?? ""}
+                            onChange={(e) => updateContactForm(prospect.id, "email", e.target.value)}
+                          />
+                          <input
+                            className={inputClass}
+                            placeholder="Phone"
+                            value={contactForms[prospect.id]?.phone ?? ""}
+                            onChange={(e) => updateContactForm(prospect.id, "phone", e.target.value)}
+                          />
+                        </div>
+                        <div className="flex justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => toggleContactForm(prospect.id)}
+                            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="submit"
+                            disabled={contactSaving[prospect.id]}
+                            className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+                          >
+                            {contactSaving[prospect.id] ? "Saving…" : "Save contact"}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+                  </div>
 
                   {timeline.length > 0 && (
                     <div>

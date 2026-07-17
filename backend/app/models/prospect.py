@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base_class import Base, TimestampMixin, UUIDPrimaryKeyMixin
-from app.models.enums import ProspectStatus
+from app.models.enums import ProspectStatus, RelationshipStage
 
 
 class Prospect(UUIDPrimaryKeyMixin, TimestampMixin, Base):
@@ -79,6 +79,24 @@ class Prospect(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         UUID(as_uuid=True), ForeignKey("prospects.id", ondelete="SET NULL"), nullable=True
     )
     duplicate_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+    # Added in M3. Actual sales history with this buyer - live and mutable,
+    # deliberately NOT versioned like PersonalizationSnapshot's
+    # buyer_readiness (an AI prediction, recalculated every run). M3's
+    # pipeline only ever READS this value (copying it into
+    # PersonalizationSnapshot.relationship_stage_at_generation for
+    # explainability); nothing in M3 writes it. Future milestones (M4-M7)
+    # are what advance it as outreach actually happens.
+    relationship_stage: Mapped[RelationshipStage] = mapped_column(
+        Enum(
+            RelationshipStage,
+            name="relationship_stage",
+            values_callable=lambda enum_cls: [member.value for member in enum_cls],
+        ),
+        default=RelationshipStage.COLD,
+        nullable=False,
+        index=True,
+    )
 
     # IANA format, validated the same way as CompanyProfile.timezone - so a
     # future scheduler can read this without any schema change.

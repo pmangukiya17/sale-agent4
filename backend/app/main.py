@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
     auth,
+    brand_email_signatures,
     companies,
     company_profiles,
     contacts,
@@ -16,7 +17,18 @@ from app.api.routes import (
     icp_criteria,
     intelligence_snapshots,
     knowledge_base,
+    outreach_drafts,
+    outreach_jobs,
+    outreach_playbooks,
+    outreach_requests,
+    outreach_runs,
+    personalization_jobs,
+    personalization_requests,
+    personalization_runs,
+    personalization_snapshots,
+    personalization_templates,
     products,
+    prompt_versions,
     prospect_contacts,
     prospect_timeline,
     prospects,
@@ -129,3 +141,15 @@ app.include_router(intelligence_snapshots.router, prefix=API_PREFIX)
 app.include_router(signals.router, prefix=API_PREFIX)
 app.include_router(recommendations.router, prefix=API_PREFIX)
 app.include_router(research_reports.router, prefix=API_PREFIX)
+app.include_router(personalization_templates.router, prefix=API_PREFIX)
+app.include_router(personalization_requests.router, prefix=API_PREFIX)
+app.include_router(personalization_jobs.router, prefix=API_PREFIX)
+app.include_router(personalization_runs.router, prefix=API_PREFIX)
+app.include_router(personalization_snapshots.router, prefix=API_PREFIX)
+app.include_router(outreach_playbooks.router, prefix=API_PREFIX)
+app.include_router(prompt_versions.router, prefix=API_PREFIX)
+app.include_router(outreach_requests.router, prefix=API_PREFIX)
+app.include_router(outreach_jobs.router, prefix=API_PREFIX)
+app.include_router(outreach_runs.router, prefix=API_PREFIX)
+app.include_router(outreach_drafts.router, prefix=API_PREFIX)
+app.include_router(brand_email_signatures.router, prefix=API_PREFIX)

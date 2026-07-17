@@ -39,6 +39,30 @@ M2 checks (AI Research & Prospect Intelligence):
     22. Signals detected                   (GET .../signals — the pasted text's "expanding"/"hiring" keywords surfaced)
     23. Research Report generation succeeds (POST .../research-reports/generate, built FROM the current snapshot)
 
+M3 checks (AI Personalization Engine):
+    24. Personalization Templates reachable      (GET .../personalization-templates — system defaults seeded in 0005)
+    25. Personalization Request creation         (POST .../prospects/{id}/personalization-requests, pinned to a system template)
+    26. Personalization Request run succeeds     (POST .../personalization-requests/{id}/run — synchronous, reads the
+                                                   Intelligence Snapshot/Signals/Recommendations from steps 20-23, no
+                                                   external input of its own)
+    27. Personalization Snapshot created         (GET .../personalization-snapshots/current — version 1, buyer_readiness
+                                                   computed from the active Signals, at least primary+fallback strategies)
+    28. Communication Strategy present           (all 8 axes populated on the current snapshot)
+
+M4 checks (AI Outreach Generation Engine):
+    29. Outreach Playbooks reachable             (GET .../outreach-playbooks — system default seeded in 0006)
+    30. Prospect Contact creation succeeds        (POST .../prospects/{id}/contacts — outreach addresses a named
+                                                   stakeholder, not the account, per the account-based-selling refinement)
+    31. Outreach Request creation succeeds        (POST .../contacts/{id}/outreach-requests, pinned to the system
+                                                   playbook + channel=email)
+    32. Outreach Request run succeeds             (POST .../outreach-requests/{id}/run — synchronous, reads the current
+                                                   Personalization Snapshot from steps 26-28, renders via the
+                                                   deterministic EmailChannelProvider)
+    33. Outreach Draft created                    (GET .../outreach-drafts/current?channel_key=email — version 1,
+                                                   assembled subject+body present, evidence anchored to the primary
+                                                   strategy)
+    34. Outreach Draft approve succeeds           (POST .../outreach-drafts/{id}/approve — status becomes "approved")
+
 Deliberately stdlib-only (urllib, not requests) so it runs on a bare
 `python3` with nothing to install, on any machine that has Python.
 
@@ -66,7 +90,7 @@ POLL_DELAY_SECONDS = 2
 
 _state: dict = {}
 _results: list = []
-TOTAL_STEPS = 23
+TOTAL_STEPS = 34
 
 
 def load_env(path: Path) -> dict:
@@ -686,8 +710,277 @@ def check_generate_research_report() -> str:
     return f"generated research report id={report_id}"
 
 
+# --- M3 checks: AI Personalization Engine --------------------------------
+
+
+def check_personalization_templates() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    if not token or not profile_id:
+        raise RuntimeError("skipped — no token/company_profile_id from earlier steps")
+
+    status, raw = http_request(
+        "GET",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/personalization-templates",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    templates = json.loads(raw)
+    system_templates = [t for t in templates if t.get("is_system_default")]
+    if not system_templates:
+        raise RuntimeError(f"expected at least one system-seeded personalization template, got: {templates}")
+    _state["personalization_template_id"] = system_templates[0]["id"]
+    return f"{len(templates)} template(s) visible, using system template id={system_templates[0]['id']}"
+
+
+def check_create_personalization_request() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    prospect_id = _state.get("prospect_id")
+    template_id = _state.get("personalization_template_id")
+    if not all([token, profile_id, prospect_id, template_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/prospect_id/personalization_template_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/personalization-requests",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={"personalization_template_id": template_id},
+    )
+    if status != 201:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    request_id = payload.get("id")
+    if not request_id:
+        raise RuntimeError(f"no id in response: {payload}")
+    _state["personalization_request_id"] = request_id
+    return f"created personalization request id={request_id}"
+
+
+def check_run_personalization_request() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    prospect_id = _state.get("prospect_id")
+    request_id = _state.get("personalization_request_id")
+    if not all([token, profile_id, prospect_id, request_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/prospect_id/personalization_request_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/personalization-requests/{request_id}/run",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={},
+    )
+    if status != 201:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    if payload.get("status") != "completed":
+        raise RuntimeError(f"unexpected job status: {payload}")
+    return f"job {payload.get('id')} status={payload.get('status')}"
+
+
+def check_personalization_snapshot() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    prospect_id = _state.get("prospect_id")
+    if not all([token, profile_id, prospect_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/prospect_id from earlier steps")
+
+    status, raw = http_request(
+        "GET",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/personalization-snapshots/current",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    if payload.get("version") != 1:
+        raise RuntimeError(f"expected version=1 for the first snapshot, got {payload.get('version')}")
+    # The research test text carries an "expansion" (importance=high) and a
+    # "hiring" (importance=medium) signal, scoring 3 points under the
+    # deterministic engine's thresholds - exactly the HIGH readiness band.
+    if payload.get("buyer_readiness") != "high":
+        raise RuntimeError(f"expected buyer_readiness='high' given the M2 test signals, got: {payload.get('buyer_readiness')}")
+    ranks = {s["strategy_rank"] for s in payload.get("strategies", [])}
+    # Only PRIMARY+FALLBACK are guaranteed - SECONDARY only appears when 2+
+    # distinct-type Recommendations exist, which isn't guaranteed by the M2
+    # smoke fixtures (only one product_fit recommendation is produced there).
+    if not {"primary", "fallback"} <= ranks:
+        raise RuntimeError(f"expected at least primary+fallback strategies, got ranks: {ranks}")
+    _state["personalization_snapshot"] = payload
+    return f"snapshot id={payload.get('id')} version=1 buyer_readiness=high ranks={sorted(ranks)}"
+
+
+def check_communication_strategy() -> str:
+    snapshot = _state.get("personalization_snapshot")
+    if not snapshot:
+        raise RuntimeError("skipped — no personalization_snapshot from the previous step")
+
+    comm = snapshot.get("communication_strategy")
+    if not comm:
+        raise RuntimeError(f"expected a communication_strategy on the current snapshot, got: {snapshot}")
+    required_axes = {
+        "formality", "directness", "warmth", "technical_depth",
+        "authority", "consultative_level", "urgency", "message_length",
+    }
+    missing = required_axes - set(k for k, v in comm.items() if v is not None)
+    if missing:
+        raise RuntimeError(f"communication_strategy missing values for axes: {missing}")
+    return f"communication strategy present: formality={comm['formality']}, urgency={comm['urgency']}"
+
+
+# --- M4 checks: AI Outreach Generation Engine ----------------------------
+
+
+def check_outreach_playbooks() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    if not token or not profile_id:
+        raise RuntimeError("skipped — no token/company_profile_id from earlier steps")
+
+    status, raw = http_request(
+        "GET",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/outreach-playbooks",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    playbooks = json.loads(raw)
+    system_playbooks = [p for p in playbooks if p.get("is_system_default")]
+    if not system_playbooks:
+        raise RuntimeError(f"expected at least one system-seeded outreach playbook, got: {playbooks}")
+    if not system_playbooks[0].get("blocks"):
+        raise RuntimeError(f"expected the system playbook to have seeded blocks, got: {system_playbooks[0]}")
+    _state["outreach_playbook_id"] = system_playbooks[0]["id"]
+    return f"{len(playbooks)} playbook(s) visible, using system playbook id={system_playbooks[0]['id']}"
+
+
+def check_create_prospect_contact() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    prospect_id = _state.get("prospect_id")
+    if not all([token, profile_id, prospect_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/prospect_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/contacts",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={"name": "Smoke Test Buyer Contact", "role": "Procurement Manager", "email": "buyer@smoke-test-buyer.example.com"},
+    )
+    if status != 201:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    contact_id = payload.get("id")
+    if not contact_id:
+        raise RuntimeError(f"no id in response: {payload}")
+    _state["prospect_contact_id"] = contact_id
+    return f"created prospect contact id={contact_id}"
+
+
+def check_create_outreach_request() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    prospect_id = _state.get("prospect_id")
+    contact_id = _state.get("prospect_contact_id")
+    playbook_id = _state.get("outreach_playbook_id")
+    if not all([token, profile_id, prospect_id, contact_id, playbook_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/prospect_id/prospect_contact_id/outreach_playbook_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/contacts/{contact_id}/outreach-requests",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={"outreach_playbook_id": playbook_id, "channel_key": "email"},
+    )
+    if status != 201:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    request_id = payload.get("id")
+    if not request_id:
+        raise RuntimeError(f"no id in response: {payload}")
+    _state["outreach_request_id"] = request_id
+    return f"created outreach request id={request_id}"
+
+
+def check_run_outreach_request() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    prospect_id = _state.get("prospect_id")
+    contact_id = _state.get("prospect_contact_id")
+    request_id = _state.get("outreach_request_id")
+    if not all([token, profile_id, prospect_id, contact_id, request_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/prospect_id/prospect_contact_id/outreach_request_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/contacts/{contact_id}/outreach-requests/{request_id}/run",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={},
+    )
+    if status != 201:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    if payload.get("status") != "completed":
+        raise RuntimeError(f"unexpected job status: {payload}")
+    return f"job {payload.get('id')} status={payload.get('status')}"
+
+
+def check_outreach_draft() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    prospect_id = _state.get("prospect_id")
+    contact_id = _state.get("prospect_contact_id")
+    if not all([token, profile_id, prospect_id, contact_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/prospect_id/prospect_contact_id from earlier steps")
+
+    status, raw = http_request(
+        "GET",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/contacts/{contact_id}/outreach-drafts/current?channel_key=email",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    if payload.get("version") != 1:
+        raise RuntimeError(f"expected version=1 for the first draft, got {payload.get('version')}")
+    if not payload.get("is_current"):
+        raise RuntimeError(f"expected is_current=True, got: {payload}")
+    assembled = payload.get("current_content", {}).get("assembled", {})
+    if not assembled.get("subject") or not assembled.get("body"):
+        raise RuntimeError(f"expected a non-empty assembled subject+body, got: {assembled}")
+    if not payload.get("evidence"):
+        raise RuntimeError(f"expected at least one evidence entry anchored to the primary strategy, got: {payload.get('evidence')}")
+    _state["outreach_draft_id"] = payload.get("id")
+    return f"draft id={payload.get('id')} version=1 subject={assembled.get('subject')!r}"
+
+
+def check_approve_outreach_draft() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    prospect_id = _state.get("prospect_id")
+    contact_id = _state.get("prospect_contact_id")
+    draft_id = _state.get("outreach_draft_id")
+    if not all([token, profile_id, prospect_id, contact_id, draft_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/prospect_id/prospect_contact_id/outreach_draft_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/contacts/{contact_id}/outreach-drafts/{draft_id}/approve",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    if payload.get("status") != "approved":
+        raise RuntimeError(f"expected status=approved, got: {payload}")
+    return f"draft {draft_id} approved"
+
+
 def main() -> int:
-    print("Sales Agent — M0 + M1.1 + M1 + M2 smoke test")
+    print("Sales Agent — M0 + M1.1 + M1 + M2 + M3 + M4 smoke test")
     print(f"backend={BACKEND_URL}  frontend={FRONTEND_URL}")
     print("(assumes `docker compose up --build` is already running)\n")
 
@@ -715,6 +1008,17 @@ def main() -> int:
     all_passed &= step("Intelligence Snapshot created", check_intelligence_snapshot)
     all_passed &= step("Signals detected", check_signals_detected)
     all_passed &= step("Research Report generation succeeds", check_generate_research_report)
+    all_passed &= step("Personalization Templates reachable", check_personalization_templates)
+    all_passed &= step("Personalization Request creation succeeds", check_create_personalization_request)
+    all_passed &= step("Personalization Request run succeeds", check_run_personalization_request)
+    all_passed &= step("Personalization Snapshot created", check_personalization_snapshot)
+    all_passed &= step("Communication Strategy present", check_communication_strategy)
+    all_passed &= step("Outreach Playbooks reachable", check_outreach_playbooks)
+    all_passed &= step("Prospect Contact creation succeeds", check_create_prospect_contact)
+    all_passed &= step("Outreach Request creation succeeds", check_create_outreach_request)
+    all_passed &= step("Outreach Request run succeeds", check_run_outreach_request)
+    all_passed &= step("Outreach Draft created", check_outreach_draft)
+    all_passed &= step("Outreach Draft approve succeeds", check_approve_outreach_draft)
 
     print("\n--- Summary ---")
     for name, passed, detail in _results:

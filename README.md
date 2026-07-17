@@ -75,7 +75,7 @@ make smoke-test               # run the automated smoke test (see below)
 
 ## Smoke test — mandatory before every milestone
 
-`smoke_test.py` (stdlib-only, no dependencies to install) checks the 23
+`smoke_test.py` (stdlib-only, no dependencies to install) checks the 34
 things every milestone is gated on, against an already-running stack:
 
 M0:
@@ -109,6 +109,21 @@ M2 (AI Research & Prospect Intelligence):
 22. Signals detected (the AI stub's keyword matches surface as Signal rows)
 23. Research Report generation succeeds (built from the current Intelligence Snapshot)
 
+M3 (AI Personalization Engine):
+24. Personalization Templates reachable (system-seeded defaults from migration 0005)
+25. Personalization Request creation succeeds (pinned to the prospect from step 16)
+26. Personalization Request run succeeds (synchronous — reads the Intelligence Snapshot/Signals/Recommendations from M2, fetches nothing new)
+27. Personalization Snapshot created (version 1, buyer_readiness computed from the active Signals, at least primary+fallback strategies)
+28. Communication Strategy present (all 8 axes populated)
+
+M4 (AI Outreach Generation Engine):
+29. Outreach Playbooks reachable (system-seeded default from migration 0006, with its blocks)
+30. Prospect Contact creation succeeds (outreach addresses a named stakeholder, not the account)
+31. Outreach Request creation succeeds (pinned to the system playbook + channel=email)
+32. Outreach Request run succeeds (synchronous — reads the current Personalization Snapshot, renders via the deterministic EmailChannelProvider)
+33. Outreach Draft created (version 1, assembled subject+body, evidence anchored to the primary strategy)
+34. Outreach Draft approve succeeds (status becomes "approved")
+
 Run it after `docker compose up --build` is up:
 
 ```bash
@@ -117,7 +132,7 @@ python3 smoke_test.py
 make smoke-test
 ```
 
-It prints PASS/FAIL per step and exits `0` only if all 23 pass. No new
+It prints PASS/FAIL per step and exits `0` only if all 34 pass. No new
 milestone work starts until this exits `0` on a clean `down -v && up --build`.
 
 ## What to verify once it's running
@@ -141,6 +156,22 @@ doesn't change to match. Check the backend logs for a
 this is what happened. The fix is `docker compose down -v` (wipes the
 volume so bootstrap runs fresh against the current `.env`), not editing
 this code.
+
+**If Vite in the frontend container ever fails with `Failed to resolve
+import "..."` for a package that's genuinely in `package.json`, and a
+local `npm install && npm run build` outside Docker works fine:** this is
+not a Docker build-cache issue — the image's `RUN npm install` layer does
+correctly rerun whenever `package.json` changes. It's the anonymous
+`/app/node_modules` volume declared for the frontend service in
+`docker-compose.yml` (there so the host bind-mount `./frontend:/app`
+doesn't shadow the container's own installed packages). That volume is
+created once and then persists across every later `docker compose up
+--build`, so the *running* container keeps the node_modules from whenever
+that volume was first created, even though the freshly built *image*
+layer has the current one. The fix is `make frontend-deps-reset` (or
+`docker compose up --build --renew-anon-volumes frontend`), not editing
+`package.json` or the `Dockerfile` — run it any time
+`frontend/package.json` changes.
 
 ## Known limitations (intentional — out of scope for M0)
 
@@ -180,5 +211,16 @@ sales-agent/
 ├── docker-compose.yml
 ├── Makefile
 ├── smoke_test.py         mandatory PASS/FAIL gate before every milestone
+├── docs/
+│   └── architecture/      long-term architectural documentation (see below)
 └── .env.example
 ```
+
+## Architecture documentation
+
+[`docs/architecture/`](./docs/architecture/) holds long-term architectural
+documentation meant to outlive any single chat session — including
+[`docs/architecture/future-milestones.md`](./docs/architecture/future-milestones.md),
+forward-looking design guidance recorded at the close of M4 for M5 and
+beyond. If you're picking up work on this repo without prior conversation
+history, start there.

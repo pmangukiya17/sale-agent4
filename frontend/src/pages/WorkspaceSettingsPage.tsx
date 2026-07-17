@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { apiClient } from "../api/client";
 import { FormSection, Field, inputClass } from "../components/FormSection";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 type DateFormat = "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
 type TimeFormat = "12h" | "24h";
@@ -84,6 +85,8 @@ export default function WorkspaceSettingsPage() {
 
   return (
     <div className="mx-auto max-w-2xl">
+      <Breadcrumbs items={[{ label: "Home", to: "/" }, { label: "Workspace Settings" }]} />
+
       <h2 className="mb-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">Workspace Settings</h2>
       <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
         Account-level defaults. Individual businesses can still override their own timezone.

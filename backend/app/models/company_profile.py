@@ -59,3 +59,10 @@ class CompanyProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     products: Mapped[list["Product"]] = relationship(back_populates="company_profile", cascade="all, delete-orphan")
     icp_criteria: Mapped[list["ICPCriteria"]] = relationship(back_populates="company_profile", cascade="all, delete-orphan")
     knowledge_base_entries: Mapped[list["KnowledgeBase"]] = relationship(back_populates="company_profile", cascade="all, delete-orphan")
+    # Business Branding: a UI/module concept, not a database entity - each
+    # branding module (today: just the email signature) hangs directly off
+    # company_profile_id, the same way Products/ICPCriteria/KnowledgeBase
+    # do, rather than through an intermediate "Branding" aggregate row.
+    brand_email_signature: Mapped["BrandEmailSignature | None"] = relationship(
+        back_populates="company_profile", cascade="all, delete-orphan", uselist=False
+    )

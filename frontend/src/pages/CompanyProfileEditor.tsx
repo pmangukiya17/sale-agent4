@@ -6,6 +6,7 @@ import { FormSection, Field, inputClass } from "../components/FormSection";
 import { TagInput } from "../components/TagInput";
 import { MultiSelect, type MultiSelectOption } from "../components/MultiSelect";
 import { Toggle } from "../components/Toggle";
+import { Breadcrumbs } from "../components/Breadcrumbs";
 
 const BUSINESS_TYPE_OPTIONS = ["manufacturer", "trading_company", "exporter"];
 
@@ -159,6 +160,8 @@ export default function CompanyProfileEditor() {
 
   return (
     <div className="mx-auto max-w-4xl">
+      <Breadcrumbs items={[{ label: "Businesses", to: "/businesses" }, { label: "Business Settings" }]} />
+
       <h2 className="mb-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
         {isEditing ? "Edit business" : "Add a business"}
       </h2>
