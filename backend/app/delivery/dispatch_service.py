@@ -19,7 +19,21 @@ happened. This is the best available mitigation for exactly-once delivery
 without a provider-side idempotency key (Gmail/Graph don't offer one for
 sending) - see worker.py's docstring for the stale-claim reconciliation
 that handles the crash-recovery side of this.
+
+M6.3 ADDITION - on a successful send, this module now also mirrors the
+email into the M6 Conversation/EmailMessage/ConversationParticipant
+schema (see conversation_resolver.py and email_message.py's own
+docstrings), so Thread Builder has an outbound anchor to correlate a
+future reply against. This is genuinely new write responsibility for
+already-tagged M5 code - disclosed and approved as part of M6.3's
+architecture, same category of change as the provider send() updates
+(app/delivery/providers/outlook_provider.py, gmail_provider.py). It runs
+inside its own SAVEPOINT (_record_outbound_conversation, below): the
+email has ALREADY been sent by the time this code runs, so a bug in this
+bookkeeping must never make DeliveryQueueItem look like the send itself
+failed - it is logged, never raised, on failure.
 """
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -30,14 +44,25 @@ from app.delivery import campaign_service
 from app.delivery.connection_service import ConnectionError_, refresh_credential_if_needed
 from app.delivery.context import DeliveryContext
 from app.delivery.credentials.registry import get_credential_store
-from app.delivery.providers.base import ProviderAuthError, ProviderSendError
+from app.delivery.providers.base import DeliverySendOutcome, ProviderAuthError, ProviderSendError
 from app.delivery.providers.registry import get_provider
 from app.models.delivery_campaign import DeliveryCampaign
 from app.models.delivery_event import DeliveryEvent
 from app.models.delivery_queue_item import DeliveryQueueItem
-from app.models.enums import DeliveryCampaignStatus, DeliveryEventType, DeliveryQueueItemStatus, ProviderConnectionStatus
+from app.models.email_message import EmailMessage
+from app.models.enums import (
+    ConversationParticipantRole,
+    DeliveryCampaignStatus,
+    DeliveryEventType,
+    DeliveryQueueItemStatus,
+    MessageDirection,
+    ProviderConnectionStatus,
+)
 from app.models.provider_connection import ProviderConnection
 from app.models.sending_profile import SendingProfile
+from app.reply_intelligence.conversation_resolver import get_or_create_conversation_for_outbound, upsert_participant
+
+logger = logging.getLogger("sales_agent.dispatch_service")
 
 
 def _now() -> datetime:
@@ -141,6 +166,9 @@ def dispatch(db: Session, item: DeliveryQueueItem) -> None:
     item.provider_message_id = outcome.provider_message_id
     item.claimed_at = None
     _log_event(db, item.id, DeliveryEventType.SENT, detail=outcome.detail)
+
+    _record_outbound_conversation(db, item, sending_profile, connection, outcome)
+
     db.commit()
     campaign_service.maybe_mark_completed(db, item.delivery_campaign_id)
 
@@ -166,3 +194,74 @@ def _retry_or_fail(db: Session, item: DeliveryQueueItem, error_message: str, *, 
 def _fail_item(db: Session, item: DeliveryQueueItem, error_message: str, *, permanent: bool) -> None:
     item.claimed_at = None
     _retry_or_fail(db, item, error_message, permanent=permanent)
+
+
+def _record_outbound_conversation(
+    db: Session,
+    item: DeliveryQueueItem,
+    sending_profile: SendingProfile,
+    connection: ProviderConnection,
+    outcome: DeliverySendOutcome,
+) -> None:
+    """M6.3: mirrors a just-sent email into Conversation/EmailMessage/
+    ConversationParticipant - see this module's own docstring for why
+    this exists and why it's isolated in a SAVEPOINT. item.sent_at must
+    already be set by the caller (it is, by the time dispatch() reaches
+    this call). Never raises - a failure here is logged and swallowed,
+    since the actual send already succeeded and must not be undone by a
+    secondary bookkeeping problem."""
+    try:
+        with db.begin_nested():
+            assembled = (item.frozen_content or {}).get("assembled", {})
+            conversation = get_or_create_conversation_for_outbound(
+                db,
+                company_profile_id=item.company_profile_id,
+                provider_connection_id=connection.id,
+                prospect_id=item.prospect_id,
+                prospect_contact_id=item.prospect_contact_id,
+                subject=assembled.get("subject"),
+                sent_at=item.sent_at,
+            )
+
+            email_message = EmailMessage(
+                conversation_id=conversation.id,
+                company_profile_id=item.company_profile_id,
+                provider_connection_id=connection.id,
+                delivery_queue_item_id=item.id,
+                provider=connection.provider_key,
+                provider_message_id=outcome.provider_message_id,
+                provider_thread_id=outcome.provider_thread_id,
+                internet_message_id=outcome.internet_message_id,
+                direction=MessageDirection.OUTBOUND,
+                from_email=sending_profile.sender_email,
+                from_name=sending_profile.sender_name,
+                subject=assembled.get("subject"),
+                body_text=assembled.get("body"),
+                sent_at=item.sent_at,
+                to_recipients=[{"email": item.recipient_email, "name": None}],
+                cc_recipients=[],
+                has_attachments=False,
+            )
+            db.add(email_message)
+            db.flush()
+
+            upsert_participant(
+                db,
+                conversation_id=conversation.id,
+                email=item.recipient_email,
+                name=None,
+                role=ConversationParticipantRole.TO,
+                prospect_contact_id=item.prospect_contact_id,
+            )
+            upsert_participant(
+                db,
+                conversation_id=conversation.id,
+                email=sending_profile.sender_email,
+                name=sending_profile.sender_name,
+                role=ConversationParticipantRole.FROM_,
+            )
+    except Exception:  # noqa: BLE001 - see this function's own docstring: never let bookkeeping failure undo a real send
+        logger.exception(
+            "Failed to record outbound Conversation/EmailMessage for DeliveryQueueItem %s - the email was still sent successfully.",
+            item.id,
+        )

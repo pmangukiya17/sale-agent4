@@ -26,6 +26,13 @@ to prior conversation history, start here.
   `CREDENTIAL_ENCRYPTION_KEY` rotation story, worker concurrency
   guarantees, and a re-confirmation that M5's actual code still matches
   the M6-readiness claims `future-milestones.md` note 9 made about it.
+- [`m6-reply-intelligence-plan.md`](./m6-reply-intelligence-plan.md) —
+  proposal for M6 (Reply Intelligence & Conversation Management),
+  produced before implementation. Not authorized for implementation until
+  explicitly approved — and it explicitly flags that its proposed design
+  (persistent conversation storage) supersedes, rather than implements,
+  `future-milestones.md` note 9's original ephemeral-only design. Read
+  Decision Point 0 first.
 
 ## Conventions for documents in this directory
 

@@ -67,6 +67,42 @@ class Settings(BaseSettings):
     DELIVERY_WORKER_STALE_CLAIM_MINUTES: int = 10
     DELIVERY_DEFAULT_MAX_ATTEMPTS: int = 3
 
+    # --- M6.2: Mailbox Synchronization --------------------------------------
+    # Slower default poll than the Delivery worker's - sync is a background
+    # freshness concern, not a time-sensitive send; a wider interval is
+    # kinder to the provider API's rate limits for a capability nothing yet
+    # depends on synchronously (M6.3+ reads EmailMessage rows whenever they
+    # arrive, not "as of this exact second").
+    MAILBOX_SYNC_POLL_INTERVAL_SECONDS: int = 60
+    # Per-connection, per-tick cap passed as max_results/$top to
+    # IncrementalSyncCapable.fetch_messages_incremental - keeps one slow
+    # mailbox from starving the tick loop's time budget for every other
+    # connected mailbox.
+    MAILBOX_SYNC_MAX_RESULTS_PER_TICK: int = 50
+
+    # --- M6.3: Thread Builder ------------------------------------------------
+    # Faster than the mailbox sync worker's own interval on purpose - once
+    # a message is sitting in the WHERE conversation_id IS NULL queue,
+    # there's no reason to make it wait as long as a full sync cycle to be
+    # threaded; threading is cheap (DB-only, no provider API calls).
+    THREAD_BUILDER_POLL_INTERVAL_SECONDS: int = 20
+    THREAD_BUILDER_BATCH_SIZE: int = 50
+
+    # --- M6.4: Reply Intelligence --------------------------------------------
+    # No batch size setting here, deliberately - unlike the other three
+    # workers, Reply Intelligence does a full recompute every tick (no
+    # cursor - see reply_intelligence_worker.py's own docstring), so there
+    # is no ordered backlog to cap a slice of. Poll interval matches
+    # Thread Builder's: cheap, DB-only work for the MVP rules classifier,
+    # no provider API calls.
+    REPLY_INTELLIGENCE_POLL_INTERVAL_SECONDS: int = 20
+    # Selects the active ReplyClassifier implementation via
+    # app/reply_intelligence/classifiers/registry.py - "rules" is the only
+    # backend implemented in M6.4 (deterministic, no AI provider). Adding
+    # "openai"/"claude"/"gemini"/a local-model backend later is a new
+    # class + a registry entry + changing this value, never a worker change.
+    REPLY_CLASSIFIER_BACKEND: str = "rules"
+
     @property
     def sqlalchemy_database_uri(self) -> str:
         if self.DATABASE_URL:

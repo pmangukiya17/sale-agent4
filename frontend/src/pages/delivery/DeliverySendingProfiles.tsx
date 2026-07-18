@@ -120,9 +120,24 @@ export default function DeliverySendingProfiles() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<ProfileForm>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
+  // load() intentionally re-fetches all three lists (profiles, providers,
+  // connections) every time it's called, not just on mount. Root cause of
+  // the "Mailbox connection: Not connected yet" bug traced live: this
+  // component only ever fetched `connections` once, on first mount. If a
+  // user had this page open (or reopened it via browser back/forward)
+  // before finishing a Connect+OAuth round trip on the Connections tab -
+  // e.g. in a second browser tab - `connections` stayed frozen at
+  // whatever existed before the mailbox was connected, even though the
+  // database already had the new row. Nothing was ever wrong with the
+  // backend query or the provider_key filter below; the fix is making
+  // sure this page can never show data older than "the moment the form
+  // was opened" - see startCreate/startEdit below, which now call load()
+  // instead of trusting whatever was fetched on mount.
   const load = () => {
     setIsLoading(true);
+    setLoadError(null);
     Promise.all([
       apiClient.get<SendingProfile[]>(`/company-profiles/${companyId}/sending-profiles`),
       apiClient.get<ConnectableProvider[]>("/delivery/providers"),
@@ -132,6 +147,14 @@ export default function DeliverySendingProfiles() {
         setProfiles(profilesRes.data);
         setProviders(providersRes.data);
         setConnections(connectionsRes.data);
+      })
+      .catch(() => {
+        // Previously silent: if any of the three requests failed,
+        // Promise.all rejected, none of the three setters ran, and the
+        // page rendered as if everything were empty with no indication
+        // anything went wrong - indistinguishable from "you genuinely
+        // have no connections yet." Surface it instead.
+        setLoadError("Could not load sending profiles, providers, or mailbox connections. Try refreshing the page.");
       })
       .finally(() => setIsLoading(false));
   };
@@ -143,12 +166,14 @@ export default function DeliverySendingProfiles() {
   };
 
   const startCreate = () => {
+    load();
     setEditingId(null);
     setForm(EMPTY_FORM);
     setShowForm(true);
   };
 
   const startEdit = (p: SendingProfile) => {
+    load();
     setEditingId(p.id);
     setForm(profileToForm(p));
     setShowForm(true);
@@ -214,6 +239,11 @@ export default function DeliverySendingProfiles() {
 
   return (
     <div>
+      {loadError && (
+        <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400">
+          {loadError}
+        </div>
+      )}
       <div className="mb-6 flex items-center justify-between">
         <p className="text-sm text-slate-500 dark:text-slate-400">
           Named sending identities - "CEO", "Sales", "Support" - each backed by a connected mailbox.
@@ -268,6 +298,12 @@ export default function DeliverySendingProfiles() {
                   </option>
                 ))}
               </select>
+              {form.provider_key && matchingConnections.length === 0 && (
+                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                  No {PROVIDER_LABELS[form.provider_key] ?? form.provider_key} mailbox is connected for this business
+                  yet - connect one under Connections first, then reopen this form.
+                </p>
+              )}
             </Field>
             <Field label="Active">
               <Toggle checked={form.is_active} onChange={(v) => update("is_active", v)} />

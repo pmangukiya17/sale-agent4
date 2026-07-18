@@ -77,3 +77,8 @@ from app.models.sending_profile import SendingProfile  # noqa
 from app.models.delivery_campaign import DeliveryCampaign  # noqa
 from app.models.delivery_queue_item import DeliveryQueueItem  # noqa
 from app.models.delivery_event import DeliveryEvent  # noqa
+from app.models.conversation import Conversation  # noqa
+from app.models.email_message import EmailMessage  # noqa
+from app.models.conversation_participant import ConversationParticipant  # noqa
+from app.models.mailbox_sync_state import MailboxSyncState  # noqa
+from app.models.attachment import Attachment  # noqa

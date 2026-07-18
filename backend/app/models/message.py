@@ -10,6 +10,17 @@ from app.models.enums import MessageDirection
 
 
 class Message(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """
+    SUPERSEDED - do not use. See Thread's docstring (same table family,
+    same reasoning) - this is replaced by EmailMessage
+    (app/models/email_message.py, migration 0009), built provider-
+    agnostically against Conversation/Prospect/CompanyProfile rather than
+    this table's stale Company/Thread parent and Outlook-specific
+    outlook_message_id column. Kept only because Thread still relates to
+    it; slated for an actual DROP TABLE in a later cleanup migration once
+    confirmed safe.
+    """
+
     __tablename__ = "messages"
 
     thread_id: Mapped[uuid.UUID] = mapped_column(

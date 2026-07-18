@@ -352,3 +352,77 @@ class DeliveryEventType(str, enum.Enum):
     RETRY = "retry"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+
+class ConversationStatus(str, enum.Enum):
+    """Deliberately minimal for M6.1 - two states, not a workflow. OPEN is
+    the only value anything writes today (Conversation's default); nothing
+    in M6.1 ever transitions a row to CLOSED, since that requires either a
+    human action or a staleness/freshness computation that belongs to a
+    later milestone (M6.3 correlation at the earliest, more likely M7
+    follow-up automation). Resist the temptation to add STALLED/ARCHIVED/
+    etc. here speculatively - see m6-reply-intelligence-plan.md's own
+    walked-back Attachment/InboxSyncState/Task scoping for why anticipatory
+    schema for logic that doesn't exist yet is the thing to avoid."""
+
+    OPEN = "open"
+    CLOSED = "closed"
+
+
+class ConversationParticipantRole(str, enum.Enum):
+    """One participant's role on one conversation - a person can appear as
+    FROM on one message and CC on another within the same thread, but
+    ConversationParticipant is one row per (conversation, email), so this
+    records whichever role is currently most relevant (see
+    conversation_participant.py's docstring), not a per-message log."""
+
+    TO = "to"
+    CC = "cc"
+    FROM_ = "from"  # trailing underscore: `from` is a Python keyword
+
+
+# --- M6.2: Mailbox Synchronization -------------------------------------------
+
+
+class MailboxSyncStatus(str, enum.Enum):
+    """Outcome of the most recent sync tick for one MailboxSyncState row -
+    deliberately just two values, same "minimal, not a workflow" discipline
+    as ConversationStatus. OK means the last tick completed without a
+    provider/credential error (it says nothing about whether any messages
+    were found - zero-new-messages is still OK). ERROR means the last tick
+    failed before it could advance the cursor - last_sync_detail carries
+    the reason, attempt_count tracks how many consecutive ticks have failed
+    (for future backoff logic, not implemented differently by this enum
+    itself). Resist adding PAUSED/DISABLED here speculatively - if a
+    per-connection sync toggle is ever needed, that is a boolean on
+    MailboxSyncState or ProviderConnection, not a third status value mixing
+    "is sync allowed to run" with "how did it go last time"."""
+
+    OK = "ok"
+    ERROR = "error"
+
+
+# --- M6.4: Reply Intelligence -------------------------------------------------
+
+
+class ReplyStatus(str, enum.Enum):
+    """Deterministic MVP classification of a Conversation's MOST RECENT
+    inbound reply - deliberately just these four values (explicit product
+    scope for M6.4), not an open-ended taxonomy. This is a rolling,
+    current-state field, not a history: reprocessing later, different
+    replies overwrites it, the same way Conversation.last_reply_at/
+    last_reply_from do - see Conversation's own docstring. A separate
+    per-message ReplyAnalysis table (versioned, with confidence/reasoning)
+    was considered and explicitly rejected for M6.4 - Conversation
+    represents current state only; per-message analysis history is
+    deferred to a future milestone if a real need for it appears.
+
+    NEUTRAL is not "no reply yet" - a Conversation with no inbound reply
+    at all simply has reply_status = NULL. NEUTRAL specifically means the
+    deterministic rule engine looked at a real reply and found no
+    confident signal either way - see rules_classifier.py."""
+
+    POSITIVE = "positive"
+    NEGATIVE = "negative"
+    NEUTRAL = "neutral"
+    OUT_OF_OFFICE = "out_of_office"

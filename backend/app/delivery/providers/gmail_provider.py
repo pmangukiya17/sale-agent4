@@ -19,11 +19,26 @@ py_compile and manual cross-reference against Google's published OAuth2
 and Gmail API v1 REST documentation. Needs a real run against a real
 Google Cloud project's OAuth client before being trusted in production -
 see the Layer 3 verification script.
+
+M6.3 ADDITION - send() now mints its own RFC 5322 Message-ID
+(email.utils.make_msgid()) and sets it explicitly as the outgoing MIME
+message's `Message-ID` header before encoding, then returns it via
+DeliverySendOutcome.internet_message_id. Unlike OutlookProvider (which
+cannot safely assume Graph honors a client-supplied value and instead
+reads back what Graph itself generated - see that module's docstring),
+this codebase already authors the raw MIME payload by hand for Gmail
+(_build_mime_message), so setting this header is a direct, fully-
+controlled operation with no provider-side uncertainty at all. Gmail's
+own `id` (returned by users.messages.send, already captured as
+provider_message_id) is a separate, Gmail-internal identifier - NOT the
+same value as the Message-ID header - see DeliverySendOutcome's own
+docstring for how the two are used differently downstream.
 """
 import base64
 from datetime import datetime, timedelta, timezone
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import make_msgid
 from urllib.parse import urlencode
 
 import httpx
@@ -126,6 +141,8 @@ class GmailProvider(EmailConnectionProvider, EmailSendCapable):
     def send(self, context: "DeliveryContext") -> DeliverySendOutcome:  # noqa: F821
         item = context.queue_item
         assembled = (item.frozen_content or {}).get("assembled", {})
+        sender_domain = (context.sending_profile.sender_email or "").split("@")[-1] or "sales-agent.local"
+        internet_message_id = make_msgid(domain=sender_domain)
         raw_message = self._build_mime_message(
             sender_email=context.sending_profile.sender_email,
             sender_name=context.sending_profile.sender_name,
@@ -134,6 +151,7 @@ class GmailProvider(EmailConnectionProvider, EmailSendCapable):
             subject=assembled.get("subject", ""),
             body=assembled.get("body", ""),
             signature_html=assembled.get("signature_html"),
+            message_id=internet_message_id,
         )
         encoded = base64.urlsafe_b64encode(raw_message.as_bytes()).decode("utf-8")
 
@@ -155,7 +173,18 @@ class GmailProvider(EmailConnectionProvider, EmailSendCapable):
             raise ProviderSendError(f"Gmail rejected the send: {response.status_code} {response.text[:200]}", permanent=True)
 
         data = response.json()
-        return DeliverySendOutcome(provider_message_id=data.get("id"), detail={"threadId": data.get("threadId")})
+        return DeliverySendOutcome(
+            provider_message_id=data.get("id"),
+            detail={"threadId": data.get("threadId")},
+            internet_message_id=internet_message_id,
+            # Gmail's threadId IS a usable provider_thread_id in the same
+            # sense as Graph's conversationId - captured here too, even
+            # though GmailProvider doesn't implement IncrementalSyncCapable
+            # yet (M6.2 was Outlook-only); costs nothing to record now, and
+            # a future GmailProvider sync implementation would find its
+            # own outbound sends already carrying this value.
+            provider_thread_id=data.get("threadId"),
+        )
 
     # --- internal helpers ---------------------------------------------------
 
@@ -198,6 +227,7 @@ class GmailProvider(EmailConnectionProvider, EmailSendCapable):
         subject: str,
         body: str,
         signature_html: str | None,
+        message_id: str,
     ) -> MIMEMultipart | MIMEText:
         if not signature_html:
             message = MIMEText(body, "plain", "utf-8")
@@ -211,6 +241,7 @@ class GmailProvider(EmailConnectionProvider, EmailSendCapable):
         message["Subject"] = subject
         message["From"] = f"{sender_name} <{sender_email}>" if sender_name else sender_email
         message["To"] = to_email
+        message["Message-ID"] = message_id
         if reply_to_email:
             message["Reply-To"] = reply_to_email
         return message

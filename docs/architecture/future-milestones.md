@@ -243,11 +243,24 @@ built), and any Outlook/Gmail/scheduling/reply-tracking integration.
 
 ## 9. AI Mailbox Brief (M6, manual-only by design)
 
-**Status:** design guidance only, recorded during M5 planning at the
-user's explicit request, purely so M5's provider layer doesn't need a
-redesign to accommodate it later. Nothing here is authorized for
-implementation — same rule as notes 1–8. This is part of M6 (Reply
-Intelligence & Conversation Management), not M5.
+**Status: SUPERSEDED.** This note's manual-only, ephemeral,
+no-persistent-storage design was formally superseded by
+[`m6-reply-intelligence-plan.md`](./m6-reply-intelligence-plan.md)'s
+Decision Point 0, which adopts a persistent Conversation/EmailMessage
+model instead. The privacy-conscious mechanics this note got right —
+opt-in read scope via Reconnect, capability-based providers, no
+attachment-body storage — carry forward into that document's design;
+what's superseded specifically is the "never persist beyond one
+request/response cycle" constraint itself. Kept below for historical
+record, and because the underlying M5-accommodation reasoning (why the
+provider layer needed no redesign) is still accurate and is in fact the
+reason M6 could be built as an extension rather than a rewrite.
+
+**Original status (recorded during M5 planning):** design guidance only,
+recorded at the user's explicit request, purely so M5's provider layer
+doesn't need a redesign to accommodate it later. Nothing here is
+authorized for implementation — same rule as notes 1–8. This is part of
+M6 (Reply Intelligence & Conversation Management), not M5.
 
 **The feature:** a manually-triggered executive summary of a connected
 mailbox — Business → Connected Mailbox → click "Generate Mailbox Brief" —

@@ -59,6 +59,66 @@ services:
       - ./backend:/app
     command: ["python", "-m", "app.delivery.worker"]
 
+  # M6.2: the Mailbox Sync worker - a second, independent standalone
+  # polling process, same image/entrypoint pattern as `worker` above, only
+  # the command differs. Deliberately its own service, not folded into
+  # `worker`, since it polls on its own schedule
+  # (MAILBOX_SYNC_POLL_INTERVAL_SECONDS) and its failure/restart should
+  # never be coupled to the Delivery worker's.
+  mailbox_sync_worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: ["python", "-m", "app.reply_intelligence.sync_worker"]
+
+  # M6.3: Thread Builder - a third, independent standalone polling
+  # process, same image/entrypoint pattern as the two workers above, only
+  # the command differs. A dedicated service rather than folded into
+  # mailbox_sync_worker per the explicit M6.3 architecture decision - see
+  # app/reply_intelligence/thread_builder.py's own docstring for why.
+  thread_builder_worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: ["python", "-m", "app.reply_intelligence.thread_builder"]
+
+  # M6.4: Reply Intelligence - a fourth, independent standalone polling
+  # process, same image/entrypoint pattern as the three workers above,
+  # only the command differs. Reads EmailMessage (inbound, already
+  # threaded) and Conversation; writes only the four M6.4 Conversation
+  # columns (reply_status/last_reply_at/last_reply_from/
+  # needs_human_review) - never EmailMessage, never conversation_id. See
+  # app/reply_intelligence/reply_intelligence_worker.py's own docstring.
+  reply_intelligence_worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: ["python", "-m", "app.reply_intelligence.reply_intelligence_worker"]
+
   frontend:
     build: ./frontend
     restart: unless-stopped
