@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 import { ProtectedRoute } from "./components/ProtectedRoute";
 import { DashboardLayout } from "./layouts/DashboardLayout";
 import Login from "./pages/Login";
@@ -21,11 +21,32 @@ import ProspectStrategy from "./pages/ProspectStrategy";
 import OutreachPlaybooks from "./pages/OutreachPlaybooks";
 import ProspectOutreach from "./pages/ProspectOutreach";
 import BusinessEmailSignature from "./pages/BusinessEmailSignature";
+import OAuthCallback from "./pages/OAuthCallback";
+import DeliveryLayout from "./pages/delivery/DeliveryLayout";
+import DeliveryConnections from "./pages/delivery/DeliveryConnections";
+import DeliverySendingProfiles from "./pages/delivery/DeliverySendingProfiles";
+import DeliveryCampaigns from "./pages/delivery/DeliveryCampaigns";
+import DeliveryCampaignDetail from "./pages/delivery/DeliveryCampaignDetail";
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<Login />} />
+      {/* Top-level, unnested (not under /businesses/:companyId/...) - see
+          OAuthCallback.tsx's docstring for why: the browser arrives here
+          fresh from Google/Microsoft's redirect with only ?code&state,
+          no route params. Still behind ProtectedRoute since the user is
+          still logged in (the JWT survives the redirect); it just isn't
+          wrapped in DashboardLayout/Sidebar since it's a transient
+          full-screen handoff page, not a dashboard content area. */}
+      <Route
+        path="/oauth/callback"
+        element={
+          <ProtectedRoute>
+            <OAuthCallback />
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/"
         element={
@@ -212,6 +233,36 @@ export default function App() {
           <ProtectedRoute>
             <DashboardLayout>
               <ProspectOutreach />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      {/* M5: Outreach Delivery Engine. Tabbed shell (Campaigns / Sending
+          Profiles / Connections) - a single top-level Sidebar entry per
+          the explicit refinement, not three. Campaign detail is its own
+          route below, outside the tab shell - same drill-down precedent
+          as ProspectOutreach.tsx relative to Prospects.tsx. */}
+      <Route
+        path="/businesses/:companyId/delivery"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <DeliveryLayout />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<Navigate to="campaigns" replace />} />
+        <Route path="campaigns" element={<DeliveryCampaigns />} />
+        <Route path="sending-profiles" element={<DeliverySendingProfiles />} />
+        <Route path="connections" element={<DeliveryConnections />} />
+      </Route>
+      <Route
+        path="/businesses/:companyId/delivery/campaigns/:campaignId"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <DeliveryCampaignDetail />
             </DashboardLayout>
           </ProtectedRoute>
         }

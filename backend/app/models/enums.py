@@ -279,3 +279,76 @@ class OutreachBlockBehavior(str, enum.Enum):
     FIXED = "fixed"
     AI_ASSISTED = "ai_assisted"
     AI_GENERATED = "ai_generated"
+
+
+# --- M5: Outreach Delivery Engine --------------------------------------------
+# Delivery is a pure consumer of Outreach (M4): it reads approved
+# OutreachDrafts and never writes to OutreachDraft/OutreachPlaybook/etc.
+# Unlike M1-M4, Delivery is NOT a synchronous Request->Job->Run pipeline - a
+# DeliveryCampaign fans out into many DeliveryQueueItems, each dispatched
+# independently, later, by a background worker. provider_key (on
+# SendingProfile/ProviderConnection/ProviderCredential.backend) is a plain
+# string, not an enum here, for the same reason channel_key/DiscoveryProvider.key
+# are strings - adding SMTP/SES/SendGrid/Mailgun (or a new credential storage
+# backend) must be a code+registry change, never a migration.
+
+
+class ProviderConnectionStatus(str, enum.Enum):
+    """Lifecycle of one OAuth grant to a real mailbox. CONNECTED and
+    DISCONNECTED are both terminal-ish "known good/known off" states;
+    EXPIRED (refresh failed, likely recoverable via Reconnect) and REVOKED
+    (the provider says access was explicitly withdrawn) are kept distinct
+    from the more general ERROR (an ambiguous failure, e.g. an unexpected
+    API error during Verify) so the UI can give an accurate reason rather
+    than a generic "broken" state. A connection is never hard-deleted by
+    Disconnect - the row (and its history) persists; only its
+    ProviderCredential is removed."""
+
+    CONNECTED = "connected"
+    EXPIRED = "expired"
+    REVOKED = "revoked"
+    ERROR = "error"
+    DISCONNECTED = "disconnected"
+
+
+class DeliveryCampaignStatus(str, enum.Enum):
+    DRAFT = "draft"
+    ACTIVE = "active"
+    PAUSED = "paused"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+
+
+class DeliveryQueueItemStatus(str, enum.Enum):
+    """QUEUED: enqueued, no send time assigned yet. SCHEDULED: the
+    scheduler assigned scheduled_send_at. SENDING: a worker has claimed
+    this item (via SELECT...FOR UPDATE SKIP LOCKED) and is dispatching it
+    right now - a transient state, not a resting one. SENT/FAILED are
+    terminal. RETRY means a transient failure occurred and this item will
+    be re-scheduled with an incremented attempt_count. CANCELLED can be
+    reached from QUEUED/SCHEDULED/RETRY (e.g. a paused campaign, or the
+    source OutreachDraft was superseded before this item was sent)."""
+
+    QUEUED = "queued"
+    SCHEDULED = "scheduled"
+    SENDING = "sending"
+    SENT = "sent"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    RETRY = "retry"
+
+
+class DeliveryEventType(str, enum.Enum):
+    """Append-only history for one DeliveryQueueItem - never overwritten,
+    same discipline as OutreachEdit/OutreachRun/ProspectTimelineEvent.
+    Mirrors DeliveryQueueItemStatus's values exactly (one event per state
+    transition) rather than being a separate vocabulary, so "what happened"
+    and "what state is it in" never drift apart."""
+
+    QUEUED = "queued"
+    SCHEDULED = "scheduled"
+    STARTED = "started"
+    SENT = "sent"
+    RETRY = "retry"
+    FAILED = "failed"
+    CANCELLED = "cancelled"

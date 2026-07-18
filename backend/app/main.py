@@ -10,6 +10,9 @@ from app.api.routes import (
     companies,
     company_profiles,
     contacts,
+    delivery_campaigns,
+    delivery_onboarding,
+    delivery_queue_items,
     discovery_jobs,
     discovery_runs,
     discovery_searches,
@@ -32,6 +35,7 @@ from app.api.routes import (
     prospect_contacts,
     prospect_timeline,
     prospects,
+    provider_connections,
     recommendations,
     reference_data,
     research_jobs,
@@ -40,6 +44,7 @@ from app.api.routes import (
     research_runs,
     research_templates,
     search_templates,
+    sending_profiles,
     signals,
     workspace_settings,
 )
@@ -47,6 +52,7 @@ from app.core.config import settings
 from app.core.security import hash_password
 from app.db import base as _base  # noqa: F401  (imports every model so relationship() string refs resolve)
 from app.db.session import SessionLocal
+from app.delivery.providers.registry import PROVIDER_REGISTRY
 from app.models.enums import UserRole
 from app.models.user import User
 
@@ -99,9 +105,25 @@ def ensure_first_admin() -> None:
         db.close()
 
 
+def log_delivery_configuration_status() -> None:
+    """Informational only - never raises, never blocks startup (Delivery
+    is optional, per-connection functionality; see
+    PostgresFernetCredentialStore._get_fernet's docstring for why
+    CREDENTIAL_ENCRYPTION_KEY itself is deliberately lazy-checked at first
+    use, not startup-gated, and app/main.py's is_configured() filtering on
+    /delivery/providers for the same reasoning applied to OAuth). This
+    just makes the current configuration state visible in the startup
+    logs, since the M5 Layer 7 investigation showed the alternative is
+    discovering it by clicking Connect and reading a stack trace."""
+    for provider_cls in PROVIDER_REGISTRY.values():
+        logger.info("Delivery: %s OAuth configured = %s", provider_cls.key, provider_cls().is_configured())
+    logger.info("Delivery: CREDENTIAL_ENCRYPTION_KEY configured = %s", bool(settings.CREDENTIAL_ENCRYPTION_KEY))
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     ensure_first_admin()
+    log_delivery_configuration_status()
     yield
 
 
@@ -153,3 +175,9 @@ app.include_router(outreach_jobs.router, prefix=API_PREFIX)
 app.include_router(outreach_runs.router, prefix=API_PREFIX)
 app.include_router(outreach_drafts.router, prefix=API_PREFIX)
 app.include_router(brand_email_signatures.router, prefix=API_PREFIX)
+# M5: Outreach Delivery Engine
+app.include_router(sending_profiles.router, prefix=API_PREFIX)
+app.include_router(provider_connections.router, prefix=API_PREFIX)
+app.include_router(delivery_campaigns.router, prefix=API_PREFIX)
+app.include_router(delivery_queue_items.router, prefix=API_PREFIX)
+app.include_router(delivery_onboarding.router, prefix=API_PREFIX)

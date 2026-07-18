@@ -18,6 +18,14 @@ to prior conversation history, start here.
   for that history: `M0 Stable`, `M1.1 Complete`, `M1 Buyer Discovery
   Engine`, `M2 AI Research & Prospect Intelligence`, `M3 AI
   Personalization Engine`, `M4 AI Outreach Generation Engine`).
+- [`m5-production-readiness.md`](./m5-production-readiness.md) — written
+  at the close of M5 (Outreach Delivery Engine), after implementation.
+  Unlike `future-milestones.md`, this documents decisions already made:
+  the permanent (not sandbox-specific) boundary on what can be
+  automatically tested without real provider credentials, the
+  `CREDENTIAL_ENCRYPTION_KEY` rotation story, worker concurrency
+  guarantees, and a re-confirmation that M5's actual code still matches
+  the M6-readiness claims `future-milestones.md` note 9 made about it.
 
 ## Conventions for documents in this directory
 

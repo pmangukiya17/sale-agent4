@@ -37,6 +37,28 @@ services:
     # there's no second copy of the startup sequence that can drift out
     # of sync with the one baked into the image.
 
+  # M5: the Delivery worker - a standalone polling process, NOT a web
+  # server. Same image as backend (same entrypoint.sh: wait-for-db ->
+  # alembic upgrade head -> exec "$@"), only the final command differs.
+  # Running migrations from two containers on startup is safe (Alembic
+  # serializes on the alembic_version row; whichever loses the race just
+  # finds itself already at head and no-ops) - not worth a separate
+  # "migrate once, then start everything else" step for what is, in a
+  # single-Postgres dev/small-prod setup, a rare and harmless race.
+  worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: ["python", "-m", "app.delivery.worker"]
+
   frontend:
     build: ./frontend
     restart: unless-stopped

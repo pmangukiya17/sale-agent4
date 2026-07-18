@@ -66,3 +66,18 @@ class CompanyProfile(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     brand_email_signature: Mapped["BrandEmailSignature | None"] = relationship(
         back_populates="company_profile", cascade="all, delete-orphan", uselist=False
     )
+    # M5: SendingProfile/ProviderConnection are business CONFIGURATION
+    # (small, directly-owned sets), same tier as Products/ICP/KnowledgeBase/
+    # BrandEmailSignature above - hence back_populates here. DeliveryCampaign
+    # (and everything under it) is deliberately NOT given a back_populates
+    # relationship on CompanyProfile, matching how Prospect/DiscoverySearch/
+    # OutreachPlaybook already work: those are OPERATIONAL/generated
+    # entities, queried explicitly via company_profile_id rather than
+    # navigated through company_profile.<x>, and delivery campaigns follow
+    # that same established split, not the config-child pattern.
+    sending_profiles: Mapped[list["SendingProfile"]] = relationship(
+        back_populates="company_profile", cascade="all, delete-orphan"
+    )
+    provider_connections: Mapped[list["ProviderConnection"]] = relationship(
+        back_populates="company_profile", cascade="all, delete-orphan"
+    )

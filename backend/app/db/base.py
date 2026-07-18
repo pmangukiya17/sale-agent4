@@ -71,3 +71,9 @@ from app.models.outreach_draft import OutreachDraft  # noqa
 from app.models.outreach_edit import OutreachEdit  # noqa
 from app.models.outreach_evidence import OutreachEvidence  # noqa
 from app.models.brand_email_signature import BrandEmailSignature  # noqa
+from app.models.provider_connection import ProviderConnection  # noqa
+from app.models.provider_credential import ProviderCredential  # noqa
+from app.models.sending_profile import SendingProfile  # noqa
+from app.models.delivery_campaign import DeliveryCampaign  # noqa
+from app.models.delivery_queue_item import DeliveryQueueItem  # noqa
+from app.models.delivery_event import DeliveryEvent  # noqa

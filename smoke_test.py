@@ -63,6 +63,45 @@ M4 checks (AI Outreach Generation Engine):
                                                    strategy)
     34. Outreach Draft approve succeeds           (POST .../outreach-drafts/{id}/approve — status becomes "approved")
 
+M5 checks (Outreach Delivery Engine) — the one section here that is NOT
+purely synchronous-in-request: steps 41 and 44 poll and wait for the
+independent `worker` container (see docker-compose.yml) to actually claim
+and dispatch a queue item on its own clock. No real Gmail/Outlook
+credentials exist in this environment (or in any CI environment — this is
+a structural limitation, not a sandbox one), so these steps deliberately
+exercise dispatch_service's deterministic, credential-free failure path
+(see dispatch_service.dispatch(): no usable ProviderConnection -> a real,
+permanent, assertable FAILED outcome) rather than a real send. That
+failure path is the one place a genuinely unmocked, full-stack proof of
+"the worker is alive and wired correctly end-to-end" is possible without
+a human completing a real OAuth consent screen.
+    35. Connectable providers reachable          (GET /delivery/providers — may legitimately be an empty list if no
+                                                   OAuth client id/secret is configured in this environment)
+    36. SendingProfile creation succeeds          (POST .../sending-profiles — provider_key="gmail", no
+                                                   provider_connection_id, sending window widened to cover all of UTC
+                                                   today so scheduling doesn't depend on wall-clock time)
+    37. SendingProfile update succeeds            (PUT .../sending-profiles/{id} — label change)
+    38. Available drafts include the M4 draft     (GET .../delivery-campaigns/available-drafts — the approved,
+                                                   not-yet-queued draft from step 34 is present)
+    39. DeliveryCampaign creation succeeds        (POST .../delivery-campaigns — one queue item created in QUEUED)
+    40. DeliveryCampaign schedule succeeds        (POST .../schedule — campaign becomes ACTIVE, queue item becomes
+                                                   SCHEDULED with scheduled_send_at ~= now)
+    41. Worker dispatches to a deterministic FAILED (poll .../queue-items/{id} up to ~75s for status="failed" with
+                                                   the exact "no usable ProviderConnection" error — the end-to-end
+                                                   pipeline proof described above)
+    42. Available drafts include the draft again  (FAILED is not an "actively queued" status — the draft is released
+                                                   back to the picker)
+    43. Queue item Retry Now succeeds             (POST .../queue-items/{id}/retry — status back to SCHEDULED)
+    44. Worker dispatches the retry to FAILED too (second independent worker tick, proving retry_now's SCHEDULED
+                                                   item is picked up the same as an original one; attempt_count==2)
+    45. Campaign pause/resume/cancel lifecycle    (a second campaign against the now-released draft, left
+                                                   deliberately un-scheduled so this has zero race window against the
+                                                   worker: DRAFT -> PAUSED -> ACTIVE -> CANCELLED, cascading to the
+                                                   queue item)
+    46. Queue item Cancel succeeds                (a third campaign against the released draft; POST
+                                                   .../queue-items/{id}/cancel directly, distinct from the campaign-
+                                                   level cascade cancel in step 45)
+
 Deliberately stdlib-only (urllib, not requests) so it runs on a bare
 `python3` with nothing to install, on any machine that has Python.
 
@@ -88,9 +127,16 @@ ENV_FILE = Path(__file__).resolve().parent / ".env"
 POLL_ATTEMPTS = 10
 POLL_DELAY_SECONDS = 2
 
+# M5 steps 41/44 wait for the independent `worker` container's own poll
+# loop (DELIVERY_WORKER_POLL_INTERVAL_SECONDS, 15s by default) to notice
+# and dispatch a queue item - a materially longer, coarser-grained wait
+# than the steps above, which are only waiting for HTTP/DB readiness.
+WORKER_POLL_ATTEMPTS = 25
+WORKER_POLL_DELAY_SECONDS = 3
+
 _state: dict = {}
 _results: list = []
-TOTAL_STEPS = 34
+TOTAL_STEPS = 46
 
 
 def load_env(path: Path) -> dict:
@@ -979,8 +1025,404 @@ def check_approve_outreach_draft() -> str:
     return f"draft {draft_id} approved"
 
 
+# --- M5 checks: Outreach Delivery Engine ---------------------------------
+
+# The exact string dispatch_service._fail_item logs when a SendingProfile
+# has no usable ProviderConnection - see dispatch_service.py's docstring.
+# Asserted verbatim (not just "status == failed") so this step actually
+# proves the intended code path fired, not just any failure.
+NO_CONNECTION_ERROR = "SendingProfile has no usable ProviderConnection - connect or reconnect it first."
+
+
+def check_connectable_providers() -> str:
+    token = _state.get("token")
+    if not token:
+        raise RuntimeError("skipped — no access token from the login step")
+
+    status, raw = http_request(
+        "GET",
+        f"{BACKEND_URL}/api/v1/delivery/providers",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    providers = json.loads(raw)
+    if not isinstance(providers, list):
+        raise RuntimeError(f"expected a list, got: {providers}")
+    return f"{len(providers)} connectable provider(s) configured in this environment"
+
+
+def check_create_sending_profile() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    if not token or not profile_id:
+        raise RuntimeError("skipped — no token/company_profile_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/sending-profiles",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={
+            "provider_key": "gmail",
+            "label": "Smoke Test Sending Profile",
+            "sender_name": "Smoke Test Sender",
+            "sender_email": "smoke-test-sender@example.com",
+            # No provider_connection_id - deliberately unconnected, so
+            # dispatch_service's deterministic no-credential failure path
+            # (see NO_CONNECTION_ERROR above) is what steps 41/44 exercise.
+            # Window widened to cover the entire UTC day so
+            # campaign_service._schedule_group's effective_start always
+            # falls inside [window_start, window_end) regardless of what
+            # time this smoke test happens to run.
+            "sending_window_start": "00:00:00",
+            "sending_window_end": "23:59:59",
+            "sending_timezone": "UTC",
+            "min_gap_seconds": 1,
+            "max_gap_seconds": 2,
+        },
+    )
+    if status != 201:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    sending_profile_id = payload.get("id")
+    if not sending_profile_id:
+        raise RuntimeError(f"no id in response: {payload}")
+    if payload.get("provider_connection_id") is not None:
+        raise RuntimeError(f"expected provider_connection_id=None, got: {payload.get('provider_connection_id')}")
+    _state["sending_profile_id"] = sending_profile_id
+    return f"created sending profile id={sending_profile_id}"
+
+
+def check_update_sending_profile() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    sending_profile_id = _state.get("sending_profile_id")
+    if not all([token, profile_id, sending_profile_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/sending_profile_id from earlier steps")
+
+    status, raw = http_request(
+        "PUT",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/sending-profiles/{sending_profile_id}",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={"label": "Smoke Test Sending Profile (updated)"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    if payload.get("label") != "Smoke Test Sending Profile (updated)":
+        raise RuntimeError(f"label was not updated: {payload}")
+    return f"sending profile {sending_profile_id} label updated"
+
+
+def _list_available_draft_ids(token: str, profile_id: str) -> set:
+    status, raw = http_request(
+        "GET",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/delivery-campaigns/available-drafts",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    return {d["id"] for d in json.loads(raw)}
+
+
+def check_available_drafts_includes_m4_draft() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    draft_id = _state.get("outreach_draft_id")
+    if not all([token, profile_id, draft_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/outreach_draft_id from earlier steps")
+
+    available = _list_available_draft_ids(token, profile_id)
+    if draft_id not in available:
+        raise RuntimeError(f"expected draft {draft_id} in available-drafts, got ids: {available}")
+    return f"draft {draft_id} available for a new campaign"
+
+
+def check_create_delivery_campaign() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    sending_profile_id = _state.get("sending_profile_id")
+    draft_id = _state.get("outreach_draft_id")
+    if not all([token, profile_id, sending_profile_id, draft_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/sending_profile_id/outreach_draft_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/delivery-campaigns",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={
+            "sending_profile_id": sending_profile_id,
+            "name": "Smoke Test Campaign",
+            "outreach_draft_ids": [draft_id],
+        },
+    )
+    if status != 201:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    campaign_id = payload.get("id")
+    if not campaign_id:
+        raise RuntimeError(f"no id in response: {payload}")
+    if payload.get("status") != "draft":
+        raise RuntimeError(f"expected status='draft' on creation, got: {payload.get('status')}")
+    _state["delivery_campaign_id"] = campaign_id
+    return f"created delivery campaign id={campaign_id}"
+
+
+def _get_single_queue_item(token: str, profile_id: str, campaign_id: str) -> dict:
+    status, raw = http_request(
+        "GET",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/delivery-campaigns/{campaign_id}/queue-items",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    items = json.loads(raw)
+    if len(items) != 1:
+        raise RuntimeError(f"expected exactly 1 queue item, got {len(items)}: {items}")
+    return items[0]
+
+
+def check_schedule_delivery_campaign() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    campaign_id = _state.get("delivery_campaign_id")
+    if not all([token, profile_id, campaign_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/delivery_campaign_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/delivery-campaigns/{campaign_id}/schedule",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    if payload.get("status") != "active":
+        raise RuntimeError(f"expected status='active' after scheduling, got: {payload.get('status')}")
+
+    item = _get_single_queue_item(token, profile_id, campaign_id)
+    if item.get("status") != "scheduled":
+        raise RuntimeError(f"expected queue item status='scheduled', got: {item.get('status')}")
+    if not item.get("scheduled_send_at"):
+        raise RuntimeError(f"expected scheduled_send_at to be set, got: {item}")
+    _state["queue_item_id"] = item["id"]
+    return f"campaign active, queue item {item['id']} scheduled_send_at={item.get('scheduled_send_at')}"
+
+
+def check_worker_dispatches_to_failed() -> str:
+    """The centerpiece of the M5 smoke test extension - see this file's
+    module docstring. Waits for the independent `worker` container (its
+    own process, own poll loop, own clock - not something this script
+    triggers) to claim the item via SELECT...FOR UPDATE SKIP LOCKED and
+    call dispatch_service.dispatch() on it. With no ProviderConnection
+    attached, that call is deterministic: it always ends in FAILED with
+    NO_CONNECTION_ERROR. No mocking, no fixtures - this is the real
+    worker process, the real dispatch_service, the real DB."""
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    campaign_id = _state.get("delivery_campaign_id")
+    item_id = _state.get("queue_item_id")
+    if not all([token, profile_id, campaign_id, item_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/delivery_campaign_id/queue_item_id from earlier steps")
+
+    def attempt():
+        status, raw = http_request(
+            "GET",
+            f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/delivery-campaigns/{campaign_id}/queue-items/{item_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if status != 200:
+            raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+        payload = json.loads(raw)
+        if payload.get("status") not in ("failed",):
+            raise RuntimeError(f"still status={payload.get('status')!r} - worker hasn't dispatched it yet")
+        return payload
+
+    payload = poll(attempt, attempts=WORKER_POLL_ATTEMPTS, delay=WORKER_POLL_DELAY_SECONDS)
+    if payload.get("last_error") != NO_CONNECTION_ERROR:
+        raise RuntimeError(f"expected last_error={NO_CONNECTION_ERROR!r}, got: {payload.get('last_error')!r}")
+    if payload.get("attempt_count") != 1:
+        raise RuntimeError(f"expected attempt_count=1 on first dispatch, got: {payload.get('attempt_count')}")
+    _state["failed_attempt_count"] = payload.get("attempt_count")
+    return f"worker dispatched queue item {item_id} to FAILED with the expected no-connection error"
+
+
+def check_available_drafts_includes_draft_again() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    draft_id = _state.get("outreach_draft_id")
+    if not all([token, profile_id, draft_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/outreach_draft_id from earlier steps")
+
+    available = _list_available_draft_ids(token, profile_id)
+    if draft_id not in available:
+        raise RuntimeError(f"expected FAILED to release draft {draft_id} back to available-drafts, got ids: {available}")
+    return f"draft {draft_id} released back to available-drafts after FAILED"
+
+
+def check_retry_now() -> str:
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    campaign_id = _state.get("delivery_campaign_id")
+    item_id = _state.get("queue_item_id")
+    if not all([token, profile_id, campaign_id, item_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/delivery_campaign_id/queue_item_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/delivery-campaigns/{campaign_id}/queue-items/{item_id}/retry",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    if payload.get("status") != "scheduled":
+        raise RuntimeError(f"expected status='scheduled' after retry, got: {payload.get('status')}")
+    return f"queue item {item_id} rescheduled via retry-now"
+
+
+def check_worker_dispatches_retry_to_failed() -> str:
+    """Same deterministic outcome as check_worker_dispatches_to_failed,
+    but proves a SECOND, independent worker tick against an item that
+    manual Retry Now (not the scheduler) put back into SCHEDULED -
+    exercising queue_service.retry_now's integration with the worker, not
+    just its own unit-tested logic."""
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    campaign_id = _state.get("delivery_campaign_id")
+    item_id = _state.get("queue_item_id")
+    if not all([token, profile_id, campaign_id, item_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/delivery_campaign_id/queue_item_id from earlier steps")
+
+    def attempt():
+        status, raw = http_request(
+            "GET",
+            f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/delivery-campaigns/{campaign_id}/queue-items/{item_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if status != 200:
+            raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+        payload = json.loads(raw)
+        if payload.get("status") not in ("failed",):
+            raise RuntimeError(f"still status={payload.get('status')!r} - worker hasn't re-dispatched it yet")
+        return payload
+
+    payload = poll(attempt, attempts=WORKER_POLL_ATTEMPTS, delay=WORKER_POLL_DELAY_SECONDS)
+    if payload.get("attempt_count") != 2:
+        raise RuntimeError(f"expected attempt_count=2 after a second dispatch, got: {payload.get('attempt_count')}")
+    return f"worker re-dispatched queue item {item_id} to FAILED again, attempt_count=2"
+
+
+def check_campaign_pause_resume_cancel_lifecycle() -> str:
+    """Deliberately never scheduled - the queue item stays QUEUED for the
+    whole test, so this has zero race window against the independent
+    worker process (which only ever claims SCHEDULED items whose
+    scheduled_send_at has passed). Reuses the draft released in the
+    previous FAILED step."""
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    sending_profile_id = _state.get("sending_profile_id")
+    draft_id = _state.get("outreach_draft_id")
+    if not all([token, profile_id, sending_profile_id, draft_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/sending_profile_id/outreach_draft_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/delivery-campaigns",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={
+            "sending_profile_id": sending_profile_id,
+            "name": "Smoke Test Campaign 2 (pause/resume/cancel)",
+            "outreach_draft_ids": [draft_id],
+        },
+    )
+    if status != 201:
+        raise RuntimeError(f"unexpected status {status} creating campaign 2: {raw[:200]!r}")
+    campaign_id = json.loads(raw)["id"]
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/delivery-campaigns/{campaign_id}/pause",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={},
+    )
+    if status != 200 or json.loads(raw).get("status") != "paused":
+        raise RuntimeError(f"pause failed: status={status} body={raw[:200]!r}")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/delivery-campaigns/{campaign_id}/resume",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={},
+    )
+    if status != 200 or json.loads(raw).get("status") != "active":
+        raise RuntimeError(f"resume failed: status={status} body={raw[:200]!r}")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/delivery-campaigns/{campaign_id}/cancel",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={},
+    )
+    if status != 200 or json.loads(raw).get("status") != "cancelled":
+        raise RuntimeError(f"cancel failed: status={status} body={raw[:200]!r}")
+
+    item = _get_single_queue_item(token, profile_id, campaign_id)
+    if item.get("status") != "cancelled":
+        raise RuntimeError(f"expected the queue item to cascade-cancel with its campaign, got: {item.get('status')}")
+
+    return f"campaign {campaign_id}: draft -> paused -> active -> cancelled, queue item cascade-cancelled"
+
+
+def check_queue_item_direct_cancel() -> str:
+    """Distinct from the previous step's campaign-level cascade cancel -
+    this hits DeliveryQueueItemCancel/queue_service.cancel_queue_item
+    directly, the single-item action a user takes from a campaign's queue
+    table rather than cancelling the whole campaign."""
+    token = _state.get("token")
+    profile_id = _state.get("company_profile_id")
+    sending_profile_id = _state.get("sending_profile_id")
+    draft_id = _state.get("outreach_draft_id")
+    if not all([token, profile_id, sending_profile_id, draft_id]):
+        raise RuntimeError("skipped — missing token/company_profile_id/sending_profile_id/outreach_draft_id from earlier steps")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/delivery-campaigns",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={
+            "sending_profile_id": sending_profile_id,
+            "name": "Smoke Test Campaign 3 (direct item cancel)",
+            "outreach_draft_ids": [draft_id],
+        },
+    )
+    if status != 201:
+        raise RuntimeError(f"unexpected status {status} creating campaign 3: {raw[:200]!r}")
+    campaign_id = json.loads(raw)["id"]
+    item = _get_single_queue_item(token, profile_id, campaign_id)
+    if item.get("status") != "queued":
+        raise RuntimeError(f"expected a fresh, unscheduled item to be 'queued', got: {item.get('status')}")
+
+    status, raw = http_request(
+        "POST",
+        f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/delivery-campaigns/{campaign_id}/queue-items/{item['id']}/cancel",
+        headers={"Authorization": f"Bearer {token}"},
+        json_body={"reason": "smoke test direct cancel"},
+    )
+    if status != 200:
+        raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+    payload = json.loads(raw)
+    if payload.get("status") != "cancelled":
+        raise RuntimeError(f"expected status='cancelled', got: {payload.get('status')}")
+    if payload.get("cancelled_reason") != "smoke test direct cancel":
+        raise RuntimeError(f"expected cancelled_reason to round-trip, got: {payload.get('cancelled_reason')}")
+    return f"queue item {item['id']} directly cancelled"
+
+
 def main() -> int:
-    print("Sales Agent — M0 + M1.1 + M1 + M2 + M3 + M4 smoke test")
+    print("Sales Agent — M0 + M1.1 + M1 + M2 + M3 + M4 + M5 smoke test")
     print(f"backend={BACKEND_URL}  frontend={FRONTEND_URL}")
     print("(assumes `docker compose up --build` is already running)\n")
 
@@ -1019,6 +1461,18 @@ def main() -> int:
     all_passed &= step("Outreach Request run succeeds", check_run_outreach_request)
     all_passed &= step("Outreach Draft created", check_outreach_draft)
     all_passed &= step("Outreach Draft approve succeeds", check_approve_outreach_draft)
+    all_passed &= step("Connectable providers reachable", check_connectable_providers)
+    all_passed &= step("SendingProfile creation succeeds", check_create_sending_profile)
+    all_passed &= step("SendingProfile update succeeds", check_update_sending_profile)
+    all_passed &= step("Available drafts include the M4 draft", check_available_drafts_includes_m4_draft)
+    all_passed &= step("DeliveryCampaign creation succeeds", check_create_delivery_campaign)
+    all_passed &= step("DeliveryCampaign schedule succeeds", check_schedule_delivery_campaign)
+    all_passed &= step("Worker dispatches to a deterministic FAILED", check_worker_dispatches_to_failed)
+    all_passed &= step("Available drafts include the draft again", check_available_drafts_includes_draft_again)
+    all_passed &= step("Queue item Retry Now succeeds", check_retry_now)
+    all_passed &= step("Worker dispatches the retry to FAILED too", check_worker_dispatches_retry_to_failed)
+    all_passed &= step("Campaign pause/resume/cancel lifecycle", check_campaign_pause_resume_cancel_lifecycle)
+    all_passed &= step("Queue item Cancel succeeds", check_queue_item_direct_cancel)
 
     print("\n--- Summary ---")
     for name, passed, detail in _results:
