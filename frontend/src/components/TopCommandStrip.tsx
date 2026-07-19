@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Bell } from "lucide-react";
 import { useAuth } from "../auth/AuthContext";
 import { useCompanies } from "../companies/CompanyContext";
 import { CommandPalette } from "./CommandPalette";
-import { StatusIndicator, cn } from "../design-system";
+import { StatusIndicator, type StatusKind, cn } from "../design-system";
 import { useNotifications } from "../notifications/useNotifications";
+import { useAgentActivities } from "../ai-workforce/useAgentActivities";
 
 /**
  * Top command strip — M8.2, Design Bible Section 3.
@@ -20,13 +21,17 @@ import { useNotifications } from "../notifications/useNotifications";
  * Honesty notes on what's real vs. not yet wired, stated plainly rather
  * than silently faked:
  * - Date/time is real (the browser's own clock, ticking).
- * - The "AI System" pill is currently a static "Idle" placeholder - there
- *   is no real Supervisor/Agent execution data reaching the frontend yet
- *   (that arrives with M8.3's dashboard and, eventually, real backend
- *   push/polling per Design Bible Section 13/14). Rendered as `idle`
- *   rather than invented as `active`, since claiming activity that isn't
- *   happening would be exactly the "decorative, not informational"
- *   motion the Design Bible argues against.
+ * - The "AI System" pill (M8.7 Phase B) now reflects real AI Workforce
+ *   activity data (useAgentActivities, M8.4's own
+ *   GET /company-profiles/{id}/ai-workforce/activities) instead of a
+ *   static "Idle" placeholder - Design Bible Section 3's own requirement
+ *   ("live, reflects whether any Supervisor/Agent execution is currently
+ *   running - a real signal, not a static label") was a genuine, named
+ *   gap this milestone's shell audit found and fixed, not a rebuild.
+ *   "Active" means at least one activity is genuinely `running` right
+ *   now; "Waiting" means none are running but at least one is `waiting`;
+ *   otherwise "Idle" - never invented beyond what the roster actually
+ *   reports.
  * - The notification bell (M8.5) is now wired to the real Notification
  *   Center API (GET/POST /company-profiles/{id}/notifications - see
  *   ../notifications/useNotifications.ts). It still has a real, honest
@@ -40,18 +45,29 @@ export function TopCommandStrip() {
   const [now, setNow] = useState(() => new Date());
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const { notifications, unreadCount, isLoading, error, markRead, markAllRead } = useNotifications();
+  const { activities } = useAgentActivities();
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(timer);
   }, []);
 
+  const aiSystemStatus = useMemo((): { kind: StatusKind; label: string } => {
+    if (activities.some((activity) => activity.state === "running")) {
+      return { kind: "active", label: "AI System — Active" };
+    }
+    if (activities.some((activity) => activity.state === "waiting")) {
+      return { kind: "waiting", label: "AI System — Waiting" };
+    }
+    return { kind: "idle", label: "AI System — Idle" };
+  }, [activities]);
+
   return (
     <header className="flex h-16 items-center justify-between border-b border-border-hairline bg-surface-0 px-6">
       <CommandPalette />
 
       <div className="flex items-center gap-5">
-        <StatusIndicator kind="idle" label="AI System — Idle" />
+        <StatusIndicator kind={aiSystemStatus.kind} label={aiSystemStatus.label} />
 
         <div className="relative">
           <button
