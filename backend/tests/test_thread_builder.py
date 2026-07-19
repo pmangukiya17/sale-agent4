@@ -41,6 +41,7 @@ from app.models.prospect import Prospect
 from app.models.prospect_contact import ProspectContact
 from app.models.provider_connection import ProviderConnection
 from app.models.user import User
+from app.models.workflow_event import Event
 from app.reply_intelligence import thread_builder
 from app.reply_intelligence.thread_matching import UNTHREADED_RETRY_WINDOW_MINUTES
 
@@ -130,6 +131,18 @@ class TestThreadBuilder(unittest.TestCase):
             self.db.commit()
 
         self.db.query(EmailMessage).filter(EmailMessage.provider_connection_id == self.connection.id).delete(synchronize_session=False)
+        self.db.commit()
+
+        # M7.1 Part 2: every "created" outcome above now also publishes a
+        # real conversation.created Event (see thread_builder.py's own
+        # docstring) - cleaned up here too so this suite doesn't leave
+        # Event rows behind. Safe as a plain delete with no FK-RESTRICT
+        # concern: nothing in this test module ever runs the Event
+        # Dispatcher, so no EventConsumption row can exist referencing
+        # any Event this suite creates (unlike test_pilot_workflow_e2e.py,
+        # which does run the dispatcher and has to delete EventConsumption
+        # first - see that file's own teardown).
+        self.db.query(Event).filter(Event.company_profile_id == self.company_profile.id).delete(synchronize_session=False)
         self.db.commit()
 
         self.db.query(ProviderConnection).filter(ProviderConnection.id == self.connection.id).delete()

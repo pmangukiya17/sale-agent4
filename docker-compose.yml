@@ -119,6 +119,82 @@ services:
       - ./backend:/app
     command: ["python", "-m", "app.reply_intelligence.reply_intelligence_worker"]
 
+  # M7.1 Part 1, Phase 4: Workflow Engine - Event Dispatcher. A fifth,
+  # independent standalone polling process, same image/entrypoint
+  # pattern as every worker above, only the command differs. Matches
+  # published Events against ACTIVE WorkflowDefinitions/WAITING
+  # WorkflowInstances; never invokes an Action - that is exclusively the
+  # Step Runner's job (below). See app/workflow_engine/
+  # event_dispatcher_worker.py's own docstring for the full "why two
+  # workers, not one" reasoning.
+  workflow_event_dispatcher_worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: ["python", "-m", "app.workflow_engine.event_dispatcher_worker"]
+
+  # M7.1 Part 1, Phase 5: Workflow Engine - Step Runner. A sixth,
+  # independent standalone polling process, same image/entrypoint
+  # pattern as every worker above, only the command differs. Invokes the
+  # registered Action for each RUNNING WorkflowInstance's current step,
+  # records workflow_step_invocations, advances/pauses/completes/fails
+  # the instance. See app/workflow_engine/step_runner_worker.py's own
+  # docstring.
+  #
+  # M7.1 Part 2: the command below runs app.run_step_runner_worker, NOT
+  # app.workflow_engine.step_runner_worker directly - that thin
+  # composition-root script is what imports app.workflow_actions
+  # (registering the real pilot Action) before starting the worker loop,
+  # so app/workflow_engine/ itself never has to import a concrete Action
+  # package by name. See app/run_step_runner_worker.py's own docstring.
+  workflow_step_runner_worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: ["python", "-m", "app.run_step_runner_worker"]
+
+  # M8.5: Notification worker - a seventh, independent standalone
+  # polling process, same image/entrypoint pattern as every worker
+  # above, only the command differs. A pure Event CONSUMER: polls the
+  # platform Event stream (the same `events` table the Workflow Engine's
+  # own Event Dispatcher reads) for events with no NotificationDispatch
+  # row yet, and applies the registered rule (app/notifications/
+  # rules.py) to create a Notification. Runs directly via
+  # `python -m app.notifications.worker` (no separate composition-root
+  # entrypoint needed, unlike the Step Runner) since this package never
+  # imports a concrete domain package - see app/notifications/
+  # __init__.py's own docstring and app/notifications/worker.py's own
+  # docstring.
+  notification_worker:
+    build: ./backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: db
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+    command: ["python", "-m", "app.notifications.worker"]
+
   frontend:
     build: ./frontend
     restart: unless-stopped
@@ -132,7 +208,41 @@ services:
       - "5173:5173"
     volumes:
       - ./frontend:/app
-      - /app/node_modules
+      # Named (not anonymous) on purpose - see this file's own `volumes:`
+      # section at the bottom for why. This mount exists so the host bind
+      # mount above (./frontend:/app) does NOT shadow the node_modules the
+      # Dockerfile's own `RUN npm install` already installed INSIDE the
+      # image - without it, the host's (likely dependency-less, or
+      # differently-installed) ./frontend/node_modules would silently win
+      # over the image's.
+      - frontend_node_modules:/app/node_modules
 
 volumes:
   db_data:
+  # M8.5 troubleshooting note (lucide-react "cannot be resolved" incident):
+  # this volume is POPULATED ONLY ONCE, the first time it's created, by
+  # copying the image's /app/node_modules at that moment - `docker compose
+  # up --build` rebuilding the image afterwards does NOT re-populate an
+  # already-existing volume; the volume's own (now-stale) contents keep
+  # winning over the freshly-built image's node_modules on every
+  # subsequent `up`, indefinitely. This is exactly what happened here:
+  # lucide-react was correctly added to package.json/package-lock.json,
+  # and the Dockerfile correctly installed it into the IMAGE on rebuild -
+  # but the previously-created anonymous volume (this project's frontend
+  # node_modules mount had no explicit name before this fix, so Compose
+  # auto-generated one) still held node_modules from before that
+  # dependency existed, and kept shadowing the corrected image.
+  #
+  # Practical rule going forward: any time frontend/package.json (or
+  # package-lock.json) changes - a new dependency, a version bump, a
+  # removal - this volume must be dropped BEFORE the next
+  # `docker compose up --build`, or the container will keep running on
+  # stale dependencies no matter how many times the image is rebuilt:
+  #     docker compose rm -fsv frontend
+  #     docker volume rm sales-agent4_frontend_node_modules
+  #     docker compose up --build -d frontend
+  # (Giving the volume an explicit name here, rather than leaving it
+  # anonymous, is what makes that volume rm command reliable/predictable
+  # rather than needing to `docker volume ls` and guess which
+  # auto-generated hash belongs to this service.)
+  frontend_node_modules:

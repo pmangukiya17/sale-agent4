@@ -82,3 +82,9 @@ from app.models.email_message import EmailMessage  # noqa
 from app.models.conversation_participant import ConversationParticipant  # noqa
 from app.models.mailbox_sync_state import MailboxSyncState  # noqa
 from app.models.attachment import Attachment  # noqa
+from app.models.workflow_event import Event  # noqa
+from app.models.workflow_definition import WorkflowDefinition  # noqa
+from app.models.workflow_instance import WorkflowInstance  # noqa
+from app.models.workflow_step_invocation import WorkflowStepInvocation  # noqa
+from app.models.event_consumption import EventConsumption  # noqa
+from app.models.notification import Notification, NotificationDispatch  # noqa

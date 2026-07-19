@@ -27,10 +27,20 @@ import DeliveryConnections from "./pages/delivery/DeliveryConnections";
 import DeliverySendingProfiles from "./pages/delivery/DeliverySendingProfiles";
 import DeliveryCampaigns from "./pages/delivery/DeliveryCampaigns";
 import DeliveryCampaignDetail from "./pages/delivery/DeliveryCampaignDetail";
+import DesignSystemPreview from "./pages/DesignSystemPreview";
+import CommandCenter from "./pages/CommandCenter";
+import AIWorkforce from "./pages/AIWorkforce";
+import { ComingSoon } from "./pages/ComingSoon";
 
 export default function App() {
   return (
     <Routes>
+      {/* TEMPORARY, M8.1-ONLY: unprotected on purpose, purely so the new
+          design-system primitives are reviewable without needing to log
+          in first. Remove this route once M8.2+ wires these primitives
+          into real, authenticated navigation - see
+          DesignSystemPreview.tsx's own docstring. */}
+      <Route path="/dev/design-system" element={<DesignSystemPreview />} />
       <Route path="/login" element={<Login />} />
       {/* Top-level, unnested (not under /businesses/:companyId/...) - see
           OAuthCallback.tsx's docstring for why: the browser arrives here
@@ -47,8 +57,15 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      {/* M8.3 review: "/" now sends users to the real Command Center
+          instead of the legacy Pipeline page - Command Center is the
+          intended landing experience per the Design Bible, and the legacy
+          Company/stage list is no longer positioned as the app's default
+          view. Pipeline.tsx itself is preserved, unmodified in behavior,
+          just moved to its own explicitly transitional route below. */}
+      <Route path="/" element={<Navigate to="/command-center" replace />} />
       <Route
-        path="/"
+        path="/crm/legacy-pipeline"
         element={
           <ProtectedRoute>
             <DashboardLayout>
@@ -273,6 +290,75 @@ export default function App() {
           <ProtectedRoute>
             <DashboardLayout>
               <WorkspaceSettingsPage />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+
+      {/* M8.3: real Command Center dashboard. "/" is intentionally left
+          untouched (still Pipeline.tsx) - "Command Center" was always its
+          own nav destination (see navConfig.ts), so no repoint or route
+          removal was needed; this is a pure content swap of what
+          "/command-center" renders, everything else about this route is
+          identical to M8.2 (same ProtectedRoute/DashboardLayout wrapping). */}
+      <Route
+        path="/command-center"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <CommandCenter />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      {/* M8.4: real AI Workforce roster + per-agent execution trace,
+          backed by the new read-only ai_workforce backend API. */}
+      <Route
+        path="/ai-workforce"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <AIWorkforce />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/mailbox-brief"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <ComingSoon title="Mailbox Brief" milestone="M8.7" />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/conversations"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <ComingSoon title="Conversations" milestone="M8.7" />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/analytics"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <ComingSoon title="Analytics" milestone="M8.9" />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/reports"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <ComingSoon title="Reports" milestone="M8.9" />
             </DashboardLayout>
           </ProtectedRoute>
         }

@@ -32,7 +32,35 @@ to prior conversation history, start here.
   explicitly approved — and it explicitly flags that its proposed design
   (persistent conversation storage) supersedes, rather than implements,
   `future-milestones.md` note 9's original ephemeral-only design. Read
-  Decision Point 0 first.
+  Decision Point 0 first. M6.1–M6.4 are implemented and verified; see
+  that document's own phased-plan entries and "as built" sections for
+  what actually shipped vs. the original draft.
+- [`m7-workflow-engine-plan.md`](./m7-workflow-engine-plan.md) —
+  architecture for M7.1 (Workflow Engine). **Design approved** (three
+  review rounds: base architecture, then required additions for
+  definition versioning/governance metadata, then a consolidated
+  Workflow Definition Compatibility Policy subsection). Recommends
+  implementing against one pilot workflow before wiring every module
+  through the engine at once.
+- [`m7-workflow-engine-implementation-plan.md`](./m7-workflow-engine-implementation-plan.md)
+  — how M7.1 will be built: eleven small, independently-reviewable
+  phases (engine core proven against synthetic test doubles in phases
+  0–6, real domain wiring only from phase 7 onward), database/worker/
+  transaction/idempotency/concurrency/testing/rollout detail, and exact
+  completion criteria. Plan only — not authorized for implementation.
+- [`m8-ui-ux-design-bible.md`](./m8-ui-ux-design-bible.md) — the
+  frontend counterpart to the M0–M7 backend architecture: information
+  architecture, navigation, design system (color/type/spacing/
+  elevation/components), motion system, branding, responsive strategy,
+  dashboard and page architecture, accessibility, and long-term
+  scalability for the entire UI. Produced from nine dashboard concept
+  images treated as one product, cross-referenced against the actual
+  (currently unstyled, unbranded) `frontend/` codebase and the real
+  backend data model built through M7.4. Explicitly names what it
+  requires from the backend that doesn't exist yet (real-time push
+  transport, a workflow "pause" capability) rather than designing around
+  those gaps silently. Proposal only — not authorized for implementation,
+  no React code written as part of producing it.
 
 ## Conventions for documents in this directory
 

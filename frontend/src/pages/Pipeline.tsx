@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../api/client";
+import { TransitionalBanner } from "../components/TransitionalBanner";
 
 interface Company {
   id: string;
@@ -25,6 +26,11 @@ export default function Pipeline() {
 
   return (
     <div>
+      <TransitionalBanner title="This is the original, pre-M1 CRM company list.">
+        It's kept reachable during the M8 rebuild but is no longer the product's primary pipeline view - see the real,
+        AI-driven prospect pipeline in the Command Center instead. This page moves or retires once a real
+        opportunity/deal-value model exists.
+      </TransitionalBanner>
       <h2 className="mb-1 text-2xl font-semibold text-slate-900">Pipeline</h2>
       <p className="mb-6 text-sm text-slate-500">
         Companies currently tracked in the CRM. Discovery, scoring, and outreach

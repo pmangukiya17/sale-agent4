@@ -103,6 +103,110 @@ class Settings(BaseSettings):
     # class + a registry entry + changing this value, never a worker change.
     REPLY_CLASSIFIER_BACKEND: str = "rules"
 
+    # --- M7.1: Workflow Engine ------------------------------------------------
+    # Event Dispatcher worker (Part 1, Phase 4) - cheap, DB-only matching
+    # work (no Action invocation happens here - see
+    # event_dispatcher_worker.py's own docstring), so a short interval is
+    # appropriate, matching Thread Builder's own reasoning.
+    WORKFLOW_EVENT_DISPATCHER_POLL_INTERVAL_SECONDS: int = 10
+    WORKFLOW_EVENT_DISPATCHER_BATCH_SIZE: int = 100
+
+    # Step Runner worker (Part 1, Phase 5) - invokes real Actions, so
+    # kept independently configurable from the dispatcher's own interval/
+    # batch size, per the approved architecture's "two dedicated
+    # workers, independent poll cadence" decision.
+    WORKFLOW_STEP_RUNNER_POLL_INTERVAL_SECONDS: int = 10
+    WORKFLOW_STEP_RUNNER_BATCH_SIZE: int = 50
+    # A claimed-but-abandoned instance (worker crashed mid-step) becomes
+    # reclaimable after this many minutes - same stale-claim precedent as
+    # DeliveryQueueItem.SENDING.
+    WORKFLOW_STEP_RUNNER_STALE_CLAIM_MINUTES: int = 10
+
+    # --- M7.2: AI Execution Platform --------------------------------------
+    # No defaults, deliberately - same "unset until configured, lazy-
+    # checked at first use" pattern as CREDENTIAL_ENCRYPTION_KEY above,
+    # for the same reason: a wrong default here wouldn't just silently
+    # not-work, it would silently succeed with someone else's model/
+    # billing assumptions. Each ProviderClient's own is_configured()
+    # checks the relevant key/model pair before ever attempting a real
+    # call - see app/ai_gateway/providers/base.py.
+    ANTHROPIC_API_KEY: str | None = None
+    OPENAI_API_KEY: str | None = None
+    GOOGLE_API_KEY: str | None = None
+
+    # Model IDs are NOT hardcoded anywhere in this codebase's own source -
+    # provider model catalogs change too often for a code-level default to
+    # stay trustworthy. Set explicitly here (or overridden per-call via
+    # ExecutionPolicy.model - see app.ai_agents.execution_policy) before
+    # any real Gateway call against that provider will succeed.
+    ANTHROPIC_DEFAULT_MODEL: str | None = None
+    OPENAI_DEFAULT_MODEL: str | None = None
+    GOOGLE_DEFAULT_MODEL: str | None = None
+
+    AI_GATEWAY_DEFAULT_TIMEOUT_SECONDS: float = 60.0
+    # Attempts PER PROVIDER within one Gateway call, before falling
+    # through to the next provider in the routing chain (see
+    # app.ai_gateway.router.RoutingDecision.fallbacks) - independent of
+    # app.workflow_engine's own, unrelated step-level max_attempts.
+    AI_GATEWAY_MAX_ATTEMPTS_PER_PROVIDER: int = 2
+
+    # Attempts for the SAME agent with the SAME AgentInput, when
+    # agent.interpret() itself returns AgentOutcome.RETRY (see
+    # app.ai_agents.base's own docstring) - independent of, and one
+    # layer above, AI_GATEWAY_MAX_ATTEMPTS_PER_PROVIDER above (a single
+    # one of these agent-level attempts may itself involve several
+    # Gateway-level provider retries/fallbacks underneath it).
+    AGENT_RUNTIME_MAX_ATTEMPTS: int = 2
+
+    # --- M7.3: Supervisor / Orchestrator Layer ------------------------------
+    # A hard ceiling on total steps within one Supervisor plan execution -
+    # the practical, always-on guard against runaway/infinite-loop plans
+    # (see app.supervisor.plan_validation's own docstring for why a
+    # step-count ceiling, not true loop detection, is the right
+    # pragmatic tool here - the same reasoning already applies to
+    # app.workflow_engine's own per-step max_attempts). Applied uniformly
+    # to every Supervisor's decisions, handwritten or LLM-driven alike.
+    SUPERVISOR_MAX_EXECUTION_DEPTH: int = 50
+    # Soft, same "unset until configured" precedent as
+    # GatewayRequest.budget_usd - None means no plan-level cost cap is
+    # enforced. Unlike the Gateway's own per-REQUEST soft check, this one
+    # is a real, meaningful ceiling once set: SupervisionState.history
+    # already accumulates every agent invocation's real cost_usd for the
+    # life of one plan execution, so summing it needs no new persistence.
+    SUPERVISOR_MAX_PLAN_COST_USD: float | None = None
+
+    # --- M8.5: Event Backbone & Notification Center ------------------------
+    # Notification worker - a pure Event CONSUMER (see
+    # app/notifications/__init__.py's own docstring), cheap and DB-only
+    # (no provider API call, no Action invocation), so a short interval
+    # is appropriate - same reasoning as
+    # WORKFLOW_EVENT_DISPATCHER_POLL_INTERVAL_SECONDS/_BATCH_SIZE above,
+    # which this deliberately mirrors.
+    NOTIFICATION_WORKER_POLL_INTERVAL_SECONDS: int = 10
+    NOTIFICATION_WORKER_BATCH_SIZE: int = 100
+
+    # --- M8.6: Real-Time Event Streaming ------------------------------------
+    # The in-process broadcaster's own poll cadence against `events` - a
+    # deliberate, approved choice to stay on the same polling operational
+    # model every other background capability in this platform already
+    # uses (see app/realtime/poller.py's own docstring), rather than
+    # introducing Postgres LISTEN/NOTIFY as a second pattern. Short enough
+    # that "server-side polling" is indistinguishable from real push at
+    # human timescales, without being so tight it meaningfully loads the
+    # database with many concurrent workspaces streaming at once.
+    REALTIME_STREAM_POLL_INTERVAL_SECONDS: float = 1.5
+    REALTIME_STREAM_POLL_BATCH_SIZE: int = 200
+    # Stream tickets (app/realtime/tickets.py) are a SEPARATE, narrower
+    # credential from the main access token - short-lived and scoped to
+    # exactly one company_profile_id, because the browser's native
+    # EventSource can't attach an Authorization header, so this one
+    # connection's credential has to travel as a query parameter instead.
+    # Generous relative to how long minting-to-first-connect actually
+    # takes (seconds), but far shorter than ACCESS_TOKEN_EXPIRE_MINUTES -
+    # if a dropped connection needs to reconnect after this window, the
+    # frontend mints a fresh ticket first rather than reusing a stale one.
+    REALTIME_STREAM_TICKET_EXPIRE_SECONDS: int = 300
+
     @property
     def sqlalchemy_database_uri(self) -> str:
         if self.DATABASE_URL:

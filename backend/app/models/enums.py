@@ -426,3 +426,115 @@ class ReplyStatus(str, enum.Enum):
     NEGATIVE = "negative"
     NEUTRAL = "neutral"
     OUT_OF_OFFICE = "out_of_office"
+
+
+# --- M7.1: Workflow Engine -----------------------------------------------
+# The engine's own enums, kept in this same shared file per this
+# project's single-enums-file convention - NOT in app/workflow_engine/,
+# matching the "models (and their enums) always live in app/models/,
+# only engine/service code gets its own per-milestone package" precedent
+# already established for app/reply_intelligence/.
+
+
+class WorkflowDefinitionStatus(str, enum.Enum):
+    """Definition-level lifecycle - deliberately distinct from, and never
+    to be confused with, WorkflowInstanceStatus (an INSTANCE's own
+    RUNNING/WAITING/COMPLETED execution state, added in Part 1 Phase 3
+    below). This describes whether one (key, version) row is currently
+    eligible to start NEW instances at all - see the approved M7.1
+    Compatibility Policy (docs/architecture/m7-workflow-engine-plan.md
+    section 3) for the full governance contract this enum implements:
+
+    DRAFT - being authored/tested. Never matches a trigger, never starts
+    an instance - the ONLY status where in-place editing of the row is
+    permitted at all.
+    ACTIVE - eligible to start new instances. At most one version per
+    `key` may be ACTIVE at a time, enforced by a partial unique database
+    index (migration 0014), not only by application-level discipline.
+    Immutable from the moment it becomes ACTIVE - no field on the row may
+    change again while it holds this status.
+    DEPRECATED - retired: no longer eligible to start new instances, but
+    never deleted and never reopened for editing - exactly as immutable
+    as ACTIVE, for the same reason (an already-running WorkflowInstance
+    pinned to a DEPRECATED version keeps executing against it normally,
+    to completion). A `key` may validly have zero ACTIVE versions at once
+    (every version DEPRECATED) - a deliberate, supported way to pause a
+    workflow from starting new instances without a replacement ready.
+
+    The ONLY sanctioned code path that ever changes this field is
+    app.workflow_engine.definitions.activate_definition() (Part 1, Phase
+    2) - no other function, route, or migration is permitted to.
+    """
+
+    DRAFT = "draft"
+    ACTIVE = "active"
+    DEPRECATED = "deprecated"
+
+
+class WorkflowInstanceStatus(str, enum.Enum):
+    """One running (or completed) execution of a WorkflowDefinition -
+    deliberately distinct from WorkflowDefinitionStatus above (that one
+    describes the definition template's own lifecycle; this one
+    describes ONE EXECUTION of it). See docs/architecture/
+    m7-workflow-engine-plan.md section 4 for the full state diagram this
+    enum implements.
+
+    PENDING - created (a trigger event matched), not yet picked up by
+    the Step Runner worker.
+    RUNNING - actively being processed; the Step Runner may claim it.
+    WAITING - paused, subscribed to a specific event_type (read from the
+    pinned definition's step_graph for the current step - see
+    WorkflowInstance's own docstring), resumed by the Event Dispatcher
+    worker when a matching event arrives. Also how a long-running
+    domain Action (one that returns PENDING) is represented - there is
+    no separate "async callback" mechanism; waiting for an Action to
+    finish reuses this exact state.
+    SUSPENDED - an OPERATOR-driven pause, distinct from WAITING (which is
+    a normal, expected part of a flow) - not reached or left by any
+    automatic transition in Part 1 of this milestone; the column/value
+    exists per the approved architecture but no code path sets it yet.
+    COMPLETED / FAILED / CANCELLED - terminal. Never deleted, never
+    reused - a new trigger event always creates a brand-new instance,
+    never resurrects a terminal one.
+
+    No code path anywhere in this codebase migrates a running instance to
+    a different WorkflowDefinition version - see that model's own
+    docstring and the approved Compatibility Policy."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    WAITING = "waiting"
+    SUSPENDED = "suspended"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class WorkflowStepInvocationStatus(str, enum.Enum):
+    """The persisted lifecycle of ONE ROW in workflow_step_invocations -
+    one row per actual step-execution ATTEMPT (append-only, never
+    updated in place once written - a retry is a new row, not an edit to
+    the old one). Deliberately NOT the same vocabulary as
+    app.workflow_engine.actions.base.ActionOutcome (an Action's own
+    in-process return value) - the Step Runner worker (Part 1, Phase 5)
+    is what translates one into the other; RUNNING and SKIPPED in
+    particular are states an Action itself never returns, only the
+    engine's own bookkeeping produces them."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    SKIPPED = "skipped"
+
+
+class EventConsumptionOutcome(str, enum.Enum):
+    """What one EventConsumption row records about the Event Dispatcher
+    worker's processing of one Event against one candidate outcome - see
+    EventConsumption's own docstring for exactly how NO_MATCH's
+    nullable workflow_instance_id interacts with this table's unique
+    constraint."""
+
+    STARTED_NEW_INSTANCE = "started_new_instance"
+    RESUMED_INSTANCE = "resumed_instance"
+    NO_MATCH = "no_match"

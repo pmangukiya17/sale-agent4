@@ -1,3 +1,19 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* M8.1 — Design System Foundation. Typography only: Inter becomes the
+   system-wide typeface (Design Bible 4.2) for every existing and future
+   page. Deliberately NOT changing background/text color here - the
+   canvas flip to the dark M8 surface tokens is scoped to M8.2 (App Shell
+   & Navigation), landing together with the restyled Sidebar/top strip so
+   there is never an in-between state where the canvas changes color but
+   nothing else does yet. */
+body {
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Design Bible 4.2 requires tabular numerals on any numeric data (KPIs,
+   metrics, timestamps) everywhere. No custom rule needed here - Tailwind
+   core already ships a `tabular-nums` utility class; components apply it
+   deliberately wherever a number actually renders. */

@@ -1,14 +1,100 @@
+# pydantic - bumped 2.7.1 -> 2.12.5 for M7.2 (see the AI Execution
+# Platform comment block below for the full compatibility review that
+# triggered this). Pinned to the EXACT floor google-genai==2.12.1
+# requires (pydantic>=2.12.5,<3.0.0) rather than the newest available
+# 2.13.4, deliberately: minimizing version drift beyond what a real
+# dependency actually forces is itself a risk-reduction choice - 2.13.x's
+# own changes were not part of this review. fastapi==0.111.0 declares
+# pydantic>=1.7.4,!=1.8,!=1.8.1,!=2.0.0,!=2.0.1,!=2.1.0,<3.0.0 (verified
+# against its own pyproject.toml) - no upper-minor ceiling inside 2.x, so
+# 2.12.5 is within its declared support. pydantic-settings==2.2.1
+# declares pydantic>=2.3.0 with no upper bound - also satisfied.
 fastapi==0.111.0
 uvicorn[standard]==0.30.1
 sqlalchemy==2.0.30
 alembic==1.13.1
 psycopg2-binary==2.9.9
-pydantic==2.7.1
+pydantic==2.12.5
 pydantic-settings==2.2.1
 python-jose[cryptography]==3.3.0
 bcrypt==4.2.0
 python-multipart==0.0.9
 python-dotenv==1.0.1
 email-validator==2.1.1
-httpx==0.27.0
+# httpx - bumped 0.27.0 -> 0.28.1 for M7.2 (see below). Verified compatible
+# with this project's own direct httpx usage (app/delivery/providers/
+# gmail_provider.py, outlook_provider.py - plain httpx.get/httpx.post/
+# httpx.HTTPError/httpx.Response calls only; grepped the whole backend for
+# the two kwargs httpx 0.28.0 actually removed, `proxies=` and
+# `httpx.Client(app=...)`/`httpx.AsyncClient(app=...)` - zero usages of
+# either anywhere in this codebase, so this bump changes no runtime
+# behavior here). fastapi==0.111.0 declares no hard runtime dependency on
+# httpx at all (httpx is only pulled in under fastapi's own optional
+# "standard"/"all" extras, for TestClient/CLI - not something this
+# project's requirements.txt installs), so there is no FastAPI-side
+# constraint to reconcile.
+httpx==0.28.1
 cryptography==42.0.8
+
+# --- M7.2: AI Execution Platform - concrete Provider Clients only ------------
+# (app/ai_gateway/providers/*_client.py). Nothing above this line (and
+# nothing in app/ai_gateway/, app/ai_agents/, or app/prompt_builder/
+# outside providers/) may import these directly - see
+# app/ai_gateway/providers/registry.py's own docstring for the grep rule
+# this convention is meant to make enforceable. Versions current as of
+# 2026-07-19 (anthropic 0.116.0, openai 2.46.0, google-genai 2.12.1) -
+# verify against PyPI before upgrading; these SDKs release frequently.
+#
+# httpx compatibility review (triggered by a real `pip install` failure -
+# ResolutionImpossible - during Docker build): google-genai==2.12.1 pins
+# httpx>=0.28.1,<1.0.0 (per its pyproject.toml on GitHub,
+# googleapis/python-genai tag v2.12.1) - strictly incompatible with this
+# project's prior httpx==0.27.0 pin. Checked the other two SDKs' own
+# httpx constraints before picking a fix, rather than blindly bumping:
+# anthropic==0.116.0 pins httpx>=0.25.0,<1 ; openai==2.46.0 pins
+# httpx>=0.23.0,<1. The three ranges intersect at [0.28.1, 1.0.0) - and
+# 0.28.1 (released 2024-12-06) is still the newest stable httpx release on
+# PyPI as of this check (only unreleased 1.0.0 pre-releases exist beyond
+# it), so 0.28.1 is not just "a" compatible version, it is the ONLY
+# concrete version every pinned SDK here currently accepts. No SDK
+# version swap was a better fit than the httpx bump: downgrading
+# google-genai below 2.12.1 to avoid its httpx>=0.28.1 floor was
+# considered and rejected - older google-genai releases are further
+# behind the SDK's own active development, and the httpx bump itself
+# turned out to be a genuine no-op for this codebase's own usage (see
+# httpx's own comment above), so there was no real tradeoff to prefer a
+# different SDK version over.
+#
+# pydantic compatibility review (second real ResolutionImpossible from
+# the same Docker build, surfaced only after the httpx fix above):
+# google-genai==2.12.1 also pins pydantic>=2.12.5,<3.0.0 (verified
+# against its pyproject.toml on GitHub) - incompatible with this
+# project's prior pydantic==2.7.1 pin. Before bumping, checked: (1)
+# whether an EARLIER google-genai release stays on a looser pydantic
+# floor - bisecting release tags found v1.0.0 through v1.45.0 declare
+# pydantic>=2.0.0 (compatible with 2.7.1), but that line is roughly 8+
+# months behind 2.12.1 and not the actively developed one - not a good
+# trade for a brand-new feature; (2) whether pydantic 2.12.5 breaks
+# fastapi==0.111.0 or pydantic-settings==2.2.1 - both declare
+# open-ended-above pydantic constraints (see each package's own comment
+# above) and are satisfied; (3) pydantic's own changelog between 2.7.1
+# and 2.12.x for breaking API changes relevant to a FastAPI CRUD app -
+# no removal of `Config`/`@validator`/`.dict()`/`parse_obj` (still
+# deprecated-but-functional, unchanged from 2.7.1's own behavior); the
+# one real behavioral change is `serialize_as_any` handling, and this
+# codebase's entire app/schemas/ tree (67 files checked) uses only
+# modern v2-native idioms already (model_config = ConfigDict(...),
+# from_attributes, model_dump, model_validate) with ZERO usage of
+# `serialize_as_any`, `@validator`, `@root_validator`, `class Config:`,
+# `.dict()`/`.json()` on a pydantic model, `parse_obj`, `orm_mode`, or
+# `from pydantic import BaseSettings` anywhere - so this bump has no code
+# to actually break here. pydantic 2.12.5 also requires Python >=3.9
+# (raised from 2.7.1's >=3.8); this project's Dockerfile already targets
+# python:3.11-slim, well above that floor. Net: low risk, confirmed by
+# code inspection rather than assumed - pinned pydantic==2.12.5 exactly
+# (the precise floor google-genai requires, not the newer 2.13.4 also on
+# PyPI - see pydantic's own comment above for why the narrower pin was
+# preferred).
+anthropic==0.116.0
+openai==2.46.0
+google-genai==2.12.1

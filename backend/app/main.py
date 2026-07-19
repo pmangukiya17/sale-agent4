@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
+    ai_workforce,
     auth,
     brand_email_signatures,
     companies,
@@ -16,10 +17,12 @@ from app.api.routes import (
     discovery_jobs,
     discovery_runs,
     discovery_searches,
+    events,
     health,
     icp_criteria,
     intelligence_snapshots,
     knowledge_base,
+    notifications,
     outreach_drafts,
     outreach_jobs,
     outreach_playbooks,
@@ -36,6 +39,7 @@ from app.api.routes import (
     prospect_timeline,
     prospects,
     provider_connections,
+    realtime,
     recommendations,
     reference_data,
     research_jobs,
@@ -55,9 +59,18 @@ from app.db.session import SessionLocal
 from app.delivery.providers.registry import PROVIDER_REGISTRY
 from app.models.enums import UserRole
 from app.models.user import User
+from app.realtime import poller as realtime_poller
+from app.supervisor.observability import install_execution_id_log_filter
+from app.workflow_bootstrap import activate_builtin_workflows
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("sales_agent")
+# M7.3: stamps every log record process-wide with the current
+# Supervisor execution id (None outside a Supervisor-driven call) - see
+# app.supervisor.observability's own docstring for why this is a
+# handler-level filter, not a field threaded through every request/
+# response dataclass in the AI stack.
+install_execution_id_log_filter()
 
 
 def ensure_first_admin() -> None:
@@ -105,6 +118,21 @@ def ensure_first_admin() -> None:
         db.close()
 
 
+def bootstrap_builtin_workflows() -> None:
+    """M7.1 Part 2: activates every built-in WorkflowDefinition this
+    application ships with (see app/workflow_bootstrap.py's own
+    docstring for BUILTIN_WORKFLOW_DEFINITIONS - today just the
+    conversation.created pilot; future M7.x/M8/M9 built-ins are added
+    there, never here). Safe to run on every startup - idempotent,
+    additive-only, same "no-op once already done" shape as
+    ensure_first_admin() above."""
+    db = SessionLocal()
+    try:
+        activate_builtin_workflows(db)
+    finally:
+        db.close()
+
+
 def log_delivery_configuration_status() -> None:
     """Informational only - never raises, never blocks startup (Delivery
     is optional, per-connection functionality; see
@@ -124,7 +152,18 @@ def log_delivery_configuration_status() -> None:
 async def lifespan(app: FastAPI):
     ensure_first_admin()
     log_delivery_configuration_status()
+    bootstrap_builtin_workflows()
+    # M8.6: the Real-Time Event Streaming poller - the one background
+    # capability in this platform that runs INSIDE the FastAPI process
+    # rather than as its own docker-compose worker service, because it
+    # holds this process's own live SSE connections in memory (see
+    # app/realtime/__init__.py's own docstring for why that's structural,
+    # not a shortcut). Started here, cancelled on shutdown, same
+    # "app owns the background task's lifecycle" shape uvicorn's own
+    # lifespan protocol is meant for.
+    realtime_poller.start()
     yield
+    await realtime_poller.stop()
 
 
 app = FastAPI(title=settings.PROJECT_NAME, version="0.1.0", lifespan=lifespan)
@@ -140,6 +179,22 @@ app.add_middleware(
 API_PREFIX = "/api/v1"
 app.include_router(health.router, prefix=API_PREFIX)
 app.include_router(auth.router, prefix=API_PREFIX)
+# M8.4 backend addition: read-only AI Workforce domain API - see
+# app/ai_workforce/__init__.py. Registered here (not clustered near
+# discovery/research/etc.) since it isn't its own pipeline domain; it's a
+# read-only view over the M7 Workflow Engine's own tables.
+app.include_router(ai_workforce.router, prefix=API_PREFIX)
+# M8.5 Event Backbone: the platform Event stream's read API, and the
+# Notification Center that consumes it. See app/notifications/__init__.py
+# for the worker that's the only thing that ever creates a Notification.
+app.include_router(events.router, prefix=API_PREFIX)
+app.include_router(notifications.router, prefix=API_PREFIX)
+# M8.6: Real-Time Event Streaming - Server-Sent Events over the same
+# `events` table, via the in-process broadcaster/poller started above in
+# `lifespan`. See app/realtime/__init__.py for the package boundary and
+# app/api/routes/realtime.py for why this router's two endpoints use two
+# different auth mechanisms.
+app.include_router(realtime.router, prefix=API_PREFIX)
 app.include_router(companies.router, prefix=API_PREFIX)
 app.include_router(contacts.router, prefix=API_PREFIX)
 app.include_router(company_profiles.router, prefix=API_PREFIX)

@@ -1,6 +1,10 @@
 import axios from "axios";
 
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
+// Exported (not just module-private) since M8.6's EventSource-based
+// event stream can't go through axios at all (EventSource is a native
+// browser API with its own request mechanism) but still needs to hit
+// the exact same base URL - see realtime/useEventStream.ts.
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api/v1";
 
 export const apiClient = axios.create({
   baseURL: API_BASE_URL,

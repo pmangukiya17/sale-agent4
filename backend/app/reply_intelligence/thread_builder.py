@@ -46,6 +46,29 @@ from app.reply_intelligence.thread_matching import (
     match_conversation,
     sync_participants_for_message,
 )
+from app.workflow_engine.events import publish_event
+
+# M7.1 Part 2: the business-capability name this worker publishes events
+# under - deliberately NOT "thread_builder" (an implementation detail
+# that could change - e.g. this logic could someday move into the sync
+# worker, or be split further - without the business meaning of "who
+# published this" changing). "reply_intelligence" is the stable domain
+# package this module already lives inside (app.reply_intelligence),
+# matching this project's existing REPLY_CLASSIFIER_BACKEND/
+# app.reply_intelligence.* naming.
+_EVENT_SOURCE = "reply_intelligence"
+
+# M7.1 Part 2: this project's first real, production Event. Published
+# ONLY when create_conversation_for_unmatched_inbound() below actually
+# creates a brand-new Conversation - never for the "matched an existing
+# Conversation" branch above, which is a deliberate, load-bearing
+# distinction (see tests/test_pilot_workflow_e2e.py's own negative-case
+# test). subject_type/subject_id carry the new Conversation's identity
+# so the Workflow Engine can correlate a resulting WorkflowInstance back
+# to it - the Workflow Engine never interprets what "conversation" means,
+# it only ever treats subject_type/subject_id as opaque correlation
+# strings (see Event's own docstring).
+CONVERSATION_CREATED_EVENT_TYPE = "conversation.created"
 
 logger = logging.getLogger("sales_agent.thread_builder")
 
@@ -77,6 +100,20 @@ def process_one_message(db: Session, message: EmailMessage) -> str:
     conversation = create_conversation_for_unmatched_inbound(db, message)
     message.conversation_id = conversation.id
     sync_participants_for_message(db, conversation, message)
+    # M7.1 Part 2: publish_event() only flushes - it never commits (see
+    # its own docstring) - so this Event lands in the SAME transaction as
+    # the Conversation/EmailMessage/participant writes above; the
+    # db.commit() below is what makes all of them atomic together (the
+    # transactional outbox pattern - if anything above this point were to
+    # fail, the Event would never exist either).
+    publish_event(
+        db,
+        event_type=CONVERSATION_CREATED_EVENT_TYPE,
+        company_profile_id=conversation.company_profile_id,
+        source=_EVENT_SOURCE,
+        subject_type="conversation",
+        subject_id=conversation.id,
+    )
     db.commit()
     return "created"
 
