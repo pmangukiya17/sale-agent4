@@ -55,12 +55,28 @@ to prior conversation history, start here.
   dashboard and page architecture, accessibility, and long-term
   scalability for the entire UI. Produced from nine dashboard concept
   images treated as one product, cross-referenced against the actual
-  (currently unstyled, unbranded) `frontend/` codebase and the real
-  backend data model built through M7.4. Explicitly names what it
-  requires from the backend that doesn't exist yet (real-time push
-  transport, a workflow "pause" capability) rather than designing around
-  those gaps silently. Proposal only — not authorized for implementation,
-  no React code written as part of producing it.
+  (at the time, unstyled, unbranded) `frontend/` codebase and the real
+  backend data model built through M7.4. **Architecture approved (M8.7
+  CEO review)**, with six amendments incorporated directly: a Design
+  Debt Budget (Section 10.1), an explicit refactor-in-place migration
+  method (Section 9.2), and confirmation that "UI must never invent
+  state," the intentionally small token set, and the restrained,
+  event-traceable motion system already satisfied the remaining review
+  points as originally written. Its original real-time-push gap (Section
+  13) is noted as superseded — M8.5/M8.6 have since shipped that
+  infrastructure. Approval of this document is not, on its own,
+  authorization to write React code — see the implementation plan below.
+- [`m8-7-ui-ux-implementation-plan.md`](./m8-7-ui-ux-implementation-plan.md)
+  — how the (approved) Design Bible will actually be built: six phases
+  (A–F), weighted honestly against what M8.1–M8.4 already shipped rather
+  than assuming a blank slate — Phases A–C are short confirmation/gap-
+  closing passes over already-existing tokens/shell/dashboard code,
+  Phase D fills the real remaining gaps in the component library
+  (Select/Table/Modal/Toast/Tooltip), Phase E (the actual bulk of the
+  work, split into CRM/AI-Workforce/Settings/Auth sub-phases) migrates
+  the eighteen still-unstyled pages in place, and Phase F is a final
+  motion/accessibility pass. Plan only — not authorized for
+  implementation.
 
 ## Conventions for documents in this directory
 

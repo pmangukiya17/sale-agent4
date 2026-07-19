@@ -1,10 +1,13 @@
 # M8 — UI/UX Architecture & Design Bible
 
-**Status:** proposal only, produced before implementation, exactly like
-every architecture document that preceded it in this project (see
-`README.md` in this directory). Nothing in this document is authorized
-for implementation. No React code, no components, no pages have been
-written as part of producing it. It is the visual/experiential
+**Status:** architecture approved (M8.7 CEO review), with six amendments
+incorporated directly into the sections below — see the Summary's own
+"M8.7 review" note for exactly what changed and what was confirmed
+already-satisfied. Approval of this document is NOT, on its own,
+authorization to write React code — matching every architecture document
+that preceded it in this project (see `README.md` in this directory),
+implementation is gated behind its own separate, explicitly-approved
+plan: `m8-7-ui-ux-implementation-plan.md`. It is the visual/experiential
 counterpart to what `m7-workflow-engine-plan.md` and its siblings were
 for the backend: the thing implementation gets checked against, not a
 mood board.
@@ -923,6 +926,39 @@ before it ships — this list is the enforcement mechanism for "every page
 should feel premium, consistent, and part of one cohesive product," not
 a restatement of the sentiment.
 
+### 9.2 Migration method — refactor in place, never replace-and-delete
+
+Added at CEO review (M8.7), because Section 9's own catalog and Section
+2's reconciliation table say *where* each of the twenty existing pages
+ends up, but neither says *how* the file itself gets there. Stated
+explicitly now so implementation doesn't default to the faster-looking
+but riskier path:
+
+**Every existing page is edited in place, never deleted and rewritten
+from a blank file.** `Contacts.tsx`, `Pipeline.tsx`, `DiscoveryJobs.tsx`,
+and the rest of the twenty already carry real, working data-fetching,
+mutation, and business logic built across M0–M6 — the thing M8.7 changes
+is markup and styling (swapping bespoke JSX/inline classes for Section
+10's tier-1/tier-2 components), not the logic underneath it. Concretely:
+
+- A page's existing hooks, API calls, and state management are left
+  alone unless a specific, named reason requires touching them (e.g. a
+  field this document's IA reshuffles). The default is: same data layer,
+  new presentation layer.
+- Refactors happen as edits to the existing file, preserving git blame/
+  history, not a new file that replaces the old one wholesale — this is
+  what makes each page's migration reviewable as a diff against known-
+  working behavior, rather than as an opaque rewrite that has to be
+  re-verified from zero.
+- A page is migrated fully or not at all within one implementation pass
+  — no page ships half in the old unstyled system and half in the new
+  one; that combination is worse than either consistently.
+- This rule is what makes the CEO's M8.7 review comments 1 ("phased, not
+  one giant rewrite") and 5 ("migrate existing pages instead of
+  rebuilding them") compatible with each other: phases move through
+  Section 9's page catalog incrementally, but each individual page's own
+  move is always a refactor, never a rewrite.
+
 ---
 
 ## 10. Component Architecture
@@ -963,6 +999,50 @@ lookup table, matching the backend's own `AGENT_REGISTRY` /
 `SUPERVISOR_REGISTRY` extensibility pattern) rather than by writing a new
 component per addition. This is what keeps the design system's growth
 rate slower than the backend's own agent catalog growth rate.
+
+### 10.1 Design Debt Budget
+
+Added at CEO review (M8.7) as a standing governance rule for every
+implementation phase from here forward, not just M8.7 itself: **a new UI
+component is only justified if it replaces an existing pattern, never if
+it merely adds a competing one.** The four-tier structure above already
+gives the system a place for everything to live; this rule is what keeps
+it from quietly growing a second, slightly-different version of
+something that place already provides.
+
+Concretely, there is exactly one canonical implementation of each of the
+following, for the life of the product:
+
+- one button system (Section 4.6's primary/secondary/ghost/destructive
+  set — no page-local button variant)
+- one modal system (Section 4.6's Modal primitive, used for every
+  confirm/edit/detail overlay — no page rolling its own dialog)
+- one table system (Section 4.6's dense table pattern — every List
+  template, Section 9, uses it)
+- one card system (Section 4.4's elevation/radius/border/glow rules —
+  every composed card in Section 10 tier 2 inherits from it, never
+  redefines its own shadow/radius)
+- one badge system (Section 4.6's badge/tag component, covering impact
+  level, pipeline stage, country, agent type — one visual grammar for
+  "small labeled chip," not one per domain)
+- one empty-state system (Section 6's branded empty state — the same
+  treatment whether the empty list is Contacts, Discovery results, or
+  Conversations)
+- one loading-state system (Section 4.6's skeleton/loading states —
+  the same shimmer-then-real-content pattern everywhere a module fetches
+  data, per Section 11's "genuine wait time" rule)
+
+**Enforcement, so this stays a checkable rule and not a slogan:** before
+any implementation phase (see `m8-7-ui-ux-implementation-plan.md`'s own
+Phase A–F breakdown) introduces a new component, the question is not
+"does this look right for this page" but "which existing
+tier-1/tier-2 component in this catalog does this replace, and why did
+that one not work." If the honest answer is "nothing, this is genuinely
+net-new," it still has to be added to this catalog as *the* canonical
+version — not as a one-off local component a later phase then has to
+reconcile away. A second competing table/card/badge implementation
+appearing anywhere in `frontend/src` after M8.7 begins is itself a defect
+to fix, the same way an orphaned, unreachable page would be.
 
 ---
 
@@ -1065,19 +1145,31 @@ document does not repeat.
 - **Internationalization readiness** — numeric/date/currency formatting
   goes through a single formatting layer from day one (even though
   actual translation is deferred, Section 14), so it isn't a retrofit.
-- **Live-data assumption must be honest about its transport.** This UI's
-  core premise — a continuously live activity feed, live agent status,
-  a live map — requires either frequent polling or a real push channel
-  (WebSocket/SSE). **The backend has neither today** — every M7 worker
-  (Step Runner, Event Dispatcher, Delivery, Mailbox Sync, Thread
-  Builder, Reply Intelligence) is a polling background process with no
-  push mechanism to a browser client. The design system is specified so
-  it works correctly either way (every "live" module is written against
-  a data-refresh contract, not an assumption of instant push), which
-  means implementation can ship v1 on smart polling (short-interval,
-  diffed, no full-page refresh) without a redesign later when/if a real
-  push channel is added. Named again in Section 14 since it's a real
-  infrastructure gap, not just a design footnote.
+- **Live-data assumption, updated at M8.7 review — this is no longer a
+  gap.** This UI's core premise — a continuously live activity feed,
+  live agent status, a live map — requires either frequent polling or a
+  real push channel. At the time this document was originally written,
+  **the backend had neither**: every M7 worker (Step Runner, Event
+  Dispatcher, Delivery, Mailbox Sync, Thread Builder, Reply Intelligence)
+  was a polling background process with no push mechanism to a browser
+  client. That gap has since been closed: M8.5 (Event Backbone &
+  Notification Center) gave the platform a single append-only Event
+  stream as its source of truth, and M8.6 (Real-Time Event Streaming)
+  built a Server-Sent Events channel over it (`app/realtime/` — an
+  in-process broadcaster/poller, short-lived stream tickets since
+  `EventSource` can't carry the normal Bearer header, `sequence_no`-based
+  reconnect replay). The design system's own discipline of writing every
+  "live" module against a data-refresh contract rather than assuming
+  instant push turned out to matter for a different reason than
+  originally written down: it's exactly what let M8.6 slot in as a pure
+  addition (existing REST endpoints unchanged, streaming layered on top
+  as incremental updates) rather than forcing a redesign. One honest
+  caveat carried forward from M8.6's own implementation record, not
+  invented here: only the Notification Center is actually wired to this
+  live stream today. AI Workforce and Activity Timeline still read their
+  own underlying tables directly and do not yet publish real platform
+  Events, so wiring them to "live update" remains future work, not a
+  regression — see M8.6's own disclosed scope boundary.
 
 ---
 
@@ -1095,10 +1187,17 @@ document does not repeat.
   enhancement but a materially larger engineering investment that should
   not be silently assumed into scope. This decision belongs to
   implementation planning, not this document.
-- **Real-time transport (WebSocket/SSE).** As covered in Section 13, no
-  push infrastructure exists in the backend today. Building one is a
-  backend milestone in its own right, not a frontend concern, and is not
-  part of M8.
+- ~~**Real-time transport (WebSocket/SSE).** As covered in Section 13, no
+  push infrastructure exists in the backend today.~~ **Superseded, no
+  longer deferred:** M8.5 (Event Backbone & Notification Center) and
+  M8.6 (Real-Time Event Streaming) shipped exactly this in between this
+  document's original review and its M8.7 amendment — a Server-Sent
+  Events stream over the platform's single append-only Event table
+  (`app/realtime/`), plus a live Notification bell. Struck through
+  rather than deleted so a future reader can see the document's own
+  claim was real and has since been resolved, not silently corrected
+  after the fact. Section 13's own text below still describes the
+  pre-M8.5 state and should be read historically for that one point.
 - **`Paused` workflow state.** No backend API exists to pause a running
   `WorkflowInstance`. Either the UI ships without a Paused control until
   that backend capability exists, or a future backend milestone adds it
@@ -1142,7 +1241,22 @@ Workforce, Companies, Contacts, Pipeline, Conversations, Outreach,
 Analytics, Settings, and every future module — no page is permitted to
 default to a generic admin-panel treatment. A motion system where every
 animation must trace to a real backend event, and an explicit accounting
-of what this vision needs from the backend that doesn't exist yet
-(real-time transport, a pause capability), round out the document rather
-than being quietly designed around. Nothing here is authorized for
-implementation. The next step is your review.
+of what this vision needs from the backend that doesn't exist yet (a
+pause capability — real-time transport itself has since shipped via
+M8.5/M8.6, see Section 13's updated entry), round out the document
+rather than being quietly designed around.
+
+**M8.7 review (CEO), incorporated above:** approved as the long-term
+UI/UX specification for Sales-Agent4, with six amendments now reflected
+in this document — a Design Debt Budget (Section 10.1), an explicit
+refactor-in-place migration method (Section 9.2), and confirmation that
+the "UI must never invent state" principle (Sections 1, 2, 5, 11), the
+intentionally small token set (Section 4), and the restrained,
+event-traceable motion system (Section 5, 11) already satisfy the
+remaining three review points as originally written, with no further
+change needed. Architecture is now approved. Still not authorized for
+implementation on its own — per this directory's own README convention,
+implementation proceeds only against its own explicitly-approved plan.
+See `m8-7-ui-ux-implementation-plan.md` for the phased (Phase A–F)
+breakdown this review specifically asked for, itself pending its own
+approval before any React code is written.
