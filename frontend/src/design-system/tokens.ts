@@ -35,3 +35,23 @@ export const colors = {
     info: "#38BDF8",
   },
 } as const;
+
+/**
+ * Motion durations/easing — M8.7 Phase A, mirroring
+ * tailwind.config.js's `theme.extend.transitionDuration` /
+ * `transitionTimingFunction` by hand (same two-places-on-purpose rule as
+ * `colors` above). Raw milliseconds/CSS-easing strings, for the cases
+ * outside Tailwind's class pipeline that still need to animate on a real
+ * state change - e.g. a Recharts/SVG transition prop, or a
+ * setTimeout-based sequencing value - per Design Bible Section 5.
+ */
+export const motion = {
+  durationMs: {
+    interaction: 160,
+    tick: 200,
+    stateChange: 350,
+  },
+  easing: {
+    standard: "cubic-bezier(0.4, 0, 0.2, 1)",
+  },
+} as const;

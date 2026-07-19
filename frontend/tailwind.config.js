@@ -45,9 +45,46 @@ export default {
         // Design Bible 4.2 — a single geometric/technical sans everywhere.
         sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
       },
+      // Design Bible 4.2 — "a restrained 6-7 step type scale (display,
+      // h1-h3, body, caption, micro-label), reused everywhere rather than
+      // each module inventing its own sizes." Added M8.7 Phase A - the one
+      // token category from Section 4 that M8.1 hadn't landed yet (every
+      // page until now used raw Tailwind text-sm/text-xs/etc. sizes
+      // directly). Each entry is a [size, {lineHeight}] pair, not a bare
+      // number, so line-height is never left to Tailwind's default and
+      // silently inconsistent between two components using the same size.
+      fontSize: {
+        display: ["2.25rem", { lineHeight: "1.15" }],
+        h1: ["1.875rem", { lineHeight: "1.2" }],
+        h2: ["1.5rem", { lineHeight: "1.25" }],
+        h3: ["1.25rem", { lineHeight: "1.3" }],
+        body: ["0.875rem", { lineHeight: "1.5" }],
+        caption: ["0.75rem", { lineHeight: "1.4" }],
+        "micro-label": ["0.6875rem", { lineHeight: "1.3", letterSpacing: "0.04em" }],
+      },
       borderRadius: {
         card: "14px",
         pill: "999px",
+      },
+      // Design Bible 5 — Motion System. Durations named by the same
+      // category language that section uses (interaction / state-change),
+      // not generic fast/slow labels, so a call site's class name states
+      // *why* the duration was chosen. Added M8.7 Phase A - Section 5's
+      // own values existed only as prose (e.g. "~200ms", "300-400ms")
+      // until now, with nothing in tailwind.config.js to check them
+      // against.
+      transitionDuration: {
+        interaction: "160ms", // Section 5 "Animate on interaction": 120-200ms, feedback not storytelling
+        tick: "200ms", // Section 5 "Animate on change": KPI count-up/down
+        "state-change": "350ms", // Section 5 "Animate on change": agent status transition, 300-400ms
+      },
+      transitionTimingFunction: {
+        // Calm, confident easing (ease-in-out, not a bounce/spring) -
+        // matches Section 1's "communicate confidence, not constant
+        // movement" identity statement and Section 11's ban on
+        // decorative motion; one curve reused everywhere rather than a
+        // different easing per component.
+        standard: "cubic-bezier(0.4, 0, 0.2, 1)",
       },
       boxShadow: {
         // Elevation (4.4) is lightness + hairline border, NOT drop shadow —

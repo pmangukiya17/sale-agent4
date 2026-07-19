@@ -27,7 +27,6 @@ import DeliveryConnections from "./pages/delivery/DeliveryConnections";
 import DeliverySendingProfiles from "./pages/delivery/DeliverySendingProfiles";
 import DeliveryCampaigns from "./pages/delivery/DeliveryCampaigns";
 import DeliveryCampaignDetail from "./pages/delivery/DeliveryCampaignDetail";
-import DesignSystemPreview from "./pages/DesignSystemPreview";
 import CommandCenter from "./pages/CommandCenter";
 import AIWorkforce from "./pages/AIWorkforce";
 import { ComingSoon } from "./pages/ComingSoon";
@@ -35,12 +34,6 @@ import { ComingSoon } from "./pages/ComingSoon";
 export default function App() {
   return (
     <Routes>
-      {/* TEMPORARY, M8.1-ONLY: unprotected on purpose, purely so the new
-          design-system primitives are reviewable without needing to log
-          in first. Remove this route once M8.2+ wires these primitives
-          into real, authenticated navigation - see
-          DesignSystemPreview.tsx's own docstring. */}
-      <Route path="/dev/design-system" element={<DesignSystemPreview />} />
       <Route path="/login" element={<Login />} />
       {/* Top-level, unnested (not under /businesses/:companyId/...) - see
           OAuthCallback.tsx's docstring for why: the browser arrives here
