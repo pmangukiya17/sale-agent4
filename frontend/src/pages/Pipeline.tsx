@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../api/client";
 import { TransitionalBanner } from "../components/TransitionalBanner";
+import { Table, PlaceholderNotice, type TableColumn } from "../design-system";
 
 interface Company {
   id: string;
@@ -11,6 +12,34 @@ interface Company {
   created_at: string;
 }
 
+const COLUMNS: TableColumn<Company>[] = [
+  {
+    key: "name",
+    header: "Company",
+    sortable: true,
+    sortValue: (c) => c.name,
+    render: (c) => <span className="font-medium text-slate-100">{c.name}</span>,
+  },
+  { key: "country", header: "Country", sortable: true, sortValue: (c) => c.country ?? "", render: (c) => c.country ?? "—" },
+  { key: "stage", header: "Stage", sortable: true, sortValue: (c) => c.stage, render: (c) => c.stage },
+  {
+    key: "icp_score",
+    header: "ICP Score",
+    sortable: true,
+    sortValue: (c) => c.icp_score ?? -1,
+    render: (c) => (c.icp_score !== null ? c.icp_score.toFixed(0) : "—"),
+  },
+];
+
+/**
+ * Pipeline — M8.7 Phase E1 (CRM zone). Migrated in place per Design Bible
+ * Section 9.2: same data-fetching (a single GET /companies, unchanged),
+ * only the presentation layer moves onto the design system (Table,
+ * PlaceholderNotice, TransitionalBanner now restyled dark alongside this
+ * page) instead of the original light-mode markup. Still the legacy,
+ * pre-M1 CRM company list - the banner explains that context; this
+ * migration is a restyle only, not a scope change.
+ */
 export default function Pipeline() {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -31,44 +60,19 @@ export default function Pipeline() {
         AI-driven prospect pipeline in the Command Center instead. This page moves or retires once a real
         opportunity/deal-value model exists.
       </TransitionalBanner>
-      <h2 className="mb-1 text-2xl font-semibold text-slate-900">Pipeline</h2>
-      <p className="mb-6 text-sm text-slate-500">
-        Companies currently tracked in the CRM. Discovery, scoring, and outreach
-        are not wired up yet — this view proves the data path end to end.
+
+      <h1 className="mb-1 text-h1 font-semibold text-slate-100">Pipeline</h1>
+      <p className="mb-6 text-body text-slate-400">
+        Companies currently tracked in the CRM. Discovery, scoring, and outreach are not wired up yet — this view
+        proves the data path end to end.
       </p>
 
-      {isLoading && <p className="text-sm text-slate-500">Loading…</p>}
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="mb-4 text-sm text-status-danger">{error}</p>}
 
-      {!isLoading && !error && companies.length === 0 && (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-          No companies yet. Discovery lands here starting in Milestone 1.
-        </div>
-      )}
-
-      {companies.length > 0 && (
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-100 text-xs uppercase text-slate-500">
-              <tr>
-                <th className="px-4 py-3">Name</th>
-                <th className="px-4 py-3">Country</th>
-                <th className="px-4 py-3">Stage</th>
-                <th className="px-4 py-3">ICP Score</th>
-              </tr>
-            </thead>
-            <tbody>
-              {companies.map((c) => (
-                <tr key={c.id} className="border-t border-slate-100">
-                  <td className="px-4 py-3 font-medium text-slate-900">{c.name}</td>
-                  <td className="px-4 py-3 text-slate-600">{c.country ?? "—"}</td>
-                  <td className="px-4 py-3 text-slate-600">{c.stage}</td>
-                  <td className="px-4 py-3 text-slate-600">{c.icp_score ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {!isLoading && !error && companies.length === 0 ? (
+        <PlaceholderNotice kind="no-data" reason="No companies yet." />
+      ) : (
+        <Table columns={COLUMNS} rows={companies} rowKey={(c) => c.id} isLoading={isLoading} emptyMessage="No companies yet." />
       )}
     </div>
   );

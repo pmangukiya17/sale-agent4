@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
-import { inputClass } from "../components/FormSection";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { Card, Badge, Button, Input, Select, PlaceholderNotice } from "../design-system";
+import type { BadgeTone } from "../design-system";
 
 type ProspectStatus =
   | "new" | "duplicate_review" | "scored" | "qualified" | "unqualified"
@@ -57,16 +58,19 @@ const STATUS_LABELS: Record<ProspectStatus, string> = {
   approved: "Approved", rejected: "Rejected", archived: "Archived",
 };
 
-const STATUS_COLORS: Record<ProspectStatus, string> = {
-  new: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
-  duplicate_review: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
-  scored: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
-  qualified: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
-  unqualified: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400",
-  in_review: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  approved: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
-  rejected: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
-  archived: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400",
+// Maps each prospect status onto the design system's fixed Badge tone
+// vocabulary (Design Bible Section 4.6) - replaces the page's own bespoke
+// light/dark color pairs per status with the one shared semantic palette.
+const STATUS_TONES: Record<ProspectStatus, BadgeTone> = {
+  new: "neutral",
+  duplicate_review: "warning",
+  scored: "neutral",
+  qualified: "success",
+  unqualified: "neutral",
+  in_review: "info",
+  approved: "success",
+  rejected: "danger",
+  archived: "neutral",
 };
 
 // Manual contact entry only - mirrors app/schemas/prospect_contact.py's
@@ -98,6 +102,17 @@ const DECISION_MAKER_LEVELS: { value: string; label: string }[] = [
   { value: "gatekeeper", label: "Gatekeeper" },
 ];
 
+/**
+ * Prospects — M8.7 Phase E1 (CRM zone). Migrated in place per Design
+ * Bible Section 9.2: every fetch, form, and action call below is
+ * byte-identical to the pre-migration version - only the markup moves
+ * from bespoke light/dark-variant Tailwind onto the design-system
+ * primitives (Card, Badge, Button, Input, Select, PlaceholderNotice).
+ * Kept as one expandable-row page rather than reshaped into the Table
+ * primitive, since each row's expanded state (score breakdown, contacts
+ * form, timeline, approve/reject/archive actions) isn't tabular data -
+ * Table is for uniform rows of scalar cells, per its own docstring.
+ */
 export default function Prospects() {
   const { companyId } = useParams();
   const [prospects, setProspects] = useState<Prospect[]>([]);
@@ -233,20 +248,20 @@ export default function Prospects() {
 
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Prospects</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <h1 className="text-h1 font-semibold text-slate-100">Prospects</h1>
+          <p className="text-body text-slate-400">
             Review what Discovery found. Nothing reaches the CRM until you approve it here.
           </p>
         </div>
         <div className="flex gap-2">
-          <select className={inputClass} value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <Select className="w-48" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">All statuses</option>
             {Object.entries(STATUS_LABELS).map(([value, label]) => (
               <option key={value} value={value}>{label}</option>
             ))}
-          </select>
-          <input
-            className={inputClass}
+          </Select>
+          <Input
+            className="w-32"
             placeholder="Min score"
             type="number"
             value={minScore}
@@ -255,48 +270,51 @@ export default function Prospects() {
         </div>
       </div>
 
-      {actionError && <p className="mb-4 text-sm text-red-600">{actionError}</p>}
-      {isLoading && <p className="text-sm text-slate-500">Loading…</p>}
+      {actionError && <p className="mb-4 text-sm text-status-danger">{actionError}</p>}
+
       {!isLoading && prospects.length === 0 && (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900">
-          No prospects match these filters yet.
-        </div>
+        <PlaceholderNotice kind="no-data" reason="No prospects match these filters yet." />
       )}
 
       <div className="space-y-3">
+        {isLoading &&
+          Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="h-20 animate-pulse">
+              {null}
+            </Card>
+          ))}
+
         {prospects.map((prospect) => {
           const isOpen = expandedId === prospect.id;
           return (
-            <div key={prospect.id} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+            <Card key={prospect.id}>
               <button className="flex w-full items-start justify-between text-left" onClick={() => toggleExpand(prospect)}>
                 <div>
                   <div className="mb-1 flex items-center gap-2">
-                    <h3 className="font-semibold text-slate-900 dark:text-slate-100">{prospect.name}</h3>
-                    <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[prospect.status]}`}>
-                      {STATUS_LABELS[prospect.status]}
-                    </span>
+                    <h3 className="font-semibold text-slate-100">{prospect.name}</h3>
+                    <Badge tone={STATUS_TONES[prospect.status]}>{STATUS_LABELS[prospect.status]}</Badge>
                     {prospect.potential_duplicate_of_prospect_id && (
-                      <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-700 dark:bg-amber-900 dark:text-amber-300">
+                      <Badge tone="warning">
                         possible duplicate ({Math.round((prospect.duplicate_confidence ?? 0) * 100)}%)
-                      </span>
+                      </Badge>
                     )}
                   </div>
                   <p className="text-xs text-slate-500">
                     {[prospect.website, prospect.country, prospect.company_size_range].filter(Boolean).join(" · ")}
                   </p>
                 </div>
-                <span className="text-lg font-semibold text-slate-700 dark:text-slate-200">
+                <span className="text-lg font-semibold text-slate-200">
                   {prospect.total_score != null ? Math.round(prospect.total_score) : "—"}
                 </span>
               </button>
 
               {isOpen && (
-                <div className="mt-4 space-y-4 border-t border-slate-100 pt-4 dark:border-slate-700">
-                  {prospect.description && <p className="text-sm text-slate-600 dark:text-slate-300">{prospect.description}</p>}
+                <div className="mt-4 space-y-4 border-t border-border-hairline pt-4">
+                  {prospect.description && <p className="text-sm text-slate-300">{prospect.description}</p>}
 
                   {prospect.score_breakdown && prospect.score_breakdown.length > 0 && (
                     <div>
-                      <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">Score breakdown</p>
+                      <p className="mb-2 text-sm font-medium text-slate-200">Score breakdown</p>
                       <div className="space-y-2">
                         {prospect.score_breakdown.map((entry, i) => (
                           <div key={i}>
@@ -304,13 +322,13 @@ export default function Prospects() {
                               <span>{entry.factor.replace(/_/g, " ")}</span>
                               <span>{entry.points} / {entry.weight}</span>
                             </div>
-                            <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-700">
+                            <div className="h-2 w-full rounded-full bg-surface-2">
                               <div
-                                className="h-2 rounded-full bg-slate-900 dark:bg-indigo-500"
+                                className="h-2 rounded-full bg-accent-primary"
                                 style={{ width: `${Math.min(100, (entry.points / entry.weight) * 100)}%` }}
                               />
                             </div>
-                            <p className="mt-0.5 text-xs text-slate-400">{entry.explanation}</p>
+                            <p className="mt-0.5 text-xs text-slate-500">{entry.explanation}</p>
                           </div>
                         ))}
                       </div>
@@ -319,26 +337,26 @@ export default function Prospects() {
 
                   {prospect.ai_reasoning && (
                     <div>
-                      <p className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">AI reasoning</p>
-                      <p className="text-sm text-slate-600 dark:text-slate-300">{prospect.ai_reasoning}</p>
+                      <p className="mb-1 text-sm font-medium text-slate-200">AI reasoning</p>
+                      <p className="text-sm text-slate-300">{prospect.ai_reasoning}</p>
                     </div>
                   )}
 
                   {prospect.rejection_reason && (
-                    <p className="text-sm text-red-600">Rejected: {prospect.rejection_reason}</p>
+                    <p className="text-sm text-status-danger">Rejected: {prospect.rejection_reason}</p>
                   )}
 
                   <div>
                     <div className="mb-1 flex items-center justify-between">
-                      <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Contacts</p>
+                      <p className="text-sm font-medium text-slate-200">Contacts</p>
                       <div className="flex items-center gap-2">
                         {contactSavedMessage[prospect.id] && (
-                          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Contact added</span>
+                          <span className="text-xs font-medium text-status-success">Contact added</span>
                         )}
                         <button
                           type="button"
                           onClick={() => toggleContactForm(prospect.id)}
-                          className="text-xs font-medium text-slate-600 underline hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+                          className="text-xs font-medium text-slate-300 underline hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
                         >
                           {showContactForm[prospect.id] ? "Cancel" : "+ Add contact"}
                         </button>
@@ -358,7 +376,7 @@ export default function Prospects() {
                             </p>
                             <Link
                               to={`/businesses/${companyId}/prospects/${prospect.id}/contacts/${c.id}/outreach`}
-                              className="shrink-0 rounded-md border border-slate-300 px-2 py-0.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
+                              className="shrink-0 rounded-lg border border-border-hairline px-2 py-0.5 text-xs font-medium text-slate-200 hover:border-border-hairline-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
                             >
                               Outreach
                             </Link>
@@ -370,68 +388,54 @@ export default function Prospects() {
                     {showContactForm[prospect.id] && (
                       <form
                         onSubmit={(e) => handleAddContact(e, prospect.id)}
-                        className="mt-2 space-y-2 rounded-md border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800"
+                        className="mt-2 space-y-2 rounded-lg border border-border-hairline bg-surface-2 p-3"
                       >
                         {contactErrors[prospect.id] && (
-                          <p className="text-xs text-red-600">{contactErrors[prospect.id]}</p>
+                          <p className="text-xs text-status-danger">{contactErrors[prospect.id]}</p>
                         )}
                         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                          <input
-                            className={inputClass}
+                          <Input
                             placeholder="Name"
                             value={contactForms[prospect.id]?.name ?? ""}
                             onChange={(e) => updateContactForm(prospect.id, "name", e.target.value)}
                           />
-                          <input
-                            className={inputClass}
+                          <Input
                             placeholder="Job title / role"
                             value={contactForms[prospect.id]?.role ?? ""}
                             onChange={(e) => updateContactForm(prospect.id, "role", e.target.value)}
                           />
-                          <input
-                            className={inputClass}
+                          <Input
                             placeholder="Department"
                             value={contactForms[prospect.id]?.department ?? ""}
                             onChange={(e) => updateContactForm(prospect.id, "department", e.target.value)}
                           />
-                          <select
-                            className={inputClass}
+                          <Select
                             value={contactForms[prospect.id]?.decision_maker_level ?? "unknown"}
                             onChange={(e) => updateContactForm(prospect.id, "decision_maker_level", e.target.value)}
                           >
                             {DECISION_MAKER_LEVELS.map((lvl) => (
                               <option key={lvl.value} value={lvl.value}>{lvl.label}</option>
                             ))}
-                          </select>
-                          <input
-                            className={inputClass}
+                          </Select>
+                          <Input
                             placeholder="Email"
                             type="email"
                             value={contactForms[prospect.id]?.email ?? ""}
                             onChange={(e) => updateContactForm(prospect.id, "email", e.target.value)}
                           />
-                          <input
-                            className={inputClass}
+                          <Input
                             placeholder="Phone"
                             value={contactForms[prospect.id]?.phone ?? ""}
                             onChange={(e) => updateContactForm(prospect.id, "phone", e.target.value)}
                           />
                         </div>
                         <div className="flex justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => toggleContactForm(prospect.id)}
-                            className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
-                          >
+                          <Button type="button" variant="secondary" size="sm" onClick={() => toggleContactForm(prospect.id)}>
                             Cancel
-                          </button>
-                          <button
-                            type="submit"
-                            disabled={contactSaving[prospect.id]}
-                            className="rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-                          >
-                            {contactSaving[prospect.id] ? "Saving…" : "Save contact"}
-                          </button>
+                          </Button>
+                          <Button type="submit" size="sm" isLoading={contactSaving[prospect.id]}>
+                            Save contact
+                          </Button>
                         </div>
                       </form>
                     )}
@@ -439,7 +443,7 @@ export default function Prospects() {
 
                   {timeline.length > 0 && (
                     <div>
-                      <p className="mb-1 text-sm font-medium text-slate-700 dark:text-slate-200">Timeline</p>
+                      <p className="mb-1 text-sm font-medium text-slate-200">Timeline</p>
                       <div className="space-y-1">
                         {timeline.map((event) => (
                           <p key={event.id} className="text-xs text-slate-500">
@@ -450,41 +454,32 @@ export default function Prospects() {
                     </div>
                   )}
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
                     <Link
                       to={`/businesses/${companyId}/prospects/${prospect.id}/research`}
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
+                      className="rounded-lg border border-border-hairline px-3 py-1.5 text-sm font-medium text-slate-200 hover:border-border-hairline-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
                     >
                       Research
                     </Link>
                     <Link
                       to={`/businesses/${companyId}/prospects/${prospect.id}/strategy`}
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
+                      className="rounded-lg border border-border-hairline px-3 py-1.5 text-sm font-medium text-slate-200 hover:border-border-hairline-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
                     >
                       Strategy
                     </Link>
-                    <button
-                      onClick={() => runAction(prospect, "approve")}
-                      className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700"
-                    >
+                    <Button size="sm" onClick={() => runAction(prospect, "approve")}>
                       Approve
-                    </button>
-                    <button
-                      onClick={() => runAction(prospect, "reject")}
-                      className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700"
-                    >
+                    </Button>
+                    <Button size="sm" variant="destructive" onClick={() => runAction(prospect, "reject")}>
                       Reject
-                    </button>
-                    <button
-                      onClick={() => runAction(prospect, "archive")}
-                      className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
-                    >
+                    </Button>
+                    <Button size="sm" variant="secondary" onClick={() => runAction(prospect, "archive")}>
                       Archive
-                    </button>
+                    </Button>
                   </div>
                 </div>
               )}
-            </div>
+            </Card>
           );
         })}
       </div>

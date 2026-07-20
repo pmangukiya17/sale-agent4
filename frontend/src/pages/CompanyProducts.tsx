@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { FormSection, Field, inputClass } from "../components/FormSection";
 import { TagInput } from "../components/TagInput";
+import { Card, Badge, Button, Input, Select, PlaceholderNotice } from "../design-system";
 
 interface Product {
   id: string;
@@ -67,6 +68,14 @@ function productToForm(p: Product): ProductForm {
   };
 }
 
+/**
+ * CompanyProducts — M8.7 Phase E1 (CRM zone). Migrated in place per Design
+ * Bible Section 9.2: identical fetch/create/update/delete calls, only the
+ * markup moves onto design-system primitives. FormSection/Field/TagInput
+ * (shared components, not page-local) were restyled to permanent dark
+ * tokens as part of this pass since both are used here - see their own
+ * docstrings.
+ */
 export default function CompanyProducts() {
   const { companyId } = useParams();
   const [products, setProducts] = useState<Product[]>([]);
@@ -144,36 +153,27 @@ export default function CompanyProducts() {
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
-        <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Products</h2>
-        <button
-          onClick={startCreate}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-        >
-          + Add product
-        </button>
+        <h1 className="text-h1 font-semibold text-slate-100">Products</h1>
+        <Button onClick={startCreate}>+ Add product</Button>
       </div>
 
       {showForm && (
         <form onSubmit={handleSubmit} className="mb-6">
           <FormSection title={editingId ? "Edit product" : "New product"}>
             <Field label="Name">
-              <input required className={inputClass} value={form.name} onChange={(e) => update("name", e.target.value)} />
+              <Input required value={form.name} onChange={(e) => update("name", e.target.value)} />
             </Field>
             <Field label="Category">
-              <input className={inputClass} value={form.category} onChange={(e) => update("category", e.target.value)} />
+              <Input value={form.category} onChange={(e) => update("category", e.target.value)} />
             </Field>
             <Field label="HS Code">
-              <input className={inputClass} value={form.hs_code} onChange={(e) => update("hs_code", e.target.value)} />
+              <Input value={form.hs_code} onChange={(e) => update("hs_code", e.target.value)} />
             </Field>
             <Field label="Status">
-              <select
-                className={inputClass}
-                value={form.status}
-                onChange={(e) => update("status", e.target.value as "active" | "inactive")}
-              >
+              <Select value={form.status} onChange={(e) => update("status", e.target.value as "active" | "inactive")}>
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
-              </select>
+              </Select>
             </Field>
             <Field label="Description" full>
               <textarea className={inputClass} rows={3} value={form.description} onChange={(e) => update("description", e.target.value)} />
@@ -185,27 +185,22 @@ export default function CompanyProducts() {
               <TagInput value={form.applications} onChange={(v) => update("applications", v)} placeholder="e.g. Bedding, Upholstery" />
             </Field>
             <Field label="Packaging">
-              <input className={inputClass} value={form.packaging} onChange={(e) => update("packaging", e.target.value)} />
+              <Input value={form.packaging} onChange={(e) => update("packaging", e.target.value)} />
             </Field>
             <Field label="MOQ">
-              <input className={inputClass} value={form.moq} onChange={(e) => update("moq", e.target.value)} />
+              <Input value={form.moq} onChange={(e) => update("moq", e.target.value)} />
             </Field>
             <Field label="Lead time">
-              <input className={inputClass} value={form.lead_time} onChange={(e) => update("lead_time", e.target.value)} />
+              <Input value={form.lead_time} onChange={(e) => update("lead_time", e.target.value)} />
             </Field>
             <Field label="Production capacity">
-              <input
-                className={inputClass}
-                value={form.production_capacity}
-                onChange={(e) => update("production_capacity", e.target.value)}
-              />
+              <Input value={form.production_capacity} onChange={(e) => update("production_capacity", e.target.value)} />
             </Field>
             <Field label="Specifications" full>
               <div className="space-y-2">
                 {form.specEntries.map((entry, idx) => (
                   <div key={idx} className="flex gap-2">
-                    <input
-                      className={inputClass}
+                    <Input
                       placeholder="Attribute (e.g. GSM)"
                       value={entry.key}
                       onChange={(e) => {
@@ -214,8 +209,7 @@ export default function CompanyProducts() {
                         update("specEntries", next);
                       }}
                     />
-                    <input
-                      className={inputClass}
+                    <Input
                       placeholder="Value (e.g. 300)"
                       value={entry.value}
                       onChange={(e) => {
@@ -227,7 +221,7 @@ export default function CompanyProducts() {
                     <button
                       type="button"
                       onClick={() => update("specEntries", form.specEntries.filter((_, i) => i !== idx))}
-                      className="px-2 text-slate-400 hover:text-slate-700"
+                      className="px-2 text-slate-500 hover:text-slate-200"
                     >
                       ×
                     </button>
@@ -236,7 +230,7 @@ export default function CompanyProducts() {
                 <button
                   type="button"
                   onClick={() => update("specEntries", [...form.specEntries, { key: "", value: "" }])}
-                  className="text-xs font-medium text-slate-500 underline hover:text-slate-800"
+                  className="text-xs font-medium text-slate-400 underline hover:text-slate-200"
                 >
                   + Add specification
                 </button>
@@ -244,66 +238,52 @@ export default function CompanyProducts() {
             </Field>
           </FormSection>
 
-          {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+          {error && <p className="mb-4 text-sm text-status-danger">{error}</p>}
 
           <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
-            >
+            <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-            >
-              Save product
-            </button>
+            </Button>
+            <Button type="submit">Save product</Button>
           </div>
         </form>
       )}
 
-      {isLoading && <p className="text-sm text-slate-500">Loading…</p>}
-
       {!isLoading && products.length === 0 && !showForm && (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900">
-          No products yet. Add your first one so the AI knows what this business sells.
-        </div>
+        <PlaceholderNotice kind="no-data" reason="No products yet. Add your first one so the AI knows what this business sells." />
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {isLoading &&
+          Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="h-32 animate-pulse">
+              {null}
+            </Card>
+          ))}
+
         {products.map((p) => (
-          <div key={p.id} className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+          <Card key={p.id}>
             <div className="mb-2 flex items-start justify-between">
-              <h3 className="font-semibold text-slate-900 dark:text-slate-100">{p.name}</h3>
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                  p.status === "active"
-                    ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300"
-                    : "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400"
-                }`}
-              >
-                {p.status}
-              </span>
+              <h3 className="font-semibold text-slate-100">{p.name}</h3>
+              <Badge tone={p.status === "active" ? "success" : "neutral"}>{p.status}</Badge>
             </div>
             {p.category && <p className="mb-1 text-xs text-slate-500">{p.category}</p>}
-            {p.description && <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">{p.description}</p>}
+            {p.description && <p className="mb-3 text-sm text-slate-300">{p.description}</p>}
             <div className="flex gap-2 text-sm">
               <button
                 onClick={() => startEdit(p)}
-                className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                className="rounded-lg border border-border-hairline px-3 py-1.5 text-slate-200 hover:border-border-hairline-strong hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
               >
                 Edit
               </button>
               <button
                 onClick={() => handleDelete(p.id)}
-                className="rounded-md border border-slate-200 px-3 py-1.5 text-red-600 hover:bg-red-50 dark:border-slate-700"
+                className="rounded-lg border border-border-hairline px-3 py-1.5 text-status-danger hover:bg-status-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
               >
                 Delete
               </button>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
     </div>

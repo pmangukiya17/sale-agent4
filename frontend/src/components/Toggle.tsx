@@ -1,3 +1,9 @@
+/**
+ * Toggle — shared boolean switch. Restyled to the permanent dark
+ * design-system tokens in M8.7 Phase E (accent-primary when on, surface-3
+ * when off, matching Button/Input's own focus-visible convention) - same
+ * reasoning as FormSection.tsx's own docstring.
+ */
 export function Toggle({
   checked,
   onChange,
@@ -11,11 +17,11 @@ export function Toggle({
     <button
       type="button"
       onClick={() => onChange(!checked)}
-      className="flex items-center gap-2"
+      className="flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface-0"
     >
       <span
         className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-          checked ? "bg-slate-900 dark:bg-indigo-500" : "bg-slate-300 dark:bg-slate-600"
+          checked ? "bg-accent-primary" : "bg-surface-3"
         }`}
       >
         <span
@@ -24,7 +30,7 @@ export function Toggle({
           }`}
         />
       </span>
-      {label && <span className="text-sm text-slate-700 dark:text-slate-300">{label}</span>}
+      {label && <span className="text-sm text-slate-300">{label}</span>}
     </button>
   );
 }

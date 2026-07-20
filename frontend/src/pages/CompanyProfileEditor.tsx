@@ -7,6 +7,7 @@ import { TagInput } from "../components/TagInput";
 import { MultiSelect, type MultiSelectOption } from "../components/MultiSelect";
 import { Toggle } from "../components/Toggle";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { Button, Input } from "../design-system";
 
 const BUSINESS_TYPE_OPTIONS = ["manufacturer", "trading_company", "exporter"];
 
@@ -58,6 +59,15 @@ const EMPTY_FORM: CompanyProfileForm = {
   industry_ids: [],
 };
 
+/**
+ * CompanyProfileEditor — M8.7 Phase E1 (CRM zone). Migrated in place per
+ * Design Bible Section 9.2: identical load/save calls (GET /industries,
+ * GET/PUT/POST /company-profiles), only the markup moves onto the
+ * design-system tokens/primitives. FormSection/Field/TagInput/MultiSelect/
+ * Toggle (shared components) were restyled to permanent dark tokens
+ * earlier in this same Phase E pass - see their own docstrings - since
+ * this page is one of their consumers.
+ */
 export default function CompanyProfileEditor() {
   const { companyId } = useParams();
   const isEditing = Boolean(companyId);
@@ -162,50 +172,38 @@ export default function CompanyProfileEditor() {
     <div className="mx-auto max-w-4xl">
       <Breadcrumbs items={[{ label: "Businesses", to: "/businesses" }, { label: "Business Settings" }]} />
 
-      <h2 className="mb-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">
-        {isEditing ? "Edit business" : "Add a business"}
-      </h2>
-      <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
+      <h1 className="mb-1 text-h1 font-semibold text-slate-100">{isEditing ? "Edit business" : "Add a business"}</h1>
+      <p className="mb-6 text-body text-slate-400">
         This is what every AI agent will read before doing anything on this business's behalf.
       </p>
 
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mb-4 text-sm text-status-danger">{error}</p>}
 
       <form onSubmit={handleSubmit}>
         <FormSection title="Basic Info">
           <Field label="Company name" full>
-            <input
-              required
-              className={inputClass}
-              value={form.name}
-              onChange={(e) => update("name", e.target.value)}
-            />
+            <Input required value={form.name} onChange={(e) => update("name", e.target.value)} />
           </Field>
           <Field label="Logo URL">
-            <input className={inputClass} value={form.logo_url} onChange={(e) => update("logo_url", e.target.value)} />
+            <Input value={form.logo_url} onChange={(e) => update("logo_url", e.target.value)} />
           </Field>
           <Field label="Website">
-            <input className={inputClass} value={form.website} onChange={(e) => update("website", e.target.value)} />
+            <Input value={form.website} onChange={(e) => update("website", e.target.value)} />
           </Field>
           <Field label="Email">
-            <input className={inputClass} value={form.email} onChange={(e) => update("email", e.target.value)} />
+            <Input value={form.email} onChange={(e) => update("email", e.target.value)} />
           </Field>
           <Field label="Phone">
-            <input className={inputClass} value={form.phone} onChange={(e) => update("phone", e.target.value)} />
+            <Input value={form.phone} onChange={(e) => update("phone", e.target.value)} />
           </Field>
           <Field label="Country">
-            <input className={inputClass} value={form.country} onChange={(e) => update("country", e.target.value)} />
+            <Input value={form.country} onChange={(e) => update("country", e.target.value)} />
           </Field>
           <Field label="Timezone (IANA, e.g. Europe/Berlin)">
-            <input className={inputClass} value={form.timezone} onChange={(e) => update("timezone", e.target.value)} />
+            <Input value={form.timezone} onChange={(e) => update("timezone", e.target.value)} />
           </Field>
           <Field label="Address" full>
-            <textarea
-              className={inputClass}
-              rows={2}
-              value={form.address}
-              onChange={(e) => update("address", e.target.value)}
-            />
+            <textarea className={inputClass} rows={2} value={form.address} onChange={(e) => update("address", e.target.value)} />
           </Field>
           <Field label="Set as default business">
             <Toggle checked={form.is_default} onChange={(v) => update("is_default", v)} />
@@ -225,11 +223,7 @@ export default function CompanyProfileEditor() {
             />
           </Field>
           <Field label="Industries" full>
-            <MultiSelect
-              options={industries}
-              selected={form.industry_ids}
-              onChange={(ids) => update("industry_ids", ids)}
-            />
+            <MultiSelect options={industries} selected={form.industry_ids} onChange={(ids) => update("industry_ids", ids)} />
           </Field>
         </FormSection>
 
@@ -237,7 +231,7 @@ export default function CompanyProfileEditor() {
           <Field label="Business type" full>
             <div className="flex flex-wrap gap-3">
               {BUSINESS_TYPE_OPTIONS.map((option) => (
-                <label key={option} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                <label key={option} className="flex items-center gap-2 text-sm text-slate-300">
                   <input
                     type="checkbox"
                     checked={form.business_type.includes(option)}
@@ -249,6 +243,7 @@ export default function CompanyProfileEditor() {
                           : [...form.business_type, option]
                       )
                     }
+                    className="h-4 w-4 rounded border-border-hairline-strong bg-surface-1 accent-accent-primary"
                   />
                   {option.replace("_", " ")}
                 </label>
@@ -256,23 +251,17 @@ export default function CompanyProfileEditor() {
             </div>
           </Field>
           <Field label="Production capacity">
-            <input
-              className={inputClass}
+            <Input
               value={form.production_capacity}
               onChange={(e) => update("production_capacity", e.target.value)}
               placeholder="e.g. 50,000 meters/month"
             />
           </Field>
           <Field label="Factory location">
-            <input
-              className={inputClass}
-              value={form.factory_location}
-              onChange={(e) => update("factory_location", e.target.value)}
-            />
+            <Input value={form.factory_location} onChange={(e) => update("factory_location", e.target.value)} />
           </Field>
           <Field label="Minimum order quantity">
-            <input
-              className={inputClass}
+            <Input
               value={form.minimum_order_quantity}
               onChange={(e) => update("minimum_order_quantity", e.target.value)}
               placeholder="e.g. 1000 meters"
@@ -317,20 +306,12 @@ export default function CompanyProfileEditor() {
         </FormSection>
 
         <div className="flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={() => navigate("/businesses")}
-            className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
-          >
+          <Button type="button" variant="secondary" onClick={() => navigate("/businesses")}>
             Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-          >
-            {isSaving ? "Saving…" : "Save business"}
-          </button>
+          </Button>
+          <Button type="submit" isLoading={isSaving}>
+            Save business
+          </Button>
         </div>
       </form>
     </div>
