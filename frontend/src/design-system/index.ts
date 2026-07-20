@@ -14,5 +14,15 @@ export { StatusIndicator } from "./StatusIndicator";
 export type { StatusIndicatorProps, StatusKind } from "./StatusIndicator";
 export { Tabs } from "./Tabs";
 export type { TabItem } from "./Tabs";
+// M8.7 Phase D — filling Section 4.6's remaining component catalog gaps.
+export { Select } from "./Select";
+export { Table } from "./Table";
+export type { TableColumn, TableProps } from "./Table";
+export { Modal } from "./Modal";
+export type { ModalProps } from "./Modal";
+export { ToastProvider, useToast } from "./Toast";
+export type { ToastOptions, ToastTone } from "./Toast";
+export { Tooltip } from "./Tooltip";
+export type { TooltipProps } from "./Tooltip";
 export { cn } from "./cn";
 export * from "./tokens";
