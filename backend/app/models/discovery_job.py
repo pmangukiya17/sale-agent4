@@ -46,6 +46,14 @@ class DiscoveryJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     raw_result_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     prospect_created_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     prospect_matched_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # M8.8: real per-run scoring outcomes (migration 0018) - how many of
+    # THIS run's touched prospects ended QUALIFIED vs UNQUALIFIED after
+    # _score_and_apply(), for the Live Workflow Visualization's "Qualified
+    # buyers" / "Rejected buyers" fields. Not derivable after the fact from
+    # Prospect.status alone (a prospect's status can change on a LATER
+    # run), so this is captured at the moment this specific job scores it.
+    prospect_qualified_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    prospect_rejected_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Per-provider timing/status/error detail, one entry per provider run
     # (also mirrored as rows in discovery_job_provider_runs for querying).

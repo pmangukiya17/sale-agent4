@@ -36,6 +36,8 @@ class DiscoveryJobRead(BaseModel):
     raw_result_count: int
     prospect_created_count: int
     prospect_matched_count: int
+    prospect_qualified_count: int
+    prospect_rejected_count: int
     error_message: str | None
     log: list[dict[str, Any]]
     provider_runs: list[DiscoveryJobProviderRunRead] = []

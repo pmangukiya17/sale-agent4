@@ -1,9 +1,24 @@
 """
-Synchronous Discovery pipeline orchestrator. M1 is manual-execution-only -
-no Celery/Redis/BackgroundTasks/polling worker - so running a search means
-doing all of this within one request/response cycle. Real trade-off: a
-slow provider makes for a slow HTTP request; accepted for this milestone,
-revisit if/when manual-only execution stops being sufficient.
+Discovery pipeline orchestrator.
+
+M8.8 update: this function is now ALSO reachable asynchronously, via
+DiscoveryExecutionAction (app/workflow_actions/discovery_execution_action.py),
+triggered off a real Event through the M7 Workflow Engine rather than only
+from the synchronous /run route. To make that path produce genuinely LIVE,
+incremental progress (not one atomic all-or-nothing write at the very end),
+this function now commits at three points instead of one: right after the
+DiscoveryJob row is created (so a poller sees "running" immediately, before
+any provider has even started), once per provider as it finishes (success
+or failure), and once at final completion - each commit paired with a real
+publish_event(DISCOVERY_JOB_PROGRESS_EVENT_TYPE) so a live UI is told to
+re-fetch, the same "arrival is a nudge to re-fetch, never itself the
+payload of truth" pattern M8.5/M8.6 already established for Notifications/
+the real-time stream. The synchronous /run route no longer calls this
+directly (see app/api/routes/discovery_searches.py) - it publishes
+DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE instead - but this function's own
+signature and every one of its existing synchronous callers (tests,
+scripts) continue to work completely unchanged; incremental commits are an
+internal implementation detail, not a contract change.
 """
 from datetime import datetime, timezone
 
@@ -30,6 +45,20 @@ from app.models.prospect_contact import ProspectContact
 from app.models.prospect_source import ProspectSource
 from app.models.prospect_timeline_event import ProspectTimelineEvent
 from app.models.user import User
+from app.workflow_engine.events import publish_event
+
+# M8.8: the two Discovery event types the Live Workflow Visualization is
+# built on. RUN_REQUESTED is published once, by the /run route, as the
+# trigger for the "discovery_search_execution" built-in WorkflowDefinition
+# (app/workflow_bootstrap.py). PROGRESS is published from inside this
+# module, every time discovery_jobs (or its provider-run children) changes
+# in a way a live viewer should re-fetch for - it deliberately carries no
+# business data of its own (just enough to identify the job), exactly like
+# every other Event in this codebase: an arrival signal, not the payload of
+# truth. The real, authoritative state is always re-read from
+# GET /company-profiles/{id}/discovery-jobs/{job_id}.
+DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE = "discovery_search.run_requested"
+DISCOVERY_JOB_PROGRESS_EVENT_TYPE = "discovery_job.progress"
 
 # Prospects a human has already made a call on are never re-scored or
 # re-statused by a later run - a re-surfacing just bumps last_seen_at and
@@ -107,6 +136,23 @@ def _score_and_apply(db: Session, prospect: Prospect, icp: ICPCriteria, products
     }))
 
 
+def _publish_job_progress(db: Session, job: DiscoveryJob, company_profile_id) -> None:
+    """One nudge, no payload beyond enough to identify the job - see this
+    module's own docstring for why. Flushes but does not commit; callers
+    always pair this with their own db.commit() immediately after, so the
+    Event and whatever domain write it's reporting land in the same
+    transaction (transactional outbox, per publish_event's own contract)."""
+    publish_event(
+        db,
+        event_type=DISCOVERY_JOB_PROGRESS_EVENT_TYPE,
+        company_profile_id=company_profile_id,
+        source="app.discovery.pipeline",
+        subject_type="discovery_job",
+        subject_id=job.id,
+        payload={"status": job.status.value if hasattr(job.status, "value") else job.status},
+    )
+
+
 def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user: User) -> DiscoveryJob:
     icp = _resolve_icp(db, search)
     company_profile = db.get(CompanyProfile, search.company_profile_id)
@@ -121,6 +167,14 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
     )
     db.add(job)
     db.flush()  # need job.id before child rows reference it
+
+    # M8.8: commit + publish immediately, before a single provider has run -
+    # a live viewer polling GET .../discovery-jobs/{job.id} sees this job
+    # exist and be RUNNING right away, instead of only once everything is
+    # already finished.
+    _publish_job_progress(db, job, search.company_profile_id)
+    db.commit()
+    db.refresh(job)
 
     existing_prospects = list(
         db.scalars(select(Prospect).where(Prospect.company_profile_id == search.company_profile_id)).all()
@@ -152,6 +206,11 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
                 "provider_key": provider_key, "started_at": started_at.isoformat(),
                 "finished_at": failed_at.isoformat(), "status": "failed", "error": str(exc),
             })
+            # M8.8: commit this provider's outcome + nudge immediately -
+            # a live viewer sees THIS provider fail the moment it fails,
+            # not only once every other provider has also finished.
+            _publish_job_progress(db, job, search.company_profile_id)
+            db.commit()
             continue
 
         try:
@@ -168,6 +227,8 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
                 "provider_key": provider_key, "started_at": started_at.isoformat(),
                 "finished_at": failed_at.isoformat(), "status": "failed", "error": str(exc),
             })
+            _publish_job_progress(db, job, search.company_profile_id)
+            db.commit()
             continue
 
         finished_at = _now()
@@ -268,13 +329,29 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
 
             touched_prospects[prospect.id] = prospect
 
+        # M8.8: this provider (and every prospect/result it produced) is
+        # now fully written - commit + nudge before moving to the next
+        # provider, so a live viewer's provider list fills in one entry at
+        # a time as each real provider actually finishes, never all at once
+        # at the very end.
+        job.raw_result_count = raw_result_count
+        job.providers_used = providers_used
+        _publish_job_progress(db, job, search.company_profile_id)
+        db.commit()
+        db.refresh(job)
+
     for prospect in touched_prospects.values():
         _score_and_apply(db, prospect, icp, context.products)
+
+    qualified_count = sum(1 for p in touched_prospects.values() if p.status == ProspectStatus.QUALIFIED)
+    rejected_count = sum(1 for p in touched_prospects.values() if p.status == ProspectStatus.UNQUALIFIED)
 
     job.providers_used = providers_used
     job.raw_result_count = raw_result_count
     job.prospect_created_count = created_count
     job.prospect_matched_count = matched_count
+    job.prospect_qualified_count = qualified_count
+    job.prospect_rejected_count = rejected_count
     job.finished_at = _now()
     job.error_message = "; ".join(error_messages) if error_messages else None
     job.log = job_log
@@ -307,6 +384,10 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
     )
     db.add(run)
 
+    # M8.8: the final transition - job.status is now terminal
+    # (COMPLETED/PARTIALLY_COMPLETED/FAILED) - one last nudge so a live
+    # viewer knows to fetch the completion summary.
+    _publish_job_progress(db, job, search.company_profile_id)
     db.commit()
     db.refresh(job)
     return job
