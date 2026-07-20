@@ -111,15 +111,17 @@ export default function DeliveryOnboarding() {
                   to={step.to}
                   className="flex items-center gap-1.5 rounded-pill border border-border-hairline px-3 py-1 text-sm text-slate-300 hover:border-border-hairline-strong hover:text-slate-100"
                 >
-                  <span className="text-slate-600">○</span>
+                  <span className="text-slate-600" aria-hidden="true">○</span>
                   {step.label}
                 </Link>
               )}
-              {i < steps.length - 1 && <span className="text-slate-600">→</span>}
+              {i < steps.length - 1 && (
+                <span className="text-slate-600" aria-hidden="true">→</span>
+              )}
             </div>
           );
         })}
-        <span className="text-slate-600">→</span>
+        <span className="text-slate-600" aria-hidden="true">→</span>
         <span
           className={`flex items-center gap-1.5 rounded-pill px-3 py-1 text-sm ${
             deliveryReady ? "bg-status-success/10 text-status-success" : "border border-dashed border-border-hairline-strong text-slate-500"

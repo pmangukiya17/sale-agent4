@@ -38,6 +38,13 @@ import { useAgentActivities } from "../ai-workforce/useAgentActivities";
  *   EMPTY state ("No notifications yet") when the Notification worker
  *   genuinely hasn't produced anything for this workspace, distinct from
  *   its loading/error states - never fabricated sample notifications.
+ * - M8.7 Phase F: a visually-hidden `aria-live="polite"` region announces
+ *   the unread count whenever it changes, mounted unconditionally
+ *   (not only while the popover is open) - a screen-reader user should
+ *   hear "3 unread notifications" the moment useNotifications' polling
+ *   picks up new ones, the same way a sighted user notices the red dot,
+ *   without having to have the panel open. The open panel's own list
+ *   also carries `aria-live="polite"` for the same reason while visible.
  */
 export function TopCommandStrip() {
   const { user } = useAuth();
@@ -80,6 +87,9 @@ export function TopCommandStrip() {
               <span className="absolute right-1 top-1 flex h-2 w-2 rounded-full bg-accent-critical" aria-hidden="true" />
             )}
           </button>
+          <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+            {unreadCount > 0 ? `${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}` : ""}
+          </span>
           {notificationsOpen && (
             <div className="absolute right-0 z-20 mt-2 w-80 rounded-card border border-border-hairline-strong bg-surface-1/95 p-4 shadow-elevation-3 backdrop-blur-xl">
               <div className="flex items-center justify-between">
@@ -105,7 +115,7 @@ export function TopCommandStrip() {
               )}
 
               {!isLoading && !error && notifications.length > 0 && (
-                <ul className="mt-2 max-h-80 space-y-1 overflow-y-auto">
+                <ul className="mt-2 max-h-80 space-y-1 overflow-y-auto" aria-live="polite">
                   {notifications.map((notification) => (
                     <li key={notification.id}>
                       <button

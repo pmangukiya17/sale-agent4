@@ -40,7 +40,7 @@ export function TopPerformingCountries({
           {ranked.map((c, i) => (
             <li key={c.country} className="flex items-center justify-between text-xs">
               <span className="flex min-w-0 items-center gap-1.5 text-slate-300">
-                <span className="text-slate-600">{i + 1}</span>
+                <span className="text-slate-500">{i + 1}</span>
                 <span className="truncate">{c.country}</span>
               </span>
               <span className="shrink-0 font-medium text-slate-300">{c.avgScore?.toFixed(0)}</span>

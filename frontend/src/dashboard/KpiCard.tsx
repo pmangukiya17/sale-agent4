@@ -29,8 +29,8 @@ export interface KpiCardProps {
 }
 
 const PLACEHOLDER_STYLES: Record<PlaceholderKind, { icon: typeof Inbox; text: string; caption: string }> = {
-  "no-data": { icon: Inbox, text: "text-slate-600", caption: "text-slate-600" },
-  "not-implemented": { icon: Construction, text: "text-slate-600", caption: "text-status-warning" },
+  "no-data": { icon: Inbox, text: "text-slate-500", caption: "text-slate-500" },
+  "not-implemented": { icon: Construction, text: "text-slate-500", caption: "text-status-warning" },
 };
 
 export function KpiCard({ label, value, icon: Icon, delta, placeholderKind, placeholderReason }: KpiCardProps) {

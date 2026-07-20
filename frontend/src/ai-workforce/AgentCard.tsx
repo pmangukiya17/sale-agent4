@@ -40,7 +40,7 @@ export function AgentCard({
             <dd className="truncate text-slate-300">{activity.current_action_key ?? "—"}</dd>
           </div>
         </dl>
-        <p className="text-[11px] text-slate-600">
+        <p className="text-[11px] text-slate-500">
           Updated {new Date(activity.updated_at).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
         </p>
       </Card>

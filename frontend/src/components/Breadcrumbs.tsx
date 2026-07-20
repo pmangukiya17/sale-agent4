@@ -19,7 +19,11 @@ export function Breadcrumbs({ items }: { items: BreadcrumbItem[] }) {
     <nav aria-label="Breadcrumb" className="mb-4 flex flex-wrap items-center gap-1.5 text-sm">
       {items.map((item, i) => (
         <span key={i} className="flex items-center gap-1.5">
-          {i > 0 && <span className="text-slate-700">/</span>}
+          {i > 0 && (
+            <span className="text-slate-700" aria-hidden="true">
+              /
+            </span>
+          )}
           {item.to ? (
             <Link to={item.to} className="text-slate-500 hover:text-slate-200">
               {item.label}

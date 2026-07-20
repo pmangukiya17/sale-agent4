@@ -139,7 +139,13 @@ export function WorldMap({ countries, selectedCountry, onSelectCountry, geometry
           return (
             <g key={m.country}>
               {m.hasActivityToday && (
-                <circle cx={m.x} cy={m.y} r={m.radius + 4} className="fill-accent-primary/20 animate-pulse" />
+                // M8.7 Phase F: motion-reduce:animate-none is the static
+                // equivalent for this category-1 "always alive" pulse
+                // (Design Bible Section 5/12) - the ring itself (still
+                // rendered at rest, just not animating) is what actually
+                // carries "activity today," so turning off the animation
+                // loses no information.
+                <circle cx={m.x} cy={m.y} r={m.radius + 4} className="fill-accent-primary/20 animate-pulse motion-reduce:animate-none" />
               )}
               <circle
                 cx={m.x}
@@ -165,12 +171,12 @@ export function WorldMap({ countries, selectedCountry, onSelectCountry, geometry
         })}
       </svg>
       {!geometry && (
-        <p className="absolute bottom-1.5 left-2 text-[10px] text-slate-600">
+        <p className="absolute bottom-1.5 left-2 text-[10px] text-slate-500">
           Placeholder geography - awaiting real country outline data.
         </p>
       )}
       {unplotted > 0 && (
-        <p className="absolute bottom-1.5 right-2 text-[10px] text-slate-600">
+        <p className="absolute bottom-1.5 right-2 text-[10px] text-slate-500">
           {unplotted} unplotted {unplotted === 1 ? "country" : "countries"}
         </p>
       )}

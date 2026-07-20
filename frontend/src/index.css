@@ -17,3 +17,32 @@ body {
    metrics, timestamps) everywhere. No custom rule needed here - Tailwind
    core already ships a `tabular-nums` utility class; components apply it
    deliberately wherever a number actually renders. */
+
+/* M8.7 Phase F — Section 12's "every interactive element has a visible
+   focus-visible ring" as a system-wide guarantee, not a per-component
+   convention. Design-system primitives (Button, Input, Select, Toggle,
+   Tabs, etc.) already carry their own explicit focus-visible classes,
+   which win here via normal CSS specificity/source order - this is a
+   backstop for the many raw <button>/<a> elements across pages/ and
+   components/ (expand/collapse row headers, shell nav items, dropdown
+   triggers) that predate the design system or were added across many
+   files during the M8.7 Phase E page migration without each one
+   individually carrying a focus ring. Auditing and patching every one of
+   those individually would have the exact same visual outcome as this
+   one rule, with far more room to miss one - a single base-layer rule is
+   the correct fix for a cross-cutting requirement like this, the same
+   way `body { font-family }` above is one rule instead of a className on
+   every element. Uses :focus-visible (keyboard/programmatic focus only),
+   never plain :focus, so a mouse click never shows a ring a keyboard
+   user didn't ask to see. */
+@layer base {
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [tabindex]:focus-visible {
+    outline: 2px solid theme("colors.accent.primary");
+    outline-offset: 2px;
+  }
+}

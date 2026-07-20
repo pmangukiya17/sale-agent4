@@ -27,6 +27,14 @@ import { cn } from "./cn";
  * be slow/low-contrast enough to recede into peripheral awareness, not
  * compete for attention, and a ping-style ring reads as far too "busy"
  * across a whole roster of simultaneously active agent cards.
+ *
+ * M8.7 Phase F: every pulsing dot also carries `motion-reduce:animate-none`
+ * - Section 12's `prefers-reduced-motion` requirement for every category-1
+ * "always alive" animation. The static equivalent needs no extra markup
+ * here: the dot's color + the text label already communicate "active"
+ * without motion, so turning the animation off under reduced-motion loses
+ * no information, per Section 5's own state vocabulary being color+text,
+ * never motion alone.
  */
 export type StatusKind = "active" | "waiting" | "success" | "failed" | "idle" | "paused";
 
@@ -54,7 +62,7 @@ export function StatusIndicator({ kind, label, className }: StatusIndicatorProps
   const style = KIND_STYLES[kind];
   return (
     <span className={cn("inline-flex items-center gap-2 text-sm font-medium", style.text, className)}>
-      <span className={cn("inline-flex h-2 w-2 rounded-full", style.dot, style.pulse && "animate-pulse")} />
+      <span className={cn("inline-flex h-2 w-2 rounded-full", style.dot, style.pulse && "animate-pulse motion-reduce:animate-none")} />
       {label}
     </span>
   );

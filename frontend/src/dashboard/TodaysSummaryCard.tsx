@@ -18,7 +18,7 @@ export function TodaysSummaryCard({ prospects, isLoading }: { prospects: Dashboa
   const summary = todaysSummary(prospects);
 
   if (isLoading) {
-    return <p className="text-xs text-slate-600">Loading today's summary…</p>;
+    return <p className="text-xs text-slate-500">Loading today's summary…</p>;
   }
 
   return (

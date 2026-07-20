@@ -40,6 +40,24 @@ export default {
           danger: "#EF4444",
           info: "#38BDF8",
         },
+        // M8.7 Phase F — contrast audit (Design Bible Section 12: "all body
+        // text against surface-0/surface-1 must meet WCAG AA (4.5:1),
+        // tested against the actual rendered surface color"). Tailwind's
+        // stock slate-500 (#64748b) is this app's most-used "muted
+        // caption/secondary text" color (~145 call sites) but measures
+        // only ~4.05:1 on surface-0 and ~3.87:1 on surface-1 - a real,
+        // silent AA failure at normal text sizes, not caught until this
+        // audit because each individual usage "looked fine" in isolation
+        // (exactly the failure mode Section 12 warns about). Overriding
+        // the token here - rather than hand-editing ~145 call sites -
+        // fixes every consumer at once and keeps "slate-500 means muted
+        // text" a single, checkable fact instead of ~145 independent
+        // ones. #728299 keeps the same cool-gray hue family as the
+        // default (100,116,139), lightened just enough to clear 4.5:1
+        // against both surface-0 (~4.94:1) and surface-1 (~4.70:1).
+        slate: {
+          500: "#728299",
+        },
       },
       fontFamily: {
         // Design Bible 4.2 — a single geometric/technical sans everywhere.

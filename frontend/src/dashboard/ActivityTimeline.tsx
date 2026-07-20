@@ -17,6 +17,16 @@ import { recentActivity } from "./selectors";
  * short list, since a scrollbar inside a small bottom-row card reads as
  * clutter at that size - the fuller, scrollable variant stays available
  * for non-compact use (e.g. a future Prospect detail page).
+ *
+ * M8.7 Phase F: the list carries `aria-live="polite"` - Section 12's
+ * requirement that the Activity Timeline is a real live region, not just
+ * a visual feed - so a screen-reader user is told when new activity
+ * appears after a portfolio refresh, the same way a sighted user notices
+ * a new row. No CSS insert-animation exists on this list today (each
+ * refresh re-renders the whole list from `prospects`, it doesn't
+ * literally insert one new DOM row with a transition), so there is no
+ * category-1 motion here yet needing a `prefers-reduced-motion` variant -
+ * only the aria-live wiring applies for now.
  */
 export function ActivityTimeline({
   prospects,
@@ -39,7 +49,7 @@ export function ActivityTimeline({
       ) : items.length === 0 ? (
         <p className="text-xs text-slate-500">No recent activity yet.</p>
       ) : (
-        <ul className={compact ? "space-y-1" : "max-h-64 space-y-2 overflow-y-auto pr-1"}>
+        <ul className={compact ? "space-y-1" : "max-h-64 space-y-2 overflow-y-auto pr-1"} aria-live="polite">
           {items.map((item) => (
             <li key={item.id} className="flex items-start justify-between gap-2 text-xs">
               <div className="min-w-0">
