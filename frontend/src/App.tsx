@@ -321,7 +321,7 @@ export default function App() {
         element={
           <ProtectedRoute>
             <DashboardLayout>
-              <ComingSoon title="Mailbox Brief" milestone="M8.7" />
+              <ComingSoon title="Mailbox Brief" milestone="a future milestone" />
             </DashboardLayout>
           </ProtectedRoute>
         }
@@ -331,7 +331,7 @@ export default function App() {
         element={
           <ProtectedRoute>
             <DashboardLayout>
-              <ComingSoon title="Conversations" milestone="M8.7" />
+              <ComingSoon title="Conversations" milestone="a future milestone" />
             </DashboardLayout>
           </ProtectedRoute>
         }
