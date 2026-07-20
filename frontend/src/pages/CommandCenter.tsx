@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Card } from "../design-system";
 import { useCompanies } from "../companies/CompanyContext";
-import { useDashboardPortfolio, useLegacyCompanyStages } from "../dashboard/useDashboardPortfolio";
+import { useDashboardPortfolio } from "../dashboard/useDashboardPortfolio";
 import { useCountryReference } from "../dashboard/useCountryReference";
 import { useWorldGeometry } from "../dashboard/useWorldGeometry";
 import { aggregateByCountry } from "../dashboard/selectors";
@@ -13,6 +13,7 @@ import { CountryIntelligencePanel } from "../dashboard/CountryIntelligencePanel"
 import { AiWorkforceStatusWidget } from "../dashboard/AiWorkforceStatusWidget";
 import { AiPipelineWidget } from "../dashboard/AiPipelineWidget";
 import { SalesPipelineWidget } from "../dashboard/SalesPipelineWidget";
+import { PipelineFunnel } from "../dashboard/PipelineFunnel";
 import { TodaysPriorities } from "../dashboard/TodaysPriorities";
 import { AiRecommendations } from "../dashboard/AiRecommendations";
 import { MailboxBrief } from "../dashboard/MailboxBrief";
@@ -37,11 +38,16 @@ import { ActivityTimeline } from "../dashboard/ActivityTimeline";
  *     revision's explicit 3-column middle-row structure - it defaults to
  *     the top-scoring country so the column is never empty, and still
  *     updates on map click.
- *   - Bottom row (`flex-1 min-h-0`): seven compact cards in one dense
- *     grid (AI Pipeline, Sales Pipeline, Priorities, Recommendations,
- *     Mailbox Brief, Activity, Top Countries) - all visible
- *     simultaneously, not behind tabs. Because the middle row's height is
- *     now capped, this row reliably gets the space it needs instead of
+ *   - Bottom row (`flex-1 min-h-0`): eight compact cards in one dense
+ *     grid (AI Pipeline, Sales Pipeline, Pipeline Overview funnel,
+ *     Priorities, Recommendations, Mailbox Brief, Activity, Top
+ *     Countries) - all visible simultaneously, not behind tabs. Pipeline
+ *     Overview restored here in M8.7 Phase C (Design Bible Section 8
+ *     requires it; it had been dropped from composition, not deleted,
+ *     during the M8.3 layout revision) - see PipelineFunnel.tsx's own
+ *     docstring for why it was also rewritten to an honest placeholder
+ *     rather than simply restored as-is. Because the middle row's height
+ *     is capped, this row reliably gets the space it needs instead of
  *     being squeezed off-screen.
  * Every widget here uses Card's new `padding="compact"` variant (see
  * Card.tsx) and, where applicable, a `limit`/`compact` prop to show fewer
@@ -63,7 +69,6 @@ import { ActivityTimeline } from "../dashboard/ActivityTimeline";
 export default function CommandCenter() {
   const { activeCompanyId, isLoading: companiesLoading } = useCompanies();
   const { prospects, isLoading: prospectsLoading } = useDashboardPortfolio();
-  const { companies, isLoading: legacyLoading } = useLegacyCompanyStages();
   const { byName } = useCountryReference();
   const { geometry } = useWorldGeometry();
   const navigate = useNavigate();
@@ -138,11 +143,17 @@ export default function CommandCenter() {
         </div>
       </section>
 
-      {/* Bottom row — Operational Deck: seven compact cards, all visible
-          at once, no tabs. */}
-      <section className="grid min-h-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-7">
+      {/* Bottom row — Operational Deck: eight compact cards, all visible
+          at once, no tabs. M8.7 Phase C restores Pipeline Overview
+          (Design Bible Section 8 requires it; the M8.3 layout revision
+          had dropped it from composition without removing the file) as
+          an 8th column rather than a 2nd row - grid-cols-7 to
+          grid-cols-8 only narrows each column, it does not add height,
+          so the single-screen fix M8.3 fought hard to land is untouched. */}
+      <section className="grid min-h-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-8">
         <AiPipelineWidget prospects={prospects} isLoading={prospectsLoading} />
         <SalesPipelineWidget />
+        <PipelineFunnel />
         <TodaysPriorities prospects={prospects} isLoading={prospectsLoading} limit={3} compact />
         <AiRecommendations />
         <MailboxBrief />

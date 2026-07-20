@@ -1,47 +1,41 @@
 import { Card } from "../design-system";
-import type { LegacyCompany } from "./useDashboardPortfolio";
-import { FUNNEL_GROUPS, countByLegacyStage } from "./selectors";
+import { PlaceholderNotice } from "./PlaceholderNotice";
 
 /**
- * Pipeline Overview funnel — Zone 3 (Design Bible: Discovered → Researched
- * → Outreach → Replied → Negotiation → Won, "distinct from the Zone 2
- * stage-box widget"). Same real Company.stage data as SalesPipelineWidget,
- * but collapsed into 6 macro groups (selectors.ts's FUNNEL_GROUPS) instead
- * of shown as all 18 raw enum values - a genuinely different aggregation
- * and visualization (a funnel, not a stage list), satisfying the
- * "distinct from Zone 2" requirement without a second data source.
+ * Pipeline Overview funnel — Zone 3, Design Bible Section 8: "Discovered
+ * → Researched → Outreach → Replied → Negotiation → Won, the top-of-
+ * funnel conversion view, distinct from... the Sales Pipeline stage-box
+ * widget in Zone 2."
+ *
+ * M8.7 Phase C finding: this widget previously rendered real-looking bars
+ * from `countByLegacyStage(companies)` - the SAME disused `Company.stage`
+ * model SalesPipelineWidget's own docstring already rejected as a data
+ * source for the dashboard's flagship pipeline slot ("Company.stage is a
+ * different, disused model... its own page, Pipeline.tsx, says outright
+ * 'Discovery, scoring, and outreach are not wired up yet' - presenting it
+ * in the dashboard's flagship Sales Pipeline slot implied a working
+ * opportunity pipeline that doesn't exist, even with an honest caption
+ * attached"). That exact reasoning applies here identically - a funnel
+ * chart is a more polished visualization, but it's still legacy
+ * `Company.stage` data standing in for a real Discovered→Researched→
+ * Outreach→Replied→Negotiation→Won conversion funnel that doesn't exist
+ * in the backend yet (no Opportunity/Deal model with a stage or
+ * conversion-rate field - confirmed by reading every model in
+ * app/models/). Restoring this widget to the Command Center (Section 8
+ * requires it be present) without also fixing this would reintroduce the
+ * exact honesty problem the CEO already corrected once for
+ * SalesPipelineWidget. Fixed the same way, not left as a fabricated
+ * chart: an honest "not yet implemented" placeholder, distinctly labeled
+ * from Sales Pipeline so the two slots are never confused for each other.
  */
-export function PipelineFunnel({ companies, isLoading }: { companies: LegacyCompany[]; isLoading: boolean }) {
-  const counts = countByLegacyStage(companies);
-  const groupCounts = FUNNEL_GROUPS.map((g) => ({
-    label: g.label,
-    count: g.stages.reduce((sum, s) => sum + (counts[s] ?? 0), 0),
-  }));
-  const max = Math.max(1, ...groupCounts.map((g) => g.count));
-
+export function PipelineFunnel() {
   return (
-    <Card className="flex flex-col gap-3">
-      <h3 className="text-sm font-semibold text-slate-100">Pipeline Overview</h3>
-      {isLoading ? (
-        <p className="text-sm text-slate-500">Loading…</p>
-      ) : companies.length === 0 ? (
-        <p className="text-sm text-slate-500">No companies in the CRM list yet.</p>
-      ) : (
-        <div className="flex items-end gap-2">
-          {groupCounts.map((g) => (
-            <div key={g.label} className="flex flex-1 flex-col items-center gap-1.5">
-              <div className="flex h-24 w-full items-end">
-                <div
-                  className="w-full rounded-t bg-accent-primary/70"
-                  style={{ height: `${(g.count / max) * 100}%` }}
-                />
-              </div>
-              <span className="text-xs font-medium text-slate-300">{g.count}</span>
-              <span className="text-center text-[10px] leading-tight text-slate-500">{g.label}</span>
-            </div>
-          ))}
-        </div>
-      )}
+    <Card padding="compact" className="flex h-full flex-col gap-2">
+      <h3 className="text-xs font-semibold text-slate-100">Pipeline Overview</h3>
+      <PlaceholderNotice
+        kind="not-implemented"
+        reason="No Discovered→Researched→Outreach→Replied→Negotiation→Won conversion funnel exists in the backend yet."
+      />
     </Card>
   );
 }

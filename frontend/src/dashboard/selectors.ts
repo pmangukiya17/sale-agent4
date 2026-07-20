@@ -1,4 +1,4 @@
-import type { DashboardProspect, LegacyCompany } from "./useDashboardPortfolio";
+import type { DashboardProspect } from "./useDashboardPortfolio";
 
 /**
  * Pure aggregation functions over already-fetched dashboard data. Kept
@@ -94,25 +94,13 @@ export const LEGACY_STAGE_LABELS: Record<string, string> = {
 
 export const LEGACY_STAGE_ORDER = Object.keys(LEGACY_STAGE_LABELS);
 
-/** Collapses the 18-value legacy PipelineStage enum into a small macro
- * funnel (Design Bible: Discovered → Researched → Outreach → Replied →
- * Negotiation → Won) - a distinct aggregation from SalesPipelineWidget's
- * full stage-box list, per the spec's "distinct from the Zone 2 stage-box
- * widget" requirement. */
-export const FUNNEL_GROUPS: { label: string; stages: string[] }[] = [
-  { label: "Discovered", stages: ["discovered", "enriched", "verified", "website_analyzed"] },
-  { label: "Qualified", stages: ["qualified", "contact_found"] },
-  { label: "Outreach", stages: ["draft_generated", "pending_approval", "sent", "follow_up_1", "follow_up_2", "follow_up_3"] },
-  { label: "Replied", stages: ["replied"] },
-  { label: "Negotiation", stages: ["nurture"] },
-  { label: "Won", stages: ["won"] },
-];
-
-export function countByLegacyStage(companies: LegacyCompany[]): Record<string, number> {
-  const counts: Record<string, number> = {};
-  for (const c of companies) counts[c.stage] = (counts[c.stage] ?? 0) + 1;
-  return counts;
-}
+// FUNNEL_GROUPS/countByLegacyStage (a legacy-Company.stage grouping for
+// PipelineFunnel's now-removed bar chart) were removed in M8.7 Phase C -
+// see PipelineFunnel.tsx's own docstring for why rendering that legacy
+// model as a "conversion funnel" was an honesty regression, the same one
+// SalesPipelineWidget was already corrected for. LEGACY_STAGE_LABELS/
+// LEGACY_STAGE_ORDER above are unaffected - still real, still used by
+// the legacy Pipeline.tsx list view itself.
 
 export interface CountryAggregate {
   country: string;
