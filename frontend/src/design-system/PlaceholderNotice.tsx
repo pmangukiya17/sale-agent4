@@ -1,10 +1,22 @@
 import type { ReactNode } from "react";
 import { Construction, Inbox } from "lucide-react";
-import { cn } from "../design-system";
+import { cn } from "./cn";
 
 /**
- * Shared honest empty-state primitive - but "empty" can mean two very
- * different things, and per the M8.3 review the UI must say which:
+ * Shared honest empty-state primitive - the design system's one canonical
+ * "empty/not-yet-available" treatment (Design Debt Budget, Section 10.1:
+ * "one empty-state system"). Originally built under dashboard/ during
+ * M8.3 (when it only had dashboard consumers); relocated here in M8.7
+ * Phase E, before page migration began, once it was clear every migrated
+ * CRM/Settings/AI-Workforce page needs the exact same primitive - Section
+ * 9.1 says as much explicitly ("an empty Contacts list uses the same
+ * branded-empty-state pattern as an empty Discovery results page").
+ * Moved rather than left in dashboard/ for a second page to import
+ * cross-folder, and moved rather than reimplemented a second time
+ * elsewhere, per that same Design Debt Budget rule.
+ *
+ * "Empty" can mean two very different things, and per the M8.3 review
+ * the UI must say which:
  *
  *  - "no-data": the capability/API is real, it's just genuinely empty
  *    right now (e.g. no prospects have been scored yet). Neutral tone,

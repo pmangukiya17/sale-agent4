@@ -1,5 +1,4 @@
-import { Card } from "../design-system";
-import { PlaceholderNotice } from "./PlaceholderNotice";
+import { Card, PlaceholderNotice } from "../design-system";
 
 /**
  * Mailbox Brief summary — Zone 3. M6 built Conversation/EmailMessage

@@ -1,5 +1,4 @@
-import { Card } from "../design-system";
-import { PlaceholderNotice } from "./PlaceholderNotice";
+import { Card, PlaceholderNotice } from "../design-system";
 
 /**
  * Pipeline Overview funnel — Zone 3, Design Bible Section 8: "Discovered

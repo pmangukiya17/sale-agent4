@@ -1,10 +1,9 @@
 import { useMemo, useState } from "react";
 import { Globe2 } from "lucide-react";
-import { Card, Badge } from "../design-system";
+import { Card, Badge, PlaceholderNotice } from "../design-system";
 import type { DashboardProspect } from "./useDashboardPortfolio";
 import type { CountryReference } from "./useCountryReference";
 import { averageScore } from "./selectors";
-import { PlaceholderNotice } from "./PlaceholderNotice";
 
 /**
  * CountryIntelligencePanel — reusable companion to WorldMap (Design Bible

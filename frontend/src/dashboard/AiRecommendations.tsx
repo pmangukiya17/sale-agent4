@@ -1,5 +1,4 @@
-import { Card } from "../design-system";
-import { PlaceholderNotice } from "./PlaceholderNotice";
+import { Card, PlaceholderNotice } from "../design-system";
 
 /**
  * AI Recommendations — Zone 3. The Recommendation model and its API are

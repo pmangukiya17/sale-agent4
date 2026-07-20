@@ -24,5 +24,8 @@ export { ToastProvider, useToast } from "./Toast";
 export type { ToastOptions, ToastTone } from "./Toast";
 export { Tooltip } from "./Tooltip";
 export type { TooltipProps } from "./Tooltip";
+// Relocated from dashboard/ in M8.7 Phase E - see its own docstring.
+export { PlaceholderNotice } from "./PlaceholderNotice";
+export type { PlaceholderKind } from "./PlaceholderNotice";
 export { cn } from "./cn";
 export * from "./tokens";

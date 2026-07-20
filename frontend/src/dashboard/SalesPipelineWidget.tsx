@@ -1,5 +1,4 @@
-import { Card } from "../design-system";
-import { PlaceholderNotice } from "./PlaceholderNotice";
+import { Card, PlaceholderNotice } from "../design-system";
 
 /**
  * Sales Pipeline widget — Zone 2, blue (accent-primary), Design Bible

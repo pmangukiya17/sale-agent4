@@ -1,8 +1,7 @@
 import type { LucideIcon } from "lucide-react";
 import { Construction, Inbox } from "lucide-react";
-import { Card } from "../design-system";
-import { cn } from "../design-system";
-import type { PlaceholderKind } from "./PlaceholderNotice";
+import { Card, cn } from "../design-system";
+import type { PlaceholderKind } from "../design-system";
 
 /**
  * KpiCard — reusable Zone 1 primitive (Design Bible Section 8: one KPI row,
