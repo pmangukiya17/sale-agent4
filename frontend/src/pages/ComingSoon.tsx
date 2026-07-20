@@ -17,18 +17,33 @@ import { Card } from "../design-system";
  * Each usage site (App.tsx) passes its own `milestone`/`title` - this
  * component itself has no knowledge of the roadmap beyond what it's told.
  * "Analytics"/"Reports" point at M8.9, a real numbered milestone already
- * on the roadmap. "Mailbox Brief"/"Conversations" originally pointed at
- * "M8.7" too, back when M8.7 was assumed (at M8.2's time) to be the
- * milestone that built them - that assumption went stale the moment
- * M8.7 was later redefined, by explicit CEO review, as a pure UI/UX
- * Design Bible implementation milestone with no new backend feature
- * work. M8.7 has now shipped and did not build either page, so those two
- * call sites were corrected to "a future milestone" rather than left
- * pointing at a milestone that already came and went without them - the
- * same stale-claim class of bug already caught and fixed once in
- * KpiStrip.tsx/MailboxBrief.tsx's dashboard-widget placeholder text
- * during M8.7 Phase C, just missed here since this route lives in
- * App.tsx, outside that audit's scope.
+ * on the roadmap.
+ *
+ * "Mailbox Brief"/"Conversations" originally pointed at "M8.7" too, back
+ * when M8.7 was assumed (at M8.2's time) to be the milestone that built
+ * them - that assumption went stale the moment M8.7 was later redefined,
+ * by explicit CEO review, as a pure UI/UX Design Bible implementation
+ * milestone with no new backend feature work. M8.7 has now shipped and
+ * did not build either page - the same stale-claim class of bug already
+ * caught and fixed once in KpiStrip.tsx/MailboxBrief.tsx's
+ * dashboard-widget placeholder text during M8.7 Phase C, just missed
+ * here since this route lives in App.tsx, outside that audit's scope.
+ *
+ * Corrected against the actual documented plan rather than a guess:
+ * - Conversations -> **M6.6** ("Conversation UI & end-to-end
+ *   verification" - docs/architecture/m6-reply-intelligence-plan.md's
+ *   Phased Implementation Plan; also named in the M8 Design Bible's IA
+ *   reconciliation table, m8-ui-ux-design-bible.md line 364: "M6.1-M6.4
+ *   (Conversation, EmailMessage threading, reply classification)").
+ *   M6.1-M6.4 (the backend) are already implemented; M6.5-M6.6 (this
+ *   page) are not.
+ * - Mailbox Brief -> **M6** generally (Reply Intelligence & Conversation
+ *   Management), per m8-ui-ux-design-bible.md line 363 ("M5 Delivery
+ *   (mailbox activity) + M6 Reply Intelligence") and
+ *   future-milestones.md's note 9, which explicitly places it under M6,
+ *   not M5, even after its manual-only design was superseded by M6's
+ *   persistent Conversation model.
+ * Neither is M8.8/M8.9/M9 - no such assignment exists anywhere in docs/.
  */
 export function ComingSoon({ title, milestone }: { title: string; milestone: string }) {
   return (
