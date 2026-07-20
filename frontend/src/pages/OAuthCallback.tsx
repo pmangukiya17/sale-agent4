@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { apiClient } from "../api/client";
+import { Card } from "../design-system";
 
 /**
  * Top-level landing page for Google/Microsoft's OAuth redirect - NOT
@@ -96,42 +97,42 @@ export default function OAuthCallback() {
   const providerLabel = providerKey ? PROVIDER_LABELS[providerKey] ?? providerKey : "your mailbox";
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
-      <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-8 text-center dark:border-slate-700 dark:bg-slate-900">
+    <div className="flex min-h-screen items-center justify-center bg-surface-0 px-4">
+      <Card elevated className="w-full max-w-md text-center">
         {status === "pending" && (
           <>
-            <p className="text-sm font-medium text-slate-900 dark:text-slate-100">Connecting {providerLabel}…</p>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">This will only take a moment.</p>
+            <p className="text-sm font-medium text-slate-100">Connecting {providerLabel}…</p>
+            <p className="mt-2 text-sm text-slate-400">This will only take a moment.</p>
           </>
         )}
         {status === "success" && (
           <>
-            <p className="text-sm font-medium text-emerald-600 dark:text-emerald-400">{providerLabel} connected successfully.</p>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">Redirecting…</p>
+            <p className="text-sm font-medium text-status-success">{providerLabel} connected successfully.</p>
+            <p className="mt-2 text-sm text-slate-400">Redirecting…</p>
           </>
         )}
         {status === "error" && (
           <>
-            <p className="text-sm font-medium text-red-600">Could not connect {providerLabel}.</p>
-            <p className="mt-2 text-sm text-slate-500 dark:text-slate-400">{errorMessage}</p>
+            <p className="text-sm font-medium text-status-danger">Could not connect {providerLabel}.</p>
+            <p className="mt-2 text-sm text-slate-400">{errorMessage}</p>
             {companyProfileId ? (
               <Link
                 to={`/businesses/${companyProfileId}/delivery/connections`}
-                className="mt-4 inline-block rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+                className="mt-4 inline-block rounded-lg bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:brightness-110"
               >
                 Back to Connections
               </Link>
             ) : (
               <Link
                 to="/businesses"
-                className="mt-4 inline-block rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500"
+                className="mt-4 inline-block rounded-lg bg-accent-primary px-4 py-2 text-sm font-medium text-white hover:brightness-110"
               >
                 Back to Businesses
               </Link>
             )}
           </>
         )}
-      </div>
+      </Card>
     </div>
   );
 }

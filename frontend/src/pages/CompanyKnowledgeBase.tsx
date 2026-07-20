@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { FormSection, Field, inputClass } from "../components/FormSection";
 import { TagInput } from "../components/TagInput";
+import { Card, Button, Input, PlaceholderNotice } from "../design-system";
 
 interface KnowledgeBaseEntry {
   id: string;
@@ -21,6 +22,11 @@ interface EntryForm {
 
 const EMPTY_FORM: EntryForm = { title: "", content: "", tags: [], category: "" };
 
+/**
+ * CompanyKnowledgeBase — M8.7 Phase E3 (Settings zone). Migrated in place
+ * per Design Bible Section 9.2: identical fetch/create/update/delete
+ * calls, only the markup moves onto design-system tokens/primitives.
+ */
 export default function CompanyKnowledgeBase() {
   const { companyId } = useParams();
   const [entries, setEntries] = useState<KnowledgeBaseEntry[]>([]);
@@ -93,27 +99,22 @@ export default function CompanyKnowledgeBase() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Knowledge Base</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <h1 className="text-h1 font-semibold text-slate-100">Knowledge Base</h1>
+          <p className="text-body text-slate-400">
             Long-term memory every AI agent can draw on for this business — policies, FAQs, past decisions.
           </p>
         </div>
-        <button
-          onClick={startCreate}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-        >
-          + Add entry
-        </button>
+        <Button onClick={startCreate}>+ Add entry</Button>
       </div>
 
       {showForm && (
         <form onSubmit={handleSubmit} className="mb-6">
           <FormSection title={editingId ? "Edit entry" : "New entry"}>
             <Field label="Title" full>
-              <input required className={inputClass} value={form.title} onChange={(e) => update("title", e.target.value)} />
+              <Input required value={form.title} onChange={(e) => update("title", e.target.value)} />
             </Field>
             <Field label="Category">
-              <input className={inputClass} value={form.category} onChange={(e) => update("category", e.target.value)} />
+              <Input value={form.category} onChange={(e) => update("category", e.target.value)} />
             </Field>
             <Field label="Tags">
               <TagInput value={form.tags} onChange={(v) => update("tags", v)} placeholder="Add a tag and press Enter" />
@@ -123,65 +124,56 @@ export default function CompanyKnowledgeBase() {
             </Field>
           </FormSection>
 
-          {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+          {error && <p className="mb-4 text-sm text-status-danger">{error}</p>}
 
           <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
-            >
+            <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-            >
-              Save entry
-            </button>
+            </Button>
+            <Button type="submit">Save entry</Button>
           </div>
         </form>
       )}
 
-      {isLoading && <p className="text-sm text-slate-500">Loading…</p>}
-
       {!isLoading && entries.length === 0 && !showForm && (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900">
-          No knowledge base entries yet.
-        </div>
+        <PlaceholderNotice kind="no-data" reason="No knowledge base entries yet." />
       )}
 
       <div className="space-y-3">
+        {isLoading &&
+          Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i} className="h-24 animate-pulse">
+              {null}
+            </Card>
+          ))}
+
         {entries.map((entry) => (
-          <div key={entry.id} className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+          <Card key={entry.id}>
             <div className="mb-2 flex items-start justify-between">
               <div>
-                <h3 className="font-semibold text-slate-900 dark:text-slate-100">{entry.title}</h3>
+                <h3 className="font-semibold text-slate-100">{entry.title}</h3>
                 {entry.category && <p className="text-xs text-slate-500">{entry.category}</p>}
               </div>
               <div className="flex gap-2 text-sm">
-                <button onClick={() => startEdit(entry)} className="text-slate-600 hover:underline dark:text-slate-300">
+                <button onClick={() => startEdit(entry)} className="text-slate-300 hover:underline">
                   Edit
                 </button>
-                <button onClick={() => handleDelete(entry.id)} className="text-red-600 hover:underline">
+                <button onClick={() => handleDelete(entry.id)} className="text-status-danger hover:underline">
                   Delete
                 </button>
               </div>
             </div>
-            <p className="whitespace-pre-wrap text-sm text-slate-600 dark:text-slate-300">{entry.content}</p>
+            <p className="whitespace-pre-wrap text-sm text-slate-300">{entry.content}</p>
             {entry.tags && entry.tags.length > 0 && (
               <div className="mt-3 flex flex-wrap gap-1.5">
                 {entry.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300"
-                  >
+                  <span key={tag} className="rounded-pill bg-surface-2 px-2 py-0.5 text-xs text-slate-300">
                     {tag}
                   </span>
                 ))}
               </div>
             )}
-          </div>
+          </Card>
         ))}
       </div>
     </div>

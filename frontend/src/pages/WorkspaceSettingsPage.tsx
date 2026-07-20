@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { apiClient } from "../api/client";
-import { FormSection, Field, inputClass } from "../components/FormSection";
+import { FormSection, Field } from "../components/FormSection";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { Button, Input, Select } from "../design-system";
 
 type DateFormat = "DD/MM/YYYY" | "MM/DD/YYYY" | "YYYY-MM-DD";
 type TimeFormat = "12h" | "24h";
@@ -27,6 +28,11 @@ const EMPTY_FORM: WorkspaceSettingsForm = {
   time_format: "24h",
 };
 
+/**
+ * WorkspaceSettingsPage — M8.7 Phase E3 (Settings zone). Migrated in place
+ * per Design Bible Section 9.2: identical fetch/save calls, only the
+ * markup moves onto design-system tokens/primitives.
+ */
 export default function WorkspaceSettingsPage() {
   const [form, setForm] = useState<WorkspaceSettingsForm>(EMPTY_FORM);
   const [languages, setLanguages] = useState<ReferenceOption[]>([]);
@@ -87,83 +93,62 @@ export default function WorkspaceSettingsPage() {
     <div className="mx-auto max-w-2xl">
       <Breadcrumbs items={[{ label: "Home", to: "/" }, { label: "Workspace Settings" }]} />
 
-      <h2 className="mb-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">Workspace Settings</h2>
-      <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
+      <h1 className="mb-1 text-h1 font-semibold text-slate-100">Workspace Settings</h1>
+      <p className="mb-6 text-body text-slate-400">
         Account-level defaults. Individual businesses can still override their own timezone.
       </p>
 
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
-      {saved && <p className="mb-4 text-sm text-emerald-600">Saved.</p>}
+      {error && <p className="mb-4 text-sm text-status-danger">{error}</p>}
+      {saved && <p className="mb-4 text-sm text-status-success">Saved.</p>}
 
       <form onSubmit={handleSubmit}>
         <FormSection title="Defaults">
           <Field label="Default timezone (IANA)">
-            <input
-              className={inputClass}
+            <Input
               value={form.default_timezone}
               onChange={(e) => update("default_timezone", e.target.value)}
               placeholder="e.g. Asia/Kolkata"
             />
           </Field>
           <Field label="Default language">
-            <select
-              className={inputClass}
-              value={form.default_language_id}
-              onChange={(e) => update("default_language_id", e.target.value)}
-            >
+            <Select value={form.default_language_id} onChange={(e) => update("default_language_id", e.target.value)}>
               <option value="">—</option>
               {languages.map((l) => (
                 <option key={l.id} value={l.id}>
                   {l.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <Field label="Default currency">
-            <select
-              className={inputClass}
-              value={form.default_currency_id}
-              onChange={(e) => update("default_currency_id", e.target.value)}
-            >
+            <Select value={form.default_currency_id} onChange={(e) => update("default_currency_id", e.target.value)}>
               <option value="">—</option>
               {currencies.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name}
                 </option>
               ))}
-            </select>
+            </Select>
           </Field>
           <Field label="Date format">
-            <select
-              className={inputClass}
-              value={form.date_format}
-              onChange={(e) => update("date_format", e.target.value as DateFormat)}
-            >
+            <Select value={form.date_format} onChange={(e) => update("date_format", e.target.value as DateFormat)}>
               <option value="YYYY-MM-DD">YYYY-MM-DD</option>
               <option value="DD/MM/YYYY">DD/MM/YYYY</option>
               <option value="MM/DD/YYYY">MM/DD/YYYY</option>
-            </select>
+            </Select>
           </Field>
           <Field label="Time format">
-            <select
-              className={inputClass}
-              value={form.time_format}
-              onChange={(e) => update("time_format", e.target.value as TimeFormat)}
-            >
+            <Select value={form.time_format} onChange={(e) => update("time_format", e.target.value as TimeFormat)}>
               <option value="24h">24-hour</option>
               <option value="12h">12-hour</option>
-            </select>
+            </Select>
           </Field>
         </FormSection>
 
         <div className="flex justify-end">
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-          >
-            {isSaving ? "Saving…" : "Save settings"}
-          </button>
+          <Button type="submit" isLoading={isSaving}>
+            Save settings
+          </Button>
         </div>
       </form>
     </div>

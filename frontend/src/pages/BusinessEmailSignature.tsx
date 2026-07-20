@@ -10,6 +10,7 @@ import Color from "@tiptap/extension-color";
 import { apiClient } from "../api/client";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Toggle } from "../components/Toggle";
+import { Card, Button, cn } from "../design-system";
 
 /**
  * Business Branding: Email Signature. The signature belongs to the
@@ -21,6 +22,15 @@ import { Toggle } from "../components/Toggle";
  * exact HTML into that draft's ai_generated_content.assembled.signature_html
  * for permanent explainability - editing the signature later never rewrites
  * history for drafts already generated.
+ *
+ * M8.7 Phase E3: the surrounding page chrome (card, toolbar, buttons,
+ * labels) is restyled to the dark design-system tokens like every other
+ * migrated page. The editor surface and preview pane deliberately stay
+ * light/white, not dark - a signature is composed and read against a
+ * white email background in every real mail client, so rendering it in a
+ * dark box here would misrepresent what recipients actually see. This is
+ * the one legitimate exception to "no light surfaces" in this migration,
+ * for the same reason a photo editor's canvas doesn't recolor the photo.
  */
 
 const SIGNATURE_COLORS = ["#0f172a", "#334155", "#1d4ed8", "#b91c1c", "#047857"];
@@ -46,11 +56,10 @@ function ToolbarButton({
       type="button"
       title={title}
       onClick={onClick}
-      className={`rounded px-2 py-1 text-xs font-medium ${
-        active
-          ? "bg-slate-900 text-white dark:bg-indigo-600"
-          : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-      }`}
+      className={cn(
+        "rounded px-2 py-1 text-xs font-medium",
+        active ? "bg-accent-primary text-white" : "text-slate-700 hover:bg-slate-200"
+      )}
     >
       {children}
     </button>
@@ -72,7 +81,7 @@ function Toolbar({ editor }: { editor: Editor | null }) {
   };
 
   return (
-    <div className="mb-2 flex flex-wrap items-center gap-1 rounded-t-md border border-b-0 border-slate-300 bg-slate-50 p-1.5 dark:border-slate-600 dark:bg-slate-800">
+    <div className="mb-2 flex flex-wrap items-center gap-1 rounded-t-md border border-b-0 border-slate-300 bg-slate-100 p-1.5">
       <ToolbarButton title="Bold" active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()}>
         <strong>B</strong>
       </ToolbarButton>
@@ -82,28 +91,28 @@ function Toolbar({ editor }: { editor: Editor | null }) {
       <ToolbarButton title="Underline" active={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()}>
         <span className="underline">U</span>
       </ToolbarButton>
-      <span className="mx-1 h-4 w-px bg-slate-300 dark:bg-slate-600" />
+      <span className="mx-1 h-4 w-px bg-slate-300" />
       <ToolbarButton title="Bullet list" active={editor.isActive("bulletList")} onClick={() => editor.chain().focus().toggleBulletList().run()}>
         • List
       </ToolbarButton>
       <ToolbarButton title="Numbered list" active={editor.isActive("orderedList")} onClick={() => editor.chain().focus().toggleOrderedList().run()}>
         1. List
       </ToolbarButton>
-      <span className="mx-1 h-4 w-px bg-slate-300 dark:bg-slate-600" />
+      <span className="mx-1 h-4 w-px bg-slate-300" />
       <ToolbarButton title="Link" active={editor.isActive("link")} onClick={setLink}>
         Link
       </ToolbarButton>
       <ToolbarButton title="Remove formatting" onClick={() => editor.chain().focus().unsetAllMarks().clearNodes().run()}>
         Clear
       </ToolbarButton>
-      <span className="mx-1 h-4 w-px bg-slate-300 dark:bg-slate-600" />
+      <span className="mx-1 h-4 w-px bg-slate-300" />
       {SIGNATURE_COLORS.map((color) => (
         <button
           key={color}
           type="button"
           title={color}
           onClick={() => editor.chain().focus().setColor(color).run()}
-          className="h-5 w-5 rounded-full border border-slate-300 dark:border-slate-600"
+          className="h-5 w-5 rounded-full border border-slate-300"
           style={{ backgroundColor: color }}
         />
       ))}
@@ -111,6 +120,12 @@ function Toolbar({ editor }: { editor: Editor | null }) {
   );
 }
 
+/**
+ * BusinessEmailSignature — M8.7 Phase E3 (Settings zone). Migrated in
+ * place per Design Bible Section 9.2: identical fetch/save calls, only
+ * the page chrome moves onto design-system tokens/primitives (see the
+ * module docstring above for why the editor/preview surfaces stay light).
+ */
 export default function BusinessEmailSignature() {
   const { companyId } = useParams();
   const [isActive, setIsActive] = useState(true);
@@ -198,47 +213,39 @@ export default function BusinessEmailSignature() {
     <div className="mx-auto max-w-3xl">
       <Breadcrumbs items={[{ label: "Businesses", to: "/businesses" }, { label: "Email Signature" }]} />
 
-      <h2 className="mb-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">Business Email Signature</h2>
-      <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
+      <h1 className="mb-1 text-h1 font-semibold text-slate-100">Business Email Signature</h1>
+      <p className="mb-6 text-body text-slate-400">
         This signature belongs to the business, not to any Outreach Playbook. Every generated Outreach email
         draft appends whatever is saved here at generation time - editing it later never rewrites the history of
         drafts already sent.
       </p>
 
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mb-4 text-sm text-status-danger">{error}</p>}
 
-      <div className="mb-6 rounded-lg border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
+      <Card className="mb-6">
         <div className="mb-4 flex items-center justify-between">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Active</label>
+          <label className="text-sm font-medium text-slate-300">Active</label>
           <Toggle checked={isActive} onChange={setIsActive} />
         </div>
 
         <Toolbar editor={editor} />
         <EditorContent
           editor={editor}
-          className="min-h-[160px] rounded-b-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus-within:border-slate-500 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 [&_.ProseMirror]:min-h-[140px] [&_.ProseMirror]:outline-none"
+          className="min-h-[160px] rounded-b-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 focus-within:border-slate-500 [&_.ProseMirror]:min-h-[140px] [&_.ProseMirror]:outline-none"
         />
 
         <div className="mt-6 flex items-center justify-end gap-3">
-          {savedMessage && <span className="text-sm font-medium text-emerald-600 dark:text-emerald-400">Changes saved</span>}
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={isSaving}
-            className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-          >
-            {isSaving ? "Saving…" : "Save signature"}
-          </button>
+          {savedMessage && <span className="text-sm font-medium text-status-success">Changes saved</span>}
+          <Button onClick={handleSave} isLoading={isSaving}>
+            Save signature
+          </Button>
         </div>
-      </div>
+      </Card>
 
-      <div className="rounded-lg border border-slate-200 bg-white p-6 dark:border-slate-700 dark:bg-slate-900">
-        <p className="mb-3 text-sm font-medium text-slate-700 dark:text-slate-200">Preview</p>
-        <div
-          className="rounded-md bg-slate-50 p-4 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-          dangerouslySetInnerHTML={{ __html: sanitizedPreview }}
-        />
-      </div>
+      <Card>
+        <p className="mb-3 text-sm font-medium text-slate-200">Preview</p>
+        <div className="rounded-md bg-slate-50 p-4 text-sm text-slate-700" dangerouslySetInnerHTML={{ __html: sanitizedPreview }} />
+      </Card>
     </div>
   );
 }
