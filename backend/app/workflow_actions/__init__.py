@@ -40,6 +40,16 @@ never the reverse" shape this package already applies to
 app.workflow_engine. See that module's own docstring for the full
 reasoning, including the honest, disclosed gap in how it currently
 resumes a suspended plan's WAIT decision.
+
+M8.8 addition: discovery_execution_action.py is the first Action in this
+package owned by an existing M1-M7 domain module (app.discovery) rather
+than by the engine or the AI/Supervisor stack - the same "domain imports
+engine, never the reverse" shape, just with Discovery as the domain this
+time instead of Supervisor. See that module's own docstring for how it
+recovers the triggering user via EventConsumption + Event.actor_id, since
+WorkflowInstance.context starts empty and carries no payload from the
+triggering Event.
 """
+from app.workflow_actions import discovery_execution_action  # noqa: F401  (self-registration side effect)
 from app.workflow_actions import record_execution_action  # noqa: F401  (self-registration side effect)
 from app.workflow_actions import supervisor_invocation_action  # noqa: F401  (self-registration side effect)

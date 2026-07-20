@@ -23,9 +23,10 @@ carrying real semantics (action_key references, transition rules) - a
 Python list of typed entries gets IDE/type-checking support an external
 config file wouldn't, for a total ongoing maintenance cost of "append one
 entry," which is exactly what "configuration-driven, extend without
-touching startup logic" means in practice here. Today this list has one
-entry (M7.1 Part 2's pilot); M7.x/M8/M9 add more by appending, never by
-modifying activate_builtin_workflows() or app/main.py's own startup call.
+touching startup logic" means in practice here. M7.1 Part 2 shipped with
+one entry (the pilot); M8.8 appended a second (Discovery search
+execution); future milestones add more the same way, never by modifying
+activate_builtin_workflows() or app/main.py's own startup call.
 
 activate_builtin_workflows() is deliberately ADDITIVE-ONLY: if a key
 already has an ACTIVE version, it is left untouched - this function
@@ -88,6 +89,36 @@ def _pilot_conversation_created_workflow() -> BuiltinWorkflowDefinition:
     )
 
 
+def _discovery_search_execution_workflow() -> BuiltinWorkflowDefinition:
+    """M8.8: Live AI Workflow Visualization's first real (non-pilot)
+    built-in - one step, exactly the pilot's own shape, deliberately not
+    a richer multi-step graph. Per-provider granularity (the "current
+    stage / completed / running / pending" detail the Live Workflow
+    Visualization actually renders) comes from real domain Events published
+    from INSIDE DiscoveryExecutionAction's single step (see
+    app.discovery.pipeline's DISCOVERY_JOB_PROGRESS_EVENT_TYPE), not from
+    modeling each provider as its own WorkflowStepInvocation - the engine
+    only ever sees "one step, execute the search, report success/failure,"
+    identical in shape to conversation_created_pilot above."""
+    from app.workflow_actions.discovery_execution_action import DISCOVERY_EXECUTION_ACTION_KEY
+    from app.discovery.pipeline import DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE
+
+    return BuiltinWorkflowDefinition(
+        key="discovery_search_execution",
+        trigger_event_type=DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE,
+        step_graph={
+            "start_step_id": "execute_search",
+            "steps": {
+                "execute_search": {
+                    "action_key": DISCOVERY_EXECUTION_ACTION_KEY,
+                    "transitions": {"success": None, "failure": None},
+                    "max_attempts": 1,
+                }
+            },
+        },
+    )
+
+
 # The configuration surface - see this module's own docstring. Built
 # lazily (a list of zero-arg callables, not the resolved
 # BuiltinWorkflowDefinition instances themselves) purely so importing
@@ -96,6 +127,7 @@ def _pilot_conversation_created_workflow() -> BuiltinWorkflowDefinition:
 # activate_builtin_workflows(), at the point it's genuinely needed.
 BUILTIN_WORKFLOW_DEFINITIONS: list = [
     _pilot_conversation_created_workflow,
+    _discovery_search_execution_workflow,
 ]
 
 
