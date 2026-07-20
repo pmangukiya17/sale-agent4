@@ -4,7 +4,7 @@ import { apiClient } from "../../api/client";
 import { FormSection, Field, inputClass } from "../../components/FormSection";
 import { MultiSelect } from "../../components/MultiSelect";
 import { Toggle } from "../../components/Toggle";
-import { StatusBadge } from "../../components/StatusBadge";
+import { Card, Badge, Button, Input, Select, PlaceholderNotice } from "../../design-system";
 
 interface ConnectableProvider {
   provider_key: string;
@@ -110,6 +110,14 @@ function toIntOrNull(v: string): number | null {
   return Number.isNaN(n) ? null : n;
 }
 
+/**
+ * DeliverySendingProfiles — M8.7 Phase E2 (AI Workforce zone). Migrated in
+ * place per Design Bible Section 9.2: identical fetch/create/update/delete
+ * calls (including the deliberate re-fetch-on-open behavior documented
+ * below), only the markup moves onto design-system tokens/primitives -
+ * including retiring the page-local StatusBadge in favor of the one
+ * canonical Badge (Design Debt Budget, Section 10.1).
+ */
 export default function DeliverySendingProfiles() {
   const { companyId } = useParams();
   const [profiles, setProfiles] = useState<SendingProfile[]>([]);
@@ -240,36 +248,25 @@ export default function DeliverySendingProfiles() {
   return (
     <div>
       {loadError && (
-        <div className="mb-4 rounded-md border border-red-300 bg-red-50 px-4 py-2.5 text-sm text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400">
+        <div className="mb-4 rounded-lg border border-status-danger/30 bg-status-danger/10 px-4 py-2.5 text-sm text-status-danger">
           {loadError}
         </div>
       )}
       <div className="mb-6 flex items-center justify-between">
-        <p className="text-sm text-slate-500 dark:text-slate-400">
+        <p className="text-sm text-slate-400">
           Named sending identities - "CEO", "Sales", "Support" - each backed by a connected mailbox.
         </p>
-        <button
-          onClick={startCreate}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-        >
-          + Add sending profile
-        </button>
+        <Button onClick={startCreate}>+ Add sending profile</Button>
       </div>
 
       {showForm && (
         <form onSubmit={handleSubmit} className="mb-6">
           <FormSection title={editingId ? "Edit sending profile" : "New sending profile"}>
             <Field label="Label">
-              <input required className={inputClass} value={form.label} onChange={(e) => update("label", e.target.value)} placeholder="e.g. CEO" />
+              <Input required value={form.label} onChange={(e) => update("label", e.target.value)} placeholder="e.g. CEO" />
             </Field>
             <Field label="Provider">
-              <select
-                required
-                disabled={!!editingId}
-                className={inputClass}
-                value={form.provider_key}
-                onChange={(e) => update("provider_key", e.target.value)}
-              >
+              <Select required disabled={!!editingId} value={form.provider_key} onChange={(e) => update("provider_key", e.target.value)}>
                 <option value="" disabled>
                   Select a provider…
                 </option>
@@ -278,28 +275,28 @@ export default function DeliverySendingProfiles() {
                     {PROVIDER_LABELS[p.provider_key] ?? p.provider_key}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="Sender name">
-              <input required className={inputClass} value={form.sender_name} onChange={(e) => update("sender_name", e.target.value)} />
+              <Input required value={form.sender_name} onChange={(e) => update("sender_name", e.target.value)} />
             </Field>
             <Field label="Sender email">
-              <input required type="email" className={inputClass} value={form.sender_email} onChange={(e) => update("sender_email", e.target.value)} />
+              <Input required type="email" value={form.sender_email} onChange={(e) => update("sender_email", e.target.value)} />
             </Field>
             <Field label="Reply-to email">
-              <input type="email" className={inputClass} value={form.reply_to_email} onChange={(e) => update("reply_to_email", e.target.value)} />
+              <Input type="email" value={form.reply_to_email} onChange={(e) => update("reply_to_email", e.target.value)} />
             </Field>
             <Field label="Mailbox connection">
-              <select className={inputClass} value={form.provider_connection_id} onChange={(e) => update("provider_connection_id", e.target.value)}>
+              <Select value={form.provider_connection_id} onChange={(e) => update("provider_connection_id", e.target.value)}>
                 <option value="">Not connected yet</option>
                 {matchingConnections.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.external_account_email ?? c.id} ({c.status})
                   </option>
                 ))}
-              </select>
+              </Select>
               {form.provider_key && matchingConnections.length === 0 && (
-                <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                <p className="mt-1 text-xs text-status-warning">
                   No {PROVIDER_LABELS[form.provider_key] ?? form.provider_key} mailbox is connected for this business
                   yet - connect one under Connections first, then reopen this form.
                 </p>
@@ -315,91 +312,73 @@ export default function DeliverySendingProfiles() {
             description="Optional - a campaign using this profile can override any of these. Leave blank to use the system default."
           >
             <Field label="Daily limit">
-              <input type="number" min={0} className={inputClass} value={form.daily_limit} onChange={(e) => update("daily_limit", e.target.value)} />
+              <Input type="number" min={0} value={form.daily_limit} onChange={(e) => update("daily_limit", e.target.value)} />
             </Field>
             <Field label="Hourly limit">
-              <input type="number" min={0} className={inputClass} value={form.hourly_limit} onChange={(e) => update("hourly_limit", e.target.value)} />
+              <Input type="number" min={0} value={form.hourly_limit} onChange={(e) => update("hourly_limit", e.target.value)} />
             </Field>
             <Field label="Min gap (seconds)">
-              <input type="number" min={0} className={inputClass} value={form.min_gap_seconds} onChange={(e) => update("min_gap_seconds", e.target.value)} />
+              <Input type="number" min={0} value={form.min_gap_seconds} onChange={(e) => update("min_gap_seconds", e.target.value)} />
             </Field>
             <Field label="Max gap (seconds)">
-              <input type="number" min={0} className={inputClass} value={form.max_gap_seconds} onChange={(e) => update("max_gap_seconds", e.target.value)} />
+              <Input type="number" min={0} value={form.max_gap_seconds} onChange={(e) => update("max_gap_seconds", e.target.value)} />
             </Field>
             <Field label="Sending window start">
-              <input type="time" className={inputClass} value={form.sending_window_start} onChange={(e) => update("sending_window_start", e.target.value)} />
+              <Input type="time" value={form.sending_window_start} onChange={(e) => update("sending_window_start", e.target.value)} />
             </Field>
             <Field label="Sending window end">
-              <input type="time" className={inputClass} value={form.sending_window_end} onChange={(e) => update("sending_window_end", e.target.value)} />
+              <Input type="time" value={form.sending_window_end} onChange={(e) => update("sending_window_end", e.target.value)} />
             </Field>
             <Field label="Sending timezone">
-              <input
-                className={inputClass}
-                placeholder="e.g. Europe/Berlin"
-                value={form.sending_timezone}
-                onChange={(e) => update("sending_timezone", e.target.value)}
-              />
+              <Input placeholder="e.g. Europe/Berlin" value={form.sending_timezone} onChange={(e) => update("sending_timezone", e.target.value)} />
             </Field>
             <Field label="Sending days" full>
               <MultiSelect options={WEEKDAY_OPTIONS} selected={form.sending_days} onChange={(v) => update("sending_days", v)} />
             </Field>
           </FormSection>
 
-          {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+          {error && <p className="mb-4 text-sm text-status-danger">{error}</p>}
 
           <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
-            >
+            <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
               Cancel
-            </button>
-            <button
-              type="submit"
-              className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-            >
-              Save sending profile
-            </button>
+            </Button>
+            <Button type="submit">Save sending profile</Button>
           </div>
         </form>
       )}
 
       {!isLoading && profiles.length === 0 && !showForm && (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900">
-          No sending profiles yet.
-        </div>
+        <PlaceholderNotice kind="no-data" reason="No sending profiles yet." />
       )}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         {profiles.map((p) => (
-          <div key={p.id} className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+          <Card key={p.id}>
             <div className="mb-2 flex items-start justify-between">
-              <h3 className="font-semibold text-slate-900 dark:text-slate-100">{p.label}</h3>
-              <StatusBadge label={p.is_active ? "active" : "inactive"} tone={p.is_active ? "success" : "neutral"} />
+              <h3 className="font-semibold text-slate-100">{p.label}</h3>
+              <Badge tone={p.is_active ? "success" : "neutral"}>{p.is_active ? "active" : "inactive"}</Badge>
             </div>
             <p className="mb-1 text-xs text-slate-500">{PROVIDER_LABELS[p.provider_key] ?? p.provider_key}</p>
-            <p className="mb-3 text-sm text-slate-600 dark:text-slate-300">
+            <p className="mb-3 text-sm text-slate-300">
               {p.sender_name} &lt;{p.sender_email}&gt;
             </p>
-            {!p.provider_connection_id && (
-              <p className="mb-3 text-xs text-amber-600 dark:text-amber-400">No mailbox connected - can't send yet.</p>
-            )}
+            {!p.provider_connection_id && <p className="mb-3 text-xs text-status-warning">No mailbox connected - can't send yet.</p>}
             <div className="flex gap-2 text-sm">
               <button
                 onClick={() => startEdit(p)}
-                className="rounded-md border border-slate-200 px-3 py-1.5 text-slate-700 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-200 dark:hover:bg-slate-800"
+                className="rounded-lg border border-border-hairline px-3 py-1.5 text-slate-200 hover:border-border-hairline-strong hover:bg-surface-2"
               >
                 Edit
               </button>
               <button
                 onClick={() => handleDelete(p.id)}
-                className="rounded-md border border-slate-200 px-3 py-1.5 text-red-600 hover:bg-red-50 dark:border-slate-700"
+                className="rounded-lg border border-border-hairline px-3 py-1.5 text-status-danger hover:bg-status-danger/10"
               >
                 Delete
               </button>
             </div>
-          </div>
+          </Card>
         ))}
       </div>
     </div>

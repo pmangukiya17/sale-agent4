@@ -4,6 +4,7 @@ import { apiClient } from "../api/client";
 import { FormSection, Field, inputClass } from "../components/FormSection";
 import { Toggle } from "../components/Toggle";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { Card, Button, Input, Select, PlaceholderNotice } from "../design-system";
 
 type SearchDepth = "quick" | "standard" | "deep";
 type SearchFrequency = "manual" | "daily" | "weekly";
@@ -98,6 +99,11 @@ const EMPTY_FORM: SearchForm = {
   is_active: true,
 };
 
+/**
+ * DiscoverySearches — M8.7 Phase E2 (AI Workforce zone). Migrated in place
+ * per Design Bible Section 9.2: every fetch/save/run call below is
+ * unchanged, only the markup moves onto design-system tokens/primitives.
+ */
 export default function DiscoverySearches() {
   const { companyId } = useParams();
   const [searches, setSearches] = useState<DiscoverySearch[]>([]);
@@ -251,65 +257,55 @@ export default function DiscoverySearches() {
 
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">Discovery Searches</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">
+          <h1 className="text-h1 font-semibold text-slate-100">Discovery Searches</h1>
+          <p className="text-body text-slate-400">
             Every search runs manually and synchronously - click Run and the result comes back in the same request.
           </p>
         </div>
-        <button
-          onClick={() => setShowForm((v) => !v)}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-        >
-          + New search
-        </button>
+        <Button onClick={() => setShowForm((v) => !v)}>+ New search</Button>
       </div>
 
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mb-4 text-sm text-status-danger">{error}</p>}
 
       {showForm && (
         <form onSubmit={handleSubmit} className="mb-6">
           <FormSection title="New Discovery Search">
             <Field label="Name" full>
-              <input required className={inputClass} value={form.name} onChange={(e) => update("name", e.target.value)} />
+              <Input required value={form.name} onChange={(e) => update("name", e.target.value)} />
             </Field>
             <Field label="Search Template">
-              <select
-                required
-                className={inputClass}
-                value={form.search_template_id}
-                onChange={(e) => update("search_template_id", e.target.value)}
-              >
+              <Select required value={form.search_template_id} onChange={(e) => update("search_template_id", e.target.value)}>
                 <option value="">Select a template...</option>
                 {templates.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.name}{t.is_system_default ? " (system)" : ""}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="ICP Criteria (blank = use active version)">
-              <select className={inputClass} value={form.icp_criteria_id} onChange={(e) => update("icp_criteria_id", e.target.value)}>
+              <Select value={form.icp_criteria_id} onChange={(e) => update("icp_criteria_id", e.target.value)}>
                 <option value="">Use active ICP at run time</option>
                 {icps.map((icp) => (
                   <option key={icp.id} value={icp.id}>
                     {icp.name} (v{icp.version}){icp.is_active ? " - active" : ""}
                   </option>
                 ))}
-              </select>
+              </Select>
             </Field>
             <Field label="Search depth">
-              <select className={inputClass} value={form.search_depth} onChange={(e) => update("search_depth", e.target.value as SearchDepth)}>
+              <Select value={form.search_depth} onChange={(e) => update("search_depth", e.target.value as SearchDepth)}>
                 <option value="quick">Quick</option>
                 <option value="standard">Standard</option>
                 <option value="deep">Deep</option>
-              </select>
+              </Select>
             </Field>
             <Field label="Search frequency">
-              <select className={inputClass} value={form.search_frequency} onChange={(e) => update("search_frequency", e.target.value as SearchFrequency)}>
+              <Select value={form.search_frequency} onChange={(e) => update("search_frequency", e.target.value as SearchFrequency)}>
                 <option value="manual">Manual</option>
                 <option value="daily">Daily (not yet automated)</option>
                 <option value="weekly">Weekly (not yet automated)</option>
-              </select>
+              </Select>
             </Field>
             <Field label="Active">
               <Toggle checked={form.is_active} onChange={(v) => update("is_active", v)} />
@@ -317,7 +313,7 @@ export default function DiscoverySearches() {
             <Field label="Providers" full>
               <div className="flex flex-wrap gap-3">
                 {AVAILABLE_PROVIDERS.map((p) => (
-                  <label key={p.key} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+                  <label key={p.key} className="flex items-center gap-2 text-sm text-slate-300">
                     <input
                       type="checkbox"
                       checked={form.provider_keys.includes(p.key)}
@@ -329,6 +325,7 @@ export default function DiscoverySearches() {
                             : [...form.provider_keys, p.key]
                         )
                       }
+                      className="h-4 w-4 rounded border-border-hairline-strong bg-surface-1 accent-accent-primary"
                     />
                     {p.label}
                   </label>
@@ -337,72 +334,61 @@ export default function DiscoverySearches() {
             </Field>
           </FormSection>
           <div className="flex justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300"
-            >
+            <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>
               Cancel
-            </button>
-            <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500">
-              Save search
-            </button>
+            </Button>
+            <Button type="submit">Save search</Button>
           </div>
         </form>
       )}
 
-      {isLoading && <p className="text-sm text-slate-500">Loading…</p>}
-
       {!isLoading && searches.length === 0 && !showForm && (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900">
-          No discovery searches yet. Create one from a search template to start finding prospects.
-        </div>
+        <PlaceholderNotice kind="no-data" reason="No discovery searches yet. Create one from a search template to start finding prospects." />
       )}
 
       <div className="space-y-4">
+        {isLoading &&
+          Array.from({ length: 2 }).map((_, i) => (
+            <Card key={i} className="h-24 animate-pulse">
+              {null}
+            </Card>
+          ))}
+
         {searches.map((search) => {
           const job = jobResults[search.id];
           const usesManualCsv = search.provider_keys.includes("manual_csv");
           const rows = candidateRows[search.id] ?? [emptyCandidateRow()];
           const readyCount = readyCandidateRows(search.id).length;
           return (
-            <div key={search.id} className="rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
+            <Card key={search.id}>
               <div className="mb-2 flex items-start justify-between">
                 <div>
-                  <h3 className="font-semibold text-slate-900 dark:text-slate-100">{search.name}</h3>
+                  <h3 className="font-semibold text-slate-100">{search.name}</h3>
                   <p className="text-xs text-slate-500">
                     Template: {search.search_template.name} · Depth: {search.search_depth} · Providers: {search.provider_keys.join(", ") || "none"}
                   </p>
                 </div>
-                <button
-                  onClick={() => handleRun(search)}
-                  disabled={runningId === search.id}
-                  className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-                >
-                  {runningId === search.id ? "Running…" : "Run"}
-                </button>
+                <Button size="sm" onClick={() => handleRun(search)} isLoading={runningId === search.id}>
+                  Run
+                </Button>
               </div>
 
               {usesManualCsv && (
-                <div className="mt-3 rounded-md border border-slate-100 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-800">
+                <div className="mt-3 rounded-lg border border-border-hairline bg-surface-2 p-3">
                   <div className="mb-2 flex items-center justify-between">
-                    <h4 className="text-sm font-medium text-slate-700 dark:text-slate-200">Candidate Buyers</h4>
-                    <span
-                      className={`text-xs font-medium ${
-                        readyCount > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-500 dark:text-slate-400"
-                      }`}
-                    >
+                    <h4 className="text-sm font-medium text-slate-200">Candidate Buyers</h4>
+                    <span className={`text-xs font-medium ${readyCount > 0 ? "text-status-success" : "text-slate-400"}`}>
                       {readyCount > 0
                         ? `${readyCount} candidate buyer${readyCount === 1 ? "" : "s"} ready`
                         : "No candidate buyers added"}
                     </span>
                   </div>
-                  <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+                  <p className="mb-2 text-xs text-slate-400">
                     Manual / CSV Import needs at least one row (Name is required). These are saved automatically when you click Run.
                   </p>
                   <div className="overflow-x-auto">
                     <table className="w-full text-left text-xs">
-                      <thead className="text-slate-500 dark:text-slate-400">
+                      <thead className="text-slate-400">
                         <tr>
                           <th className="px-2 py-1">Name *</th>
                           <th className="px-2 py-1">Website</th>
@@ -414,42 +400,33 @@ export default function DiscoverySearches() {
                       </thead>
                       <tbody>
                         {rows.map((row, i) => (
-                          <tr key={i} className="border-t border-slate-200 dark:border-slate-700">
+                          <tr key={i} className="border-t border-border-hairline">
                             <td className="px-2 py-1">
-                              <input
-                                className={inputClass}
-                                value={row.name}
-                                placeholder="Acme GmbH"
-                                onChange={(e) => updateCandidateRow(search.id, i, "name", e.target.value)}
-                              />
+                              <Input value={row.name} placeholder="Acme GmbH" onChange={(e) => updateCandidateRow(search.id, i, "name", e.target.value)} />
                             </td>
                             <td className="px-2 py-1">
-                              <input
-                                className={inputClass}
+                              <Input
                                 value={row.website ?? ""}
                                 placeholder="acme.com"
                                 onChange={(e) => updateCandidateRow(search.id, i, "website", e.target.value)}
                               />
                             </td>
                             <td className="px-2 py-1">
-                              <input
-                                className={inputClass}
+                              <Input
                                 value={row.country ?? ""}
                                 placeholder="Germany"
                                 onChange={(e) => updateCandidateRow(search.id, i, "country", e.target.value)}
                               />
                             </td>
                             <td className="px-2 py-1">
-                              <input
-                                className={inputClass}
+                              <Input
                                 value={row.industry ?? ""}
                                 placeholder="Textiles"
                                 onChange={(e) => updateCandidateRow(search.id, i, "industry", e.target.value)}
                               />
                             </td>
                             <td className="px-2 py-1">
-                              <input
-                                className={inputClass}
+                              <Input
                                 value={row.description ?? ""}
                                 placeholder="Optional notes"
                                 onChange={(e) => updateCandidateRow(search.id, i, "description", e.target.value)}
@@ -459,7 +436,7 @@ export default function DiscoverySearches() {
                               <button
                                 type="button"
                                 onClick={() => removeCandidateRow(search.id, i)}
-                                className="text-slate-400 hover:text-red-600"
+                                className="text-slate-500 hover:text-status-danger"
                                 aria-label="Remove row"
                               >
                                 ✕
@@ -473,7 +450,7 @@ export default function DiscoverySearches() {
                   <button
                     type="button"
                     onClick={() => addCandidateRow(search.id)}
-                    className="mt-2 text-xs font-medium text-slate-600 underline hover:text-slate-900 dark:text-slate-300 dark:hover:text-white"
+                    className="mt-2 text-xs font-medium text-slate-300 underline hover:text-white"
                   >
                     + Add row
                   </button>
@@ -481,14 +458,14 @@ export default function DiscoverySearches() {
               )}
 
               {job && (
-                <div className="mt-3 rounded-md border border-slate-100 bg-slate-50 p-3 text-sm dark:border-slate-700 dark:bg-slate-800">
-                  <p className="mb-2 font-medium text-slate-700 dark:text-slate-200">
+                <div className="mt-3 rounded-lg border border-border-hairline bg-surface-2 p-3 text-sm">
+                  <p className="mb-2 font-medium text-slate-200">
                     Job {job.status} — {job.raw_result_count} raw results, {job.prospect_created_count} new prospects, {job.prospect_matched_count} re-seen
                   </p>
-                  {job.error_message && <p className="mb-2 text-red-600">{job.error_message}</p>}
+                  {job.error_message && <p className="mb-2 text-status-danger">{job.error_message}</p>}
                   <div className="space-y-1">
                     {job.provider_runs.map((pr, i) => (
-                      <div key={i} className="flex justify-between text-xs text-slate-500 dark:text-slate-400">
+                      <div key={i} className="flex justify-between text-xs text-slate-400">
                         <span>{pr.provider_key} — {pr.status}</span>
                         <span>
                           {pr.duration_ms != null ? `${pr.duration_ms}ms` : ""} · {pr.request_count} req
@@ -501,7 +478,7 @@ export default function DiscoverySearches() {
                   </div>
                 </div>
               )}
-            </div>
+            </Card>
           );
         })}
       </div>

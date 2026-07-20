@@ -3,6 +3,8 @@ import { useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { FormSection, Field, inputClass } from "../components/FormSection";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { Card, Badge, Button, Input } from "../design-system";
+import type { BadgeTone } from "../design-system";
 
 interface OutreachBlock {
   id: string;
@@ -44,12 +46,17 @@ interface RevisionForm {
   blocks: OutreachBlock[];
 }
 
-const BEHAVIOR_COLORS: Record<string, string> = {
-  fixed: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
-  ai_assisted: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  ai_generated: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
+const BEHAVIOR_TONES: Record<string, BadgeTone> = {
+  fixed: "neutral",
+  ai_assisted: "info",
+  ai_generated: "ai",
 };
 
+/**
+ * OutreachPlaybooks — M8.7 Phase E2 (AI Workforce zone). Migrated in place
+ * per Design Bible Section 9.2: identical fetch/clone/revise calls, only
+ * the markup moves onto design-system tokens/primitives.
+ */
 export default function OutreachPlaybooks() {
   const { companyId } = useParams();
   const [playbooks, setPlaybooks] = useState<OutreachPlaybook[]>([]);
@@ -142,98 +149,86 @@ export default function OutreachPlaybooks() {
     <div>
       <Breadcrumbs items={[{ label: "Businesses", to: "/businesses" }, { label: "Outreach Playbooks" }]} />
 
-      <h2 className="mb-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">Outreach Playbooks</h2>
-      <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
+      <h1 className="mb-1 text-h1 font-semibold text-slate-100">Outreach Playbooks</h1>
+      <p className="mb-6 text-body text-slate-400">
         How this business sells: methodology, brand voice, value proposition, and reusable blocks. Never edited in
         place - "Revise" creates a new version and keeps the old one intact for comparison/audit.
       </p>
 
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      {error && <p className="mb-4 text-sm text-status-danger">{error}</p>}
 
       <div className="space-y-3">
         {playbooks.map((playbook) => {
           const isOpen = expandedId === playbook.id;
           const isRevising = revisingId === playbook.id;
           return (
-            <div key={playbook.id} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+            <Card key={playbook.id}>
               <button className="flex w-full items-start justify-between text-left" onClick={() => setExpandedId(isOpen ? null : playbook.id)}>
                 <div>
                   <div className="mb-1 flex items-center gap-2">
-                    <h3 className="font-semibold text-slate-900 dark:text-slate-100">{playbook.name}</h3>
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                      v{playbook.version}
-                    </span>
-                    {playbook.is_system_default && (
-                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-700 dark:bg-blue-900 dark:text-blue-300">
-                        system default
-                      </span>
-                    )}
-                    {playbook.playbook_goal && (
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                        {playbook.playbook_goal.replace(/_/g, " ")}
-                      </span>
-                    )}
+                    <h3 className="font-semibold text-slate-100">{playbook.name}</h3>
+                    <Badge tone="neutral">v{playbook.version}</Badge>
+                    {playbook.is_system_default && <Badge tone="info">system default</Badge>}
+                    {playbook.playbook_goal && <Badge tone="neutral">{playbook.playbook_goal.replace(/_/g, " ")}</Badge>}
                   </div>
                   {playbook.description && <p className="text-xs text-slate-500">{playbook.description}</p>}
                 </div>
               </button>
 
               {isOpen && !isRevising && (
-                <div className="mt-4 space-y-4 border-t border-slate-100 pt-4 dark:border-slate-700">
+                <div className="mt-4 space-y-4 border-t border-border-hairline pt-4">
                   {playbook.sales_methodology && (
                     <div>
                       <p className="mb-1 text-xs font-medium text-slate-500">Sales methodology</p>
-                      <p className="text-sm text-slate-600 dark:text-slate-300">{playbook.sales_methodology}</p>
+                      <p className="text-sm text-slate-300">{playbook.sales_methodology}</p>
                     </div>
                   )}
                   {playbook.core_value_proposition && (
                     <div>
                       <p className="mb-1 text-xs font-medium text-slate-500">Core value proposition</p>
-                      <p className="text-sm text-slate-600 dark:text-slate-300">{playbook.core_value_proposition}</p>
+                      <p className="text-sm text-slate-300">{playbook.core_value_proposition}</p>
                     </div>
                   )}
                   <div>
                     <p className="mb-2 text-xs font-medium text-slate-500">Blocks (in render order)</p>
                     <div className="space-y-2">
                       {[...playbook.blocks].sort((a, b) => a.display_order - b.display_order).map((block) => (
-                        <div key={block.id} className="rounded-md bg-slate-50 p-2 text-xs dark:bg-slate-800">
+                        <div key={block.id} className="rounded-lg bg-surface-2 p-2 text-xs">
                           <div className="mb-1 flex items-center gap-2">
-                            <span className="font-medium text-slate-700 dark:text-slate-200">{block.block_key}</span>
-                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${BEHAVIOR_COLORS[block.behavior]}`}>
-                              {block.behavior.replace(/_/g, " ")}
-                            </span>
-                            {block.is_mandatory && <span className="text-slate-400">mandatory</span>}
+                            <span className="font-medium text-slate-200">{block.block_key}</span>
+                            <Badge tone={BEHAVIOR_TONES[block.behavior]}>{block.behavior.replace(/_/g, " ")}</Badge>
+                            {block.is_mandatory && <span className="text-slate-500">mandatory</span>}
                           </div>
-                          <p className="text-slate-500 dark:text-slate-400">{block.fixed_content || block.ai_guidance}</p>
+                          <p className="text-slate-400">{block.fixed_content || block.ai_guidance}</p>
                         </div>
                       ))}
                     </div>
                   </div>
                   <div className="flex gap-2">
                     {playbook.is_system_default ? (
-                      <button onClick={() => clonePlaybook(playbook)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300">
+                      <Button size="sm" variant="secondary" onClick={() => clonePlaybook(playbook)}>
                         Clone into my business
-                      </button>
+                      </Button>
                     ) : (
-                      <button onClick={() => startRevise(playbook)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300">
+                      <Button size="sm" variant="secondary" onClick={() => startRevise(playbook)}>
                         Revise (creates v{playbook.version + 1})
-                      </button>
+                      </Button>
                     )}
                   </div>
                 </div>
               )}
 
               {isRevising && form && (
-                <form onSubmit={submitRevision} className="mt-4 border-t border-slate-100 pt-4 dark:border-slate-700">
+                <form onSubmit={submitRevision} className="mt-4 border-t border-border-hairline pt-4">
                   <FormSection title={`Revise "${playbook.name}"`}>
                     <Field label="Name" full>
-                      <input required className={inputClass} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+                      <Input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
                     </Field>
                     <Field label="Playbook goal">
-                      <input className={inputClass} value={form.playbook_goal} onChange={(e) => setForm({ ...form, playbook_goal: e.target.value })} />
+                      <Input value={form.playbook_goal} onChange={(e) => setForm({ ...form, playbook_goal: e.target.value })} />
                     </Field>
                     <Field label="Description" full>
-                      <input className={inputClass} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
+                      <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
                     </Field>
                     <Field label="Sales methodology" full>
                       <textarea className={inputClass} rows={3} value={form.sales_methodology} onChange={(e) => setForm({ ...form, sales_methodology: e.target.value })} />
@@ -250,15 +245,13 @@ export default function OutreachPlaybooks() {
                   </FormSection>
 
                   <div className="mb-4">
-                    <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">Blocks</p>
+                    <p className="mb-2 text-sm font-medium text-slate-200">Blocks</p>
                     <div className="space-y-2">
                       {form.blocks.map((block) => (
                         <div key={block.id}>
                           <div className="mb-1 flex items-center gap-2 text-xs">
-                            <span className="font-medium text-slate-700 dark:text-slate-200">{block.block_key}</span>
-                            <span className={`rounded-full px-2 py-0.5 font-medium ${BEHAVIOR_COLORS[block.behavior]}`}>
-                              {block.behavior.replace(/_/g, " ")}
-                            </span>
+                            <span className="font-medium text-slate-200">{block.block_key}</span>
+                            <Badge tone={BEHAVIOR_TONES[block.behavior]}>{block.behavior.replace(/_/g, " ")}</Badge>
                           </div>
                           <textarea
                             className={inputClass}
@@ -272,16 +265,14 @@ export default function OutreachPlaybooks() {
                   </div>
 
                   <div className="flex justify-end gap-3">
-                    <button type="button" onClick={() => { setRevisingId(null); setForm(null); }} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300">
+                    <Button type="button" variant="secondary" onClick={() => { setRevisingId(null); setForm(null); }}>
                       Cancel
-                    </button>
-                    <button type="submit" className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500">
-                      Save new version
-                    </button>
+                    </Button>
+                    <Button type="submit">Save new version</Button>
                   </div>
                 </form>
               )}
-            </div>
+            </Card>
           );
         })}
       </div>

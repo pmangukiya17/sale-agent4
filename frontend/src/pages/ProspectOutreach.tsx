@@ -4,6 +4,8 @@ import DOMPurify from "dompurify";
 import { apiClient } from "../api/client";
 import { inputClass } from "../components/FormSection";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { Card, Badge, Button, Select } from "../design-system";
+import type { BadgeTone } from "../design-system";
 
 interface OutreachPlaybook {
   id: string;
@@ -59,16 +61,21 @@ interface OutreachDraft {
   edits: OutreachEdit[];
 }
 
-const STATUS_COLORS: Record<string, string> = {
-  draft: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
-  pending_approval: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  approved: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
-  rejected: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
-  superseded: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400",
+const STATUS_TONES: Record<string, BadgeTone> = {
+  draft: "neutral",
+  pending_approval: "info",
+  approved: "success",
+  rejected: "danger",
+  superseded: "neutral",
 };
 
 const CHANNEL_OPTIONS = [{ key: "email", label: "Email" }];
 
+/**
+ * ProspectOutreach — M8.7 Phase E2 (AI Workforce zone). Migrated in place
+ * per Design Bible Section 9.2: identical fetch/create/run/approve/reject/
+ * edit calls, only the markup moves onto design-system tokens/primitives.
+ */
 export default function ProspectOutreach() {
   const { companyId, prospectId, contactId } = useParams();
   const base = `/company-profiles/${companyId}/prospects/${prospectId}/contacts/${contactId}`;
@@ -190,96 +197,79 @@ export default function ProspectOutreach() {
         ]}
       />
 
-      <h2 className="mb-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">Outreach</h2>
-      <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
+      <h1 className="mb-1 text-h1 font-semibold text-slate-100">Outreach</h1>
+      <p className="mb-6 text-body text-slate-400">
         Generated from this business's Outreach Playbook and this prospect's current Personalization strategy - never
         invents facts beyond what Research/Personalization already verified.
       </p>
 
-      {actionError && <p className="mb-4 text-sm text-red-600">{actionError}</p>}
+      {actionError && <p className="mb-4 text-sm text-status-danger">{actionError}</p>}
 
-      <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-        <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">Generate outreach</p>
+      <Card className="mb-6">
+        <p className="mb-2 text-sm font-medium text-slate-200">Generate outreach</p>
         <div className="flex flex-wrap items-center gap-2">
-          <select className={inputClass} value={selectedChannel} onChange={(e) => setSelectedChannel(e.target.value)}>
+          <Select className="w-40" value={selectedChannel} onChange={(e) => setSelectedChannel(e.target.value)}>
             {CHANNEL_OPTIONS.map((c) => (
               <option key={c.key} value={c.key}>{c.label}</option>
             ))}
-          </select>
-          <select className={inputClass} value={selectedPlaybookId} onChange={(e) => setSelectedPlaybookId(e.target.value)}>
+          </Select>
+          <Select className="w-64" value={selectedPlaybookId} onChange={(e) => setSelectedPlaybookId(e.target.value)}>
             {playbooks.map((p) => (
               <option key={p.id} value={p.id}>{p.name}{p.is_system_default ? " (system)" : ""}</option>
             ))}
-          </select>
-          <button
-            onClick={createRequest}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-          >
-            Create request
-          </button>
+          </Select>
+          <Button size="sm" onClick={createRequest}>Create request</Button>
         </div>
-      </div>
+      </Card>
 
       <div className="mb-6">
-        <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">Outreach requests</p>
+        <p className="mb-2 text-sm font-medium text-slate-200">Outreach requests</p>
         <div className="space-y-2">
           {requests.length === 0 && <p className="text-sm text-slate-500">No outreach requested yet.</p>}
           {requests.map((r) => (
-            <div key={r.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
-              <span>{r.channel_key} · {r.outreach_playbook.name} — <span className="text-xs text-slate-500">{r.status}</span></span>
-              <button
-                onClick={() => runRequest(r.id)}
-                disabled={runningRequestId === r.id}
-                className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300"
-              >
-                {runningRequestId === r.id ? "Running…" : "Run"}
-              </button>
-            </div>
+            <Card key={r.id} padding="compact" className="flex items-center justify-between text-sm">
+              <span className="text-slate-200">{r.channel_key} · {r.outreach_playbook.name} — <span className="text-xs text-slate-500">{r.status}</span></span>
+              <Button size="sm" variant="secondary" onClick={() => runRequest(r.id)} isLoading={runningRequestId === r.id}>
+                Run
+              </Button>
+            </Card>
           ))}
         </div>
       </div>
 
       {draft && (
-        <div className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+        <Card>
           <div className="mb-3 flex flex-wrap items-center gap-2">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Draft v{draft.version} ({draft.channel_key})</p>
-            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_COLORS[draft.status]}`}>{draft.status.replace(/_/g, " ")}</span>
+            <p className="text-sm font-medium text-slate-200">Draft v{draft.version} ({draft.channel_key})</p>
+            <Badge tone={STATUS_TONES[draft.status] ?? "neutral"}>{draft.status.replace(/_/g, " ")}</Badge>
             {draft.confidence != null && <span className="text-xs text-slate-500">{Math.round(draft.confidence * 100)}% confidence</span>}
           </div>
 
-          {draft.reasoning && <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">{draft.reasoning}</p>}
+          {draft.reasoning && <p className="mb-3 text-xs text-slate-400">{draft.reasoning}</p>}
 
           {draft.current_content.assembled.subject && (
-            <p className="mb-2 text-sm font-medium text-slate-800 dark:text-slate-100">
+            <p className="mb-2 text-sm font-medium text-slate-100">
               Subject: {draft.current_content.assembled.subject}
             </p>
           )}
 
           {!isEditing ? (
-            <pre className="mb-4 whitespace-pre-wrap rounded-md bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+            <pre className="mb-4 whitespace-pre-wrap rounded-lg bg-surface-2 p-3 text-sm text-slate-200">
               {draft.current_content.assembled.body}
             </pre>
           ) : (
-            <textarea
-              className={`${inputClass} mb-4`}
-              rows={10}
-              value={editedBody}
-              onChange={(e) => setEditedBody(e.target.value)}
-            />
+            <textarea className={`${inputClass} mb-4`} rows={10} value={editedBody} onChange={(e) => setEditedBody(e.target.value)} />
           )}
 
           {sanitizedSignature && (
             <div className="mb-4">
-              <p className="mb-1 text-xs font-medium text-slate-500 dark:text-slate-400">Signature</p>
-              <div
-                className="rounded-md bg-slate-50 p-3 text-sm text-slate-700 dark:bg-slate-800 dark:text-slate-200"
-                dangerouslySetInnerHTML={{ __html: sanitizedSignature }}
-              />
+              <p className="mb-1 text-xs font-medium text-slate-400">Signature</p>
+              <div className="rounded-lg bg-surface-2 p-3 text-sm text-slate-200" dangerouslySetInnerHTML={{ __html: sanitizedSignature }} />
             </div>
           )}
 
           {draft.edits.length > 0 && (
-            <p className="mb-4 text-xs text-slate-400">
+            <p className="mb-4 text-xs text-slate-500">
               {draft.edits.length} human edit(s) logged - the original AI wording stays permanently recoverable.
             </p>
           )}
@@ -287,28 +277,26 @@ export default function ProspectOutreach() {
           {/* Explainability is never removed, just kept out of the way for
               business users - developers/reviewers can still inspect every
               block's reasoning, evidence, and raw ids on demand. */}
-          <details className="mb-4 rounded-md border border-slate-200 dark:border-slate-700">
-            <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200">
+          <details className="mb-4 rounded-lg border border-border-hairline">
+            <summary className="cursor-pointer select-none px-3 py-2 text-xs font-medium text-slate-400 hover:text-slate-200">
               Developer details
             </summary>
-            <div className="space-y-4 border-t border-slate-100 p-3 dark:border-slate-700">
+            <div className="space-y-4 border-t border-border-hairline p-3">
               <div>
                 <p className="mb-1 text-xs font-medium text-slate-500">Draft ID</p>
-                <p className="font-mono text-xs text-slate-400">{draft.id}</p>
+                <p className="font-mono text-xs text-slate-500">{draft.id}</p>
               </div>
 
               <div>
                 <p className="mb-2 text-xs font-medium text-slate-500">Block breakdown</p>
                 <div className="space-y-2">
                   {draft.ai_generated_content.blocks.map((block) => (
-                    <div key={block.block_key} className="rounded-md bg-slate-50 p-2 text-xs dark:bg-slate-800">
+                    <div key={block.block_key} className="rounded-lg bg-surface-2 p-2 text-xs">
                       <div className="mb-1 flex items-center gap-2">
-                        <span className="font-medium text-slate-700 dark:text-slate-200">{block.block_key}</span>
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-500 dark:bg-slate-700 dark:text-slate-400">
-                          {block.behavior.replace(/_/g, " ")}
-                        </span>
+                        <span className="font-medium text-slate-200">{block.block_key}</span>
+                        <span className="rounded-pill bg-surface-3 px-2 py-0.5 text-slate-400">{block.behavior.replace(/_/g, " ")}</span>
                       </div>
-                      {block.reasoning && <p className="text-slate-500 dark:text-slate-400">{block.reasoning}</p>}
+                      {block.reasoning && <p className="text-slate-500">{block.reasoning}</p>}
                     </div>
                   ))}
                 </div>
@@ -317,7 +305,7 @@ export default function ProspectOutreach() {
               {draft.evidence.length > 0 && (
                 <div>
                   <p className="mb-1 text-xs font-medium text-slate-500">Evidence</p>
-                  <p className="text-xs text-slate-400">
+                  <p className="text-xs text-slate-500">
                     {draft.evidence.map((e) => `${e.block_key ?? "draft"}: ${e.excerpt ?? ""}`).filter(Boolean).join(" · ")}
                   </p>
                 </div>
@@ -325,7 +313,7 @@ export default function ProspectOutreach() {
 
               <div>
                 <p className="mb-1 text-xs font-medium text-slate-500">Raw AI-generated content (frozen, never edited)</p>
-                <pre className="overflow-x-auto rounded-md bg-slate-50 p-2 text-xs text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                <pre className="overflow-x-auto rounded-lg bg-surface-2 p-2 text-xs text-slate-500">
                   {JSON.stringify(draft.ai_generated_content, null, 2)}
                 </pre>
               </div>
@@ -335,33 +323,23 @@ export default function ProspectOutreach() {
           <div className="flex flex-wrap gap-2">
             {draft.status !== "approved" && draft.status !== "rejected" && (
               <>
-                <button onClick={approveDraft} className="rounded-md bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-emerald-700">
-                  Approve
-                </button>
-                <button onClick={rejectDraft} className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700">
-                  Reject
-                </button>
+                <Button size="sm" onClick={approveDraft}>Approve</Button>
+                <Button size="sm" variant="destructive" onClick={rejectDraft}>Reject</Button>
               </>
             )}
             {!isEditing ? (
-              <button onClick={startEdit} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300">
-                Edit
-              </button>
+              <Button size="sm" variant="secondary" onClick={startEdit}>Edit</Button>
             ) : (
               <>
-                <button onClick={saveEdit} className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500">
-                  Save edit
-                </button>
-                <button onClick={() => setIsEditing(false)} className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300">
-                  Cancel
-                </button>
+                <Button size="sm" onClick={saveEdit}>Save edit</Button>
+                <Button size="sm" variant="secondary" onClick={() => setIsEditing(false)}>Cancel</Button>
               </>
             )}
           </div>
-        </div>
+        </Card>
       )}
       {!draft && (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900">
+        <div className="rounded-lg border border-dashed border-border-hairline-strong bg-surface-2/50 p-6 text-center text-sm text-slate-500">
           No outreach draft generated yet for this channel - create and run a request above.
         </div>
       )}

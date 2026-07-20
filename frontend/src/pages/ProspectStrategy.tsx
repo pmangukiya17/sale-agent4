@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
-import { inputClass } from "../components/FormSection";
 import { Breadcrumbs } from "../components/Breadcrumbs";
+import { Card, Badge, Button, Select } from "../design-system";
+import type { BadgeTone } from "../design-system";
 
 interface PersonalizationTemplate {
   id: string;
@@ -61,19 +62,20 @@ interface PersonalizationSnapshot {
 }
 
 const RANK_ORDER: Record<string, number> = { primary: 0, secondary: 1, fallback: 2 };
-const RANK_COLORS: Record<string, string> = {
-  primary: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
-  secondary: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  fallback: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
-};
-const READINESS_COLORS: Record<string, string> = {
-  unknown: "bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400",
-  low: "bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300",
-  medium: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
-  high: "bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300",
-  ready_to_engage: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300",
+const RANK_TONES: Record<string, BadgeTone> = { primary: "success", secondary: "info", fallback: "neutral" };
+const READINESS_TONES: Record<string, BadgeTone> = {
+  unknown: "neutral",
+  low: "neutral",
+  medium: "info",
+  high: "warning",
+  ready_to_engage: "success",
 };
 
+/**
+ * ProspectStrategy — M8.7 Phase E2 (AI Workforce zone). Migrated in place
+ * per Design Bible Section 9.2: identical fetch/create/run calls, only the
+ * markup moves onto design-system tokens/primitives.
+ */
 export default function ProspectStrategy() {
   const { companyId, prospectId } = useParams();
   const base = `/company-profiles/${companyId}/prospects/${prospectId}`;
@@ -141,69 +143,58 @@ export default function ProspectStrategy() {
         ]}
       />
 
-      <h2 className="mb-1 text-2xl font-semibold text-slate-900 dark:text-slate-100">Sales Strategy</h2>
-      <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
+      <h1 className="mb-1 text-h1 font-semibold text-slate-100">Sales Strategy</h1>
+      <p className="mb-6 text-body text-slate-400">
         The best approach for this prospect, synthesized from Research's Intelligence Snapshot, Signals, and
         Recommendations - never re-derived, only read.
       </p>
 
-      {actionError && <p className="mb-4 text-sm text-red-600">{actionError}</p>}
+      {actionError && <p className="mb-4 text-sm text-status-danger">{actionError}</p>}
 
-      <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-        <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">Generate a new strategy</p>
+      <Card className="mb-6">
+        <p className="mb-2 text-sm font-medium text-slate-200">Generate a new strategy</p>
         <div className="flex flex-wrap items-center gap-2">
-          <select className={inputClass} value={selectedTemplateId} onChange={(e) => setSelectedTemplateId(e.target.value)}>
+          <Select className="w-64" value={selectedTemplateId} onChange={(e) => setSelectedTemplateId(e.target.value)}>
             {templates.map((t) => (
               <option key={t.id} value={t.id}>{t.name}{t.is_system_default ? " (system)" : ""}</option>
             ))}
-          </select>
-          <button
-            onClick={createRequest}
-            className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-          >
-            Create request
-          </button>
+          </Select>
+          <Button size="sm" onClick={createRequest}>Create request</Button>
         </div>
-      </div>
+      </Card>
 
       <div className="mb-6">
-        <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">Personalization requests</p>
+        <p className="mb-2 text-sm font-medium text-slate-200">Personalization requests</p>
         <div className="space-y-2">
           {requests.length === 0 && <p className="text-sm text-slate-500">No strategy requested yet.</p>}
           {requests.map((r) => (
-            <div key={r.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-3 text-sm dark:border-slate-700 dark:bg-slate-900">
-              <span>{r.personalization_template.name} — <span className="text-xs text-slate-500">{r.status}</span></span>
-              <button
-                onClick={() => runRequest(r.id)}
-                disabled={runningRequestId === r.id}
-                className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300"
-              >
-                {runningRequestId === r.id ? "Running…" : "Run"}
-              </button>
-            </div>
+            <Card key={r.id} padding="compact" className="flex items-center justify-between text-sm">
+              <span className="text-slate-200">{r.personalization_template.name} — <span className="text-xs text-slate-500">{r.status}</span></span>
+              <Button size="sm" variant="secondary" onClick={() => runRequest(r.id)} isLoading={runningRequestId === r.id}>
+                Run
+              </Button>
+            </Card>
           ))}
         </div>
       </div>
 
       {snapshot && (
         <>
-          <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <Card className="mb-6">
             <div className="mb-3 flex items-center gap-2">
-              <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Strategy Snapshot v{snapshot.version}</p>
-              <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${READINESS_COLORS[snapshot.buyer_readiness] ?? ""}`}>
+              <p className="text-sm font-medium text-slate-200">Strategy Snapshot v{snapshot.version}</p>
+              <Badge tone={READINESS_TONES[snapshot.buyer_readiness] ?? "neutral"}>
                 readiness: {snapshot.buyer_readiness.replace(/_/g, " ")}
-              </span>
-              <span className="text-xs text-slate-400">relationship at generation: {snapshot.relationship_stage_at_generation}</span>
+              </Badge>
+              <span className="text-xs text-slate-500">relationship at generation: {snapshot.relationship_stage_at_generation}</span>
             </div>
-            {snapshot.buyer_readiness_reasoning && (
-              <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">{snapshot.buyer_readiness_reasoning}</p>
-            )}
+            {snapshot.buyer_readiness_reasoning && <p className="mb-3 text-xs text-slate-400">{snapshot.buyer_readiness_reasoning}</p>}
 
             {snapshot.buyer_persona && (
               <div className="mb-3">
                 <p className="mb-1 text-xs font-medium text-slate-500">Buyer persona</p>
-                <p className="text-sm text-slate-700 dark:text-slate-300">{String(snapshot.buyer_persona.archetype ?? "")}</p>
-                <p className="text-xs text-slate-500 dark:text-slate-400">{String(snapshot.buyer_persona.decision_style ?? "")}</p>
+                <p className="text-sm text-slate-300">{String(snapshot.buyer_persona.archetype ?? "")}</p>
+                <p className="text-xs text-slate-400">{String(snapshot.buyer_persona.decision_style ?? "")}</p>
               </div>
             )}
 
@@ -214,41 +205,41 @@ export default function ProspectStrategy() {
                   {Object.entries(snapshot.communication_strategy)
                     .filter(([key]) => key !== "rationale")
                     .map(([key, value]) => (
-                      <span key={key} className="rounded-full bg-slate-100 px-2 py-0.5 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                      <span key={key} className="rounded-pill bg-surface-2 px-2 py-0.5 text-slate-300">
                         {key.replace(/_/g, " ")}: {String(value)}
                       </span>
                     ))}
                 </div>
                 {snapshot.communication_strategy.rationale && (
-                  <p className="mt-1 text-xs text-slate-400">{snapshot.communication_strategy.rationale}</p>
+                  <p className="mt-1 text-xs text-slate-500">{snapshot.communication_strategy.rationale}</p>
                 )}
               </div>
             )}
-          </div>
+          </Card>
 
           <div className="mb-6 space-y-3">
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Ranked strategies</p>
+            <p className="text-sm font-medium text-slate-200">Ranked strategies</p>
             {sortedStrategies.map((s) => (
-              <div key={s.id} className="rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+              <Card key={s.id}>
                 <div className="mb-1 flex items-center gap-2">
-                  <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${RANK_COLORS[s.strategy_rank] ?? ""}`}>{s.strategy_rank}</span>
+                  <Badge tone={RANK_TONES[s.strategy_rank] ?? "neutral"}>{s.strategy_rank}</Badge>
                   {s.confidence != null && <span className="text-xs text-slate-500">{Math.round(s.confidence * 100)}% confidence</span>}
                 </div>
-                <p className="text-sm font-medium text-slate-800 dark:text-slate-100">{s.title}</p>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-300">{s.narrative}</p>
+                <p className="text-sm font-medium text-slate-100">{s.title}</p>
+                <p className="mt-1 text-sm text-slate-300">{s.narrative}</p>
                 {s.evidence.length > 0 && (
-                  <p className="mt-2 text-xs text-slate-400">
+                  <p className="mt-2 text-xs text-slate-500">
                     Evidence: {s.evidence.map((e) => e.excerpt).filter(Boolean).join(" · ")}
                   </p>
                 )}
-              </div>
+              </Card>
             ))}
           </div>
 
           {snapshot.personalization_variables && (
             <div>
-              <p className="mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">Personalization variables (for M4)</p>
-              <pre className="overflow-x-auto rounded-md bg-slate-50 p-3 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              <p className="mb-2 text-sm font-medium text-slate-200">Personalization variables (for M4)</p>
+              <pre className="overflow-x-auto rounded-lg bg-surface-2 p-3 text-xs text-slate-300">
                 {JSON.stringify(snapshot.personalization_variables, null, 2)}
               </pre>
             </div>
@@ -256,7 +247,7 @@ export default function ProspectStrategy() {
         </>
       )}
       {!snapshot && (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900">
+        <div className="rounded-lg border border-dashed border-border-hairline-strong bg-surface-2/50 p-6 text-center text-sm text-slate-500">
           No strategy generated yet - create and run a request above.
         </div>
       )}

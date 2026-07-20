@@ -2,8 +2,9 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { apiClient } from "../../api/client";
 import { Breadcrumbs } from "../../components/Breadcrumbs";
-import { StatusBadge, type BadgeTone } from "../../components/StatusBadge";
 import { useInterval } from "../../hooks/useInterval";
+import { Badge, Button, PlaceholderNotice, Table, type TableColumn } from "../../design-system";
+import type { BadgeTone } from "../../design-system";
 
 interface DeliveryCampaign {
   id: string;
@@ -60,6 +61,14 @@ const ITEM_STATUS_TONE: Record<string, BadgeTone> = {
 const POLL_MS = 10_000;
 const TERMINAL_CAMPAIGN_STATUSES = new Set(["completed", "cancelled"]);
 
+/**
+ * DeliveryCampaignDetail — M8.7 Phase E2 (AI Workforce zone). Migrated in
+ * place per Design Bible Section 9.2: identical fetch/schedule/pause/
+ * resume/cancel/retry calls and identical polling behavior, only the
+ * markup moves onto design-system tokens/primitives - the queue-items
+ * grid is a genuine Table use case (uniform rows of scalar cells), unlike
+ * the expandable-row pages elsewhere in this phase.
+ */
 export default function DeliveryCampaignDetail() {
   const { companyId, campaignId } = useParams();
   const base = `/company-profiles/${companyId}/delivery-campaigns/${campaignId}`;
@@ -142,6 +151,64 @@ export default function DeliveryCampaignDetail() {
     return acc;
   }, {});
 
+  const columns: TableColumn<DeliveryQueueItem>[] = [
+    { key: "recipient_email", header: "Recipient", render: (i) => <span className="text-slate-200">{i.recipient_email}</span> },
+    { key: "status", header: "Status", render: (i) => <Badge tone={ITEM_STATUS_TONE[i.status] ?? "neutral"}>{i.status}</Badge> },
+    {
+      key: "when",
+      header: "Scheduled / Sent",
+      render: (i) => (
+        <span className="text-xs text-slate-500">
+          {i.sent_at
+            ? `Sent ${new Date(i.sent_at).toLocaleString()}`
+            : i.scheduled_send_at
+              ? new Date(i.scheduled_send_at).toLocaleString()
+              : "—"}
+        </span>
+      ),
+    },
+    {
+      key: "attempts",
+      header: "Attempts",
+      render: (i) => <span className="text-xs text-slate-500">{i.attempt_count} / {i.max_attempts}</span>,
+    },
+    {
+      key: "last_error",
+      header: "Last error",
+      render: (i) => (
+        <span className="block max-w-xs truncate text-xs text-status-danger" title={i.last_error ?? undefined}>
+          {i.last_error ?? "—"}
+        </span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      render: (item) => (
+        <div className="flex gap-2">
+          {(item.status === "queued" || item.status === "scheduled" || item.status === "retry") && (
+            <button
+              disabled={busyItemId === item.id}
+              onClick={() => cancelItem(item.id)}
+              className="text-xs font-medium text-status-danger hover:underline disabled:opacity-50"
+            >
+              Cancel
+            </button>
+          )}
+          {(item.status === "failed" || item.status === "retry") && (
+            <button
+              disabled={busyItemId === item.id}
+              onClick={() => retryItem(item.id)}
+              className="text-xs font-medium text-slate-200 hover:underline disabled:opacity-50"
+            >
+              Retry now
+            </button>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <div>
       <Breadcrumbs
@@ -155,126 +222,50 @@ export default function DeliveryCampaignDetail() {
       <div className="mb-6 flex items-start justify-between">
         <div>
           <div className="mb-1 flex items-center gap-2">
-            <h2 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">{campaign.name}</h2>
-            <StatusBadge label={campaign.status} tone={CAMPAIGN_STATUS_TONE[campaign.status] ?? "neutral"} />
+            <h1 className="text-h1 font-semibold text-slate-100">{campaign.name}</h1>
+            <Badge tone={CAMPAIGN_STATUS_TONE[campaign.status] ?? "neutral"}>{campaign.status}</Badge>
           </div>
-          {campaign.description && <p className="text-sm text-slate-500 dark:text-slate-400">{campaign.description}</p>}
+          {campaign.description && <p className="text-sm text-slate-400">{campaign.description}</p>}
         </div>
-        <div className="flex shrink-0 gap-2 text-sm">
+        <div className="flex shrink-0 gap-2">
           {campaign.status === "draft" && (
-            <button
-              disabled={busyAction}
-              onClick={() => runAction("schedule")}
-              className="rounded-md bg-slate-900 px-4 py-2 font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-            >
+            <Button disabled={busyAction} onClick={() => runAction("schedule")}>
               Schedule
-            </button>
+            </Button>
           )}
           {campaign.status === "active" && (
-            <button
-              disabled={busyAction}
-              onClick={() => runAction("pause")}
-              className="rounded-md border border-slate-200 px-4 py-2 font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 dark:border-slate-700 dark:text-slate-200"
-            >
+            <Button variant="secondary" disabled={busyAction} onClick={() => runAction("pause")}>
               Pause
-            </button>
+            </Button>
           )}
           {campaign.status === "paused" && (
-            <button
-              disabled={busyAction}
-              onClick={() => runAction("resume")}
-              className="rounded-md bg-slate-900 px-4 py-2 font-medium text-white hover:bg-slate-800 disabled:opacity-50 dark:bg-indigo-600 dark:hover:bg-indigo-500"
-            >
+            <Button disabled={busyAction} onClick={() => runAction("resume")}>
               Resume
-            </button>
+            </Button>
           )}
           {(campaign.status === "draft" || campaign.status === "active" || campaign.status === "paused") && (
-            <button
-              disabled={busyAction}
-              onClick={() => runAction("cancel")}
-              className="rounded-md border border-slate-200 px-4 py-2 font-medium text-red-600 hover:bg-red-50 disabled:opacity-50 dark:border-slate-700"
-            >
+            <Button variant="destructive" disabled={busyAction} onClick={() => runAction("cancel")}>
               Cancel
-            </button>
+            </Button>
           )}
         </div>
       </div>
 
-      {actionError && <p className="mb-4 text-sm text-red-600">{actionError}</p>}
+      {actionError && <p className="mb-4 text-sm text-status-danger">{actionError}</p>}
 
       <div className="mb-6 flex flex-wrap gap-2">
         {Object.entries(summary).map(([status, count]) => (
-          <span key={status} className="flex items-center gap-1.5 rounded-md border border-slate-200 px-2.5 py-1 text-xs dark:border-slate-700">
-            <StatusBadge label={status} tone={ITEM_STATUS_TONE[status] ?? "neutral"} />
-            <span className="text-slate-500 dark:text-slate-400">{count}</span>
+          <span key={status} className="flex items-center gap-1.5 rounded-lg border border-border-hairline px-2.5 py-1 text-xs">
+            <Badge tone={ITEM_STATUS_TONE[status] ?? "neutral"}>{status}</Badge>
+            <span className="text-slate-400">{count}</span>
           </span>
         ))}
       </div>
 
       {items.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900">
-          No queue items.
-        </div>
+        <PlaceholderNotice kind="no-data" reason="No queue items." />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 dark:border-slate-700">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-xs uppercase text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-              <tr>
-                <th className="px-4 py-2">Recipient</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2">Scheduled / Sent</th>
-                <th className="px-4 py-2">Attempts</th>
-                <th className="px-4 py-2">Last error</th>
-                <th className="px-4 py-2">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {items.map((item) => (
-                <tr key={item.id} className="bg-white dark:bg-slate-900">
-                  <td className="px-4 py-2 text-slate-700 dark:text-slate-200">{item.recipient_email}</td>
-                  <td className="px-4 py-2">
-                    <StatusBadge label={item.status} tone={ITEM_STATUS_TONE[item.status] ?? "neutral"} />
-                  </td>
-                  <td className="px-4 py-2 text-xs text-slate-500">
-                    {item.sent_at
-                      ? `Sent ${new Date(item.sent_at).toLocaleString()}`
-                      : item.scheduled_send_at
-                        ? new Date(item.scheduled_send_at).toLocaleString()
-                        : "—"}
-                  </td>
-                  <td className="px-4 py-2 text-xs text-slate-500">
-                    {item.attempt_count} / {item.max_attempts}
-                  </td>
-                  <td className="max-w-xs truncate px-4 py-2 text-xs text-red-600" title={item.last_error ?? undefined}>
-                    {item.last_error ?? "—"}
-                  </td>
-                  <td className="px-4 py-2">
-                    <div className="flex gap-2">
-                      {(item.status === "queued" || item.status === "scheduled" || item.status === "retry") && (
-                        <button
-                          disabled={busyItemId === item.id}
-                          onClick={() => cancelItem(item.id)}
-                          className="text-xs font-medium text-red-600 hover:underline disabled:opacity-50"
-                        >
-                          Cancel
-                        </button>
-                      )}
-                      {(item.status === "failed" || item.status === "retry") && (
-                        <button
-                          disabled={busyItemId === item.id}
-                          onClick={() => retryItem(item.id)}
-                          className="text-xs font-medium text-slate-700 hover:underline disabled:opacity-50 dark:text-slate-200"
-                        >
-                          Retry now
-                        </button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table columns={columns} rows={items} rowKey={(i) => i.id} emptyMessage="No queue items." />
       )}
     </div>
   );

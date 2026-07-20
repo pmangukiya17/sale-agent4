@@ -74,20 +74,13 @@ export default function DeliveryOnboarding() {
 
   if (deliveryReady) {
     return (
-      <div className="mb-6 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2.5 text-sm dark:border-emerald-900 dark:bg-emerald-950">
-        <span className="font-medium text-emerald-700 dark:text-emerald-400">✓ Delivery Ready</span>
+      <div className="mb-6 flex items-center justify-between rounded-lg border border-status-success/30 bg-status-success/5 px-4 py-2.5 text-sm">
+        <span className="font-medium text-status-success">✓ Delivery Ready</span>
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => setCollapsed(true)}
-            className="text-xs text-emerald-600 hover:underline dark:text-emerald-400"
-          >
+          <button onClick={() => setCollapsed(true)} className="text-xs text-status-success hover:underline">
             Hide
           </button>
-          <button
-            onClick={dismiss}
-            className="text-emerald-500 hover:text-emerald-700 dark:text-emerald-500 dark:hover:text-emerald-300"
-            aria-label="Dismiss onboarding checklist"
-          >
+          <button onClick={dismiss} className="text-status-success hover:brightness-125" aria-label="Dismiss onboarding checklist">
             ×
           </button>
         </div>
@@ -96,16 +89,10 @@ export default function DeliveryOnboarding() {
   }
 
   return (
-    <div className="mb-6 rounded-lg border border-slate-200 bg-white px-4 py-3 dark:border-slate-700 dark:bg-slate-900">
+    <div className="mb-6 rounded-lg border border-border-hairline bg-surface-1 px-4 py-3">
       <div className="mb-2.5 flex items-center justify-between">
-        <p className="text-xs font-medium uppercase tracking-wide text-slate-400 dark:text-slate-500">
-          Get set up for delivery
-        </p>
-        <button
-          onClick={dismiss}
-          className="text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
-          aria-label="Dismiss onboarding checklist"
-        >
+        <p className="text-xs font-medium uppercase tracking-wide text-slate-500">Get set up for delivery</p>
+        <button onClick={dismiss} className="text-slate-500 hover:text-slate-200" aria-label="Dismiss onboarding checklist">
           ×
         </button>
       </div>
@@ -115,29 +102,27 @@ export default function DeliveryOnboarding() {
           return (
             <div key={step.label} className="flex items-center gap-2">
               {isDone ? (
-                <span className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-sm text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400">
+                <span className="flex items-center gap-1.5 rounded-pill bg-status-success/10 px-3 py-1 text-sm text-status-success">
                   <span>✓</span>
                   {step.label}
                 </span>
               ) : (
                 <Link
                   to={step.to}
-                  className="flex items-center gap-1.5 rounded-full border border-slate-300 px-3 py-1 text-sm text-slate-600 hover:border-slate-400 hover:text-slate-900 dark:border-slate-600 dark:text-slate-300 dark:hover:border-slate-500 dark:hover:text-slate-100"
+                  className="flex items-center gap-1.5 rounded-pill border border-border-hairline px-3 py-1 text-sm text-slate-300 hover:border-border-hairline-strong hover:text-slate-100"
                 >
-                  <span className="text-slate-300 dark:text-slate-600">○</span>
+                  <span className="text-slate-600">○</span>
                   {step.label}
                 </Link>
               )}
-              {i < steps.length - 1 && <span className="text-slate-300 dark:text-slate-700">→</span>}
+              {i < steps.length - 1 && <span className="text-slate-600">→</span>}
             </div>
           );
         })}
-        <span className="text-slate-300 dark:text-slate-700">→</span>
+        <span className="text-slate-600">→</span>
         <span
-          className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-sm ${
-            deliveryReady
-              ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400"
-              : "border border-dashed border-slate-300 text-slate-400 dark:border-slate-700 dark:text-slate-500"
+          className={`flex items-center gap-1.5 rounded-pill px-3 py-1 text-sm ${
+            deliveryReady ? "bg-status-success/10 text-status-success" : "border border-dashed border-border-hairline-strong text-slate-500"
           }`}
         >
           {deliveryReady ? "✓" : "○"} Delivery Ready
