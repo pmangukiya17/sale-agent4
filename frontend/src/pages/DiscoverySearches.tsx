@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { FormSection, Field, inputClass } from "../components/FormSection";
 import { Toggle } from "../components/Toggle";
@@ -57,26 +57,6 @@ const emptyCandidateRow = (): CandidateBuyerRow => ({
   description: "",
 });
 
-interface DiscoveryJobProviderRun {
-  provider_key: string;
-  status: string;
-  duration_ms: number | null;
-  request_count: number;
-  api_cost: number | null;
-  token_usage: number | null;
-  error_message: string | null;
-}
-
-interface DiscoveryJob {
-  id: string;
-  status: string;
-  raw_result_count: number;
-  prospect_created_count: number;
-  prospect_matched_count: number;
-  error_message: string | null;
-  provider_runs: DiscoveryJobProviderRun[];
-}
-
 const AVAILABLE_PROVIDERS = [{ key: "manual_csv", label: "Manual / CSV Import" }];
 
 interface SearchForm {
@@ -100,12 +80,18 @@ const EMPTY_FORM: SearchForm = {
 };
 
 /**
- * DiscoverySearches — M8.7 Phase E2 (AI Workforce zone). Migrated in place
- * per Design Bible Section 9.2: every fetch/save/run call below is
- * unchanged, only the markup moves onto design-system tokens/primitives.
+ * DiscoverySearches — the Discovery configuration page. M8.7 Phase E2
+ * migrated this onto design-system tokens/primitives; M8.8 changed only
+ * handleRun's own tail end (see its own comment) - this page's
+ * fetch/save logic and the config form itself are otherwise unchanged,
+ * per M8.8's explicit "the existing Discovery configuration page remains
+ * unchanged" requirement. The new Live Workflow Progress screen
+ * (DiscoveryExecutionPage.tsx) is reached via navigation after Run, not
+ * rendered inline on this page anymore.
  */
 export default function DiscoverySearches() {
   const { companyId } = useParams();
+  const navigate = useNavigate();
   const [searches, setSearches] = useState<DiscoverySearch[]>([]);
   const [templates, setTemplates] = useState<SearchTemplate[]>([]);
   const [icps, setIcps] = useState<IcpOption[]>([]);
@@ -114,7 +100,6 @@ export default function DiscoverySearches() {
   const [form, setForm] = useState<SearchForm>(EMPTY_FORM);
   const [error, setError] = useState<string | null>(null);
   const [runningId, setRunningId] = useState<string | null>(null);
-  const [jobResults, setJobResults] = useState<Record<string, DiscoveryJob>>({});
   const [candidateRows, setCandidateRows] = useState<Record<string, CandidateBuyerRow[]>>({});
 
   const load = () => {
@@ -242,11 +227,15 @@ export default function DiscoverySearches() {
     }
 
     try {
-      const res = await apiClient.post(`/company-profiles/${companyId}/discovery-searches/${search.id}/run`);
-      setJobResults((prev) => ({ ...prev, [search.id]: res.data }));
+      // M8.8: /run no longer returns a finished DiscoveryJob synchronously
+      // - it publishes a trigger event and responds "queued" (see
+      // app/api/routes/discovery_searches.py's own docstring). Navigate to
+      // the Live Workflow Progress screen, which finds and watches the
+      // resulting job as the Workflow Engine actually produces it.
+      await apiClient.post(`/company-profiles/${companyId}/discovery-searches/${search.id}/run`);
+      navigate(`/businesses/${companyId}/discovery/searches/${search.id}/run`);
     } catch (err: any) {
       setError(err?.response?.data?.detail ?? "This search could not be run.");
-    } finally {
       setRunningId(null);
     }
   };
@@ -259,7 +248,7 @@ export default function DiscoverySearches() {
         <div>
           <h1 className="text-h1 font-semibold text-slate-100">Discovery Searches</h1>
           <p className="text-body text-slate-400">
-            Every search runs manually and synchronously - click Run and the result comes back in the same request.
+            Every search runs manually. Click Run to start it, then watch its Live Workflow Progress in real time.
           </p>
         </div>
         <Button onClick={() => setShowForm((v) => !v)}>+ New search</Button>
@@ -355,7 +344,6 @@ export default function DiscoverySearches() {
           ))}
 
         {searches.map((search) => {
-          const job = jobResults[search.id];
           const usesManualCsv = search.provider_keys.includes("manual_csv");
           const rows = candidateRows[search.id] ?? [emptyCandidateRow()];
           const readyCount = readyCandidateRows(search.id).length;
@@ -454,28 +442,6 @@ export default function DiscoverySearches() {
                   >
                     + Add row
                   </button>
-                </div>
-              )}
-
-              {job && (
-                <div className="mt-3 rounded-lg border border-border-hairline bg-surface-2 p-3 text-sm">
-                  <p className="mb-2 font-medium text-slate-200">
-                    Job {job.status} — {job.raw_result_count} raw results, {job.prospect_created_count} new prospects, {job.prospect_matched_count} re-seen
-                  </p>
-                  {job.error_message && <p className="mb-2 text-status-danger">{job.error_message}</p>}
-                  <div className="space-y-1">
-                    {job.provider_runs.map((pr, i) => (
-                      <div key={i} className="flex justify-between text-xs text-slate-400">
-                        <span>{pr.provider_key} — {pr.status}</span>
-                        <span>
-                          {pr.duration_ms != null ? `${pr.duration_ms}ms` : ""} · {pr.request_count} req
-                          {pr.api_cost != null ? ` · $${pr.api_cost}` : ""}
-                          {pr.token_usage != null ? ` · ${pr.token_usage} tok` : ""}
-                          {pr.error_message ? ` · ${pr.error_message}` : ""}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               )}
             </Card>

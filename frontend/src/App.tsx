@@ -12,6 +12,7 @@ import CompanyICP from "./pages/CompanyICP";
 import CompanyKnowledgeBase from "./pages/CompanyKnowledgeBase";
 import WorkspaceSettingsPage from "./pages/WorkspaceSettingsPage";
 import DiscoverySearches from "./pages/DiscoverySearches";
+import DiscoveryExecutionPage from "./pages/DiscoveryExecutionPage";
 import DiscoveryJobs from "./pages/DiscoveryJobs";
 import Prospects from "./pages/Prospects";
 import ResearchJobs from "./pages/ResearchJobs";
@@ -163,6 +164,22 @@ export default function App() {
           <ProtectedRoute>
             <DashboardLayout>
               <DiscoverySearches />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      {/* M8.8: Live AI Workflow Visualization - "Live Workflow Progress"
+          step of Create Search -> Start Discovery -> Live Workflow
+          Progress -> Results. A separate route from
+          /discovery/searches itself (that config page is unchanged);
+          reached only via DiscoverySearches.tsx's handleRun navigating
+          here after POST .../run returns "queued". */}
+      <Route
+        path="/businesses/:companyId/discovery/searches/:searchId/run"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <DiscoveryExecutionPage />
             </DashboardLayout>
           </ProtectedRoute>
         }
