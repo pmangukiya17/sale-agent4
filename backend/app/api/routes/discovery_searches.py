@@ -6,15 +6,19 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_owned_company_profile
 from app.db.session import get_db
-from app.discovery.pipeline import DiscoveryConfigError, run_discovery_search
+from app.discovery.pipeline import DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE
 from app.models.company_profile import CompanyProfile
-from app.models.discovery_job import DiscoveryJob
 from app.models.discovery_search import DiscoverySearch
 from app.models.icp_criteria import ICPCriteria
 from app.models.search_template import SearchTemplate
 from app.models.user import User
-from app.schemas.discovery_job import DiscoveryJobRead
-from app.schemas.discovery_search import DiscoverySearchCreate, DiscoverySearchRead, DiscoverySearchUpdate
+from app.schemas.discovery_search import (
+    DiscoverySearchCreate,
+    DiscoverySearchRead,
+    DiscoverySearchRunQueued,
+    DiscoverySearchUpdate,
+)
+from app.workflow_engine.events import publish_event
 
 router = APIRouter()
 
@@ -110,24 +114,53 @@ def delete_discovery_search(
 
 @router.post(
     "/company-profiles/{company_profile_id}/discovery-searches/{search_id}/run",
-    response_model=DiscoveryJobRead,
-    status_code=status.HTTP_201_CREATED,
+    response_model=DiscoverySearchRunQueued,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 def run_search(
     search_id: uuid.UUID,
     profile: CompanyProfile = Depends(get_owned_company_profile),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> DiscoveryJob:
+) -> DiscoverySearchRunQueued:
     """
-    Runs synchronously, in-request - no Celery/Redis/BackgroundTasks/
-    polling worker in M1. The full result (job status, counts, per-provider
-    metrics) comes back in this same response.
+    M8.8: no longer runs synchronously in-request - see
+    docs/architecture (M8.8 Live AI Workflow Visualization) for the full
+    reasoning. This endpoint now only validates the search and publishes
+    DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE (subject_type=
+    "discovery_search", subject_id=search.id, actor_type="user",
+    actor_id=str(current_user.id) - the actor fields are how
+    DiscoveryExecutionAction later recovers who triggered this run, see
+    that module's own docstring). The real execution happens
+    asynchronously: the Event Dispatcher worker turns this event into a
+    WorkflowInstance pinned to the "discovery_search_execution"
+    WorkflowDefinition (app/workflow_bootstrap.py), and the Step Runner
+    worker invokes DiscoveryExecutionAction on its own next polling tick -
+    there is no guaranteed latency bound tighter than those two workers'
+    existing poll intervals (WORKFLOW_EVENT_DISPATCHER_POLL_INTERVAL_SECONDS/
+    WORKFLOW_STEP_RUNNER_POLL_INTERVAL_SECONDS), the same real, disclosed
+    trade-off every other consumer of the M7 engine already accepts.
+
+    The frontend does not get a DiscoveryJob back in this response - none
+    exists yet. It finds the resulting job by polling
+    GET .../discovery-jobs?discovery_search_id={search_id} until one
+    appears (see DiscoverySearchRunQueued's own docstring), then watches
+    that job's own real, incrementally-updated state.
     """
     search = _get_search_or_404(db, profile.id, search_id)
     if not search.provider_keys:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This search has no providers enabled")
-    try:
-        return run_discovery_search(db, search, current_user)
-    except DiscoveryConfigError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    publish_event(
+        db,
+        event_type=DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE,
+        company_profile_id=profile.id,
+        source="app.api.routes.discovery_searches",
+        subject_type="discovery_search",
+        subject_id=search.id,
+        actor_type="user",
+        actor_id=str(current_user.id),
+    )
+    db.commit()
+
+    return DiscoverySearchRunQueued(status="queued", discovery_search_id=search.id)

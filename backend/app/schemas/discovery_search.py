@@ -46,3 +46,19 @@ class DiscoverySearchRead(BaseModel):
     search_template: SearchTemplateRead
     created_at: datetime
     updated_at: datetime
+
+
+class DiscoverySearchRunQueued(BaseModel):
+    """M8.8: the /run endpoint's new response shape. Replaces the old
+    synchronous DiscoveryJobRead return - no DiscoveryJob exists yet at
+    the instant this response is sent (the trigger Event has only just
+    been published; the Event Dispatcher and Step Runner workers create
+    and execute it on their own next polling ticks - see
+    app/api/routes/discovery_searches.py's run_search() docstring). The
+    frontend's Live Workflow Progress view finds the resulting job by
+    polling GET /company-profiles/{id}/discovery-jobs?discovery_search_id=
+    {discovery_search_id} (already supports this filter, unchanged by
+    M8.8) until one appears, then switches to watching that specific job."""
+
+    status: str = "queued"
+    discovery_search_id: uuid.UUID
