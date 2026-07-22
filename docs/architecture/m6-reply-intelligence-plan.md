@@ -1358,7 +1358,15 @@ cleaner contract.
 
 ---
 
-## 14. Phased Implementation Plan (M6.1–M6.6)
+## 14. Phased Implementation Plan (M6.1–M6.5, plus one deferred, unscheduled phase)
+
+**Note on numbering (post-M6.5 rescoping):** this section originally ran
+M6.1 through M6.6. M6.5 was rescoped at approval time to build
+Conversation UI (this document's original M6.6 scope) instead of CRM
+updates & recommended actions (this document's original M6.5 scope) —
+see M6.5's own entry below for the full reasoning. The token "M6.6" is
+retired, not reused for a second meaning; CRM updates & recommended
+actions is tracked below as deferred and unscheduled.
 
 M6 will be implemented in the same layer-by-layer, build-test-verify
 discipline M5 was built under — each phase ships something concrete and
@@ -1497,29 +1505,71 @@ outbound-only conversations and never-threaded messages; a rerun with no
 new data is a true no-op; a newer reply correctly overwrites an older
 classification on the same Conversation.
 
-**M6.5 — CRM updates & recommended actions.**
-Scope: the `relationship_stage` state machine (section 5), including
-closing the pre-existing `cold`→`contacted`-on-send gap in
-`dispatch_service`; `last_contacted_at`/`last_replied_at` writes;
-`ProspectTimelineEvent` entries; the `reply_signal` scoring factor; the
-`Task` table writes and suggested-action derivation.
-Gate: a full synthetic walk — send, reply, classify — correctly
-advances `relationship_stage` through each transition in order, appends
-the expected timeline events, and produces a sensible `Task`; confirms
-no write ever touches `OutreachDraft`/`DeliveryCampaign`/
-`DeliveryQueueItem`/`SendingProfile`/`CompanyProfile` (the boundary
-section 1 and 5 commit to).
+**M6.5 — Conversation UI. RESCOPED at approval time, IMPLEMENTED.**
+This phase's original scope (below, "M6.5 — CRM updates & recommended
+actions") was explicitly deferred at approval time in favor of building
+the Conversation UI first — the reasoning: the M7 Workflow Engine
+extension arc (Discovery/Research/Personalization/Outreach, tracked as
+M8.13-M8.15) had just completed, and the CRM-updates milestone's own
+`Task`/Recommended Actions panel has no UI to surface it in yet anyway,
+so building the UI against the already-real M6.1-M6.4 data first (rather
+than building more backend state with still no page to show it on) was
+judged the better sequencing. This is a **rename, not a cancellation** —
+the original "M6.5 — CRM updates & recommended actions" scope is real,
+deferred work, now tracked below as a **future, unscheduled milestone**
+(no number reserved for it until it's actually next).
 
-**M6.6 — Conversation UI & end-to-end verification.**
-Scope: the Conversation list page, the unified Timeline detail view, the
-AI insights panel, the Reply Analysis display, the Recommended Actions
-panel (section 6); the full `verify_layer*.sh`-style integration script
-(section 10) run against the real stack; final real-Outlook end-to-end
-verification (a real sent email, a real reply, a real classification, a
-real CRM update, visible correctly in the UI).
-Gate: full smoke-test pass, `tsc` clean frontend build, and the same
-real-provider manual verification checklist M5 used before
-`M5-Stable` was tagged — this phase's completion is the `M6-Stable` gate.
+Scope, as actually built: `GET /company-profiles/{id}/conversations`
+(business-wide list) and `GET .../conversations/{conversation_id}`
+(detail: participants + the unified message timeline) — read-only,
+zero new tables, zero new write path; every field exposed was already
+written by M6.1-M6.4. `EmailMessage` already carries both inbound and
+outbound legs of a conversation (`direction` distinguishes them), so no
+separate interleaving of `DeliveryQueueItem`/`OutreachDraft` history is
+needed for the "unified Timeline" this document's section 6 describes —
+confirmed during implementation, not assumed. The frontend
+(`Conversations.tsx`) follows Reports.tsx's (M8.9) List -> Detail expand
+pattern rather than a new routed sub-page, lives at the pre-existing
+global `/conversations` route (Analytics.tsx/Reports.tsx's established
+Intelligence-zone convention: global route, scoped internally via the
+active company context), and shows an AI insights section limited to
+the four real M6.4 fields (`reply_status`/`needs_human_review`/
+`last_reply_at`/`last_reply_from`). **No Recommended Actions / Task
+panel** — no `Task` table exists yet; showing one here would be
+fabricating state, which this project does not do.
+Gate: `py_compile` clean backend, `tsc -b --force` clean frontend. Full
+real-Outlook end-to-end verification (a real sent email, a real reply,
+a real classification, visible correctly in this UI) remains part of
+the single, later, comprehensive verification phase this project's
+standing discipline already defers all real-Postgres/browser
+verification to — not a per-milestone gate here.
+
+**M6.6 (renumbered from this document's original M6.6) — Wire
+Personalization/Outreach into the M7 Workflow Engine. COMPLETED under a
+different name.** What this document originally called "M6.6" (below)
+was Conversation UI + end-to-end verification; that work is now M6.5
+above. The *number* M6.6 itself was never actually used for anything —
+it is retired from this document's own numbering rather than reassigned
+a second time, to avoid a third meaning for the same token. See the
+project's roadmap-renumbering record (M8.13/M8.14/M8.15) for the
+unrelated milestones that actually shipped in this window.
+
+**Deferred, unscheduled — CRM updates & recommended actions (this
+document's original M6.5 scope).**
+Scope, unchanged from the original plan: the `relationship_stage` state
+machine (section 5), including closing the pre-existing
+`cold`→`contacted`-on-send gap in `dispatch_service`;
+`last_contacted_at`/`last_replied_at` writes; `ProspectTimelineEvent`
+entries; the `reply_signal` scoring factor; the `Task` table writes and
+suggested-action derivation.
+Gate (unchanged): a full synthetic walk — send, reply, classify —
+correctly advances `relationship_stage` through each transition in
+order, appends the expected timeline events, and produces a sensible
+`Task`; confirms no write ever touches `OutreachDraft`/
+`DeliveryCampaign`/`DeliveryQueueItem`/`SendingProfile`/`CompanyProfile`
+(the boundary section 1 and 5 commit to). Once this lands, the
+Conversation UI's Recommended Actions panel (section 6) becomes an
+additive follow-up to `Conversations.tsx`, not a redesign of it.
 
 **What's deliberately excluded from this phase sequence, by design.**
 `GmailProvider`/`IMAPProvider`/`ExchangeProvider` implementations are not
@@ -1527,8 +1577,9 @@ phases of M6 itself — per the Provider Capability Matrix (3a), they are
 independent, later, additive work that becomes possible *because* M6
 was built against the interface rather than against Outlook directly.
 Each would be its own short, self-contained milestone (build the
-adapter, verify against a real account, done) once M6.1-M6.6 land,
-never a reason to reopen any of the six phases above.
+adapter, verify against a real account, done) once M6.1-M6.5 and the
+deferred CRM-updates milestone land, never a reason to reopen any of
+the phases above.
 
 ---
 
