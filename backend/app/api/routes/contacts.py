@@ -13,12 +13,19 @@ from app.schemas.contact import ContactCreate, ContactRead
 
 router = APIRouter()
 
-# Same minimal scope as companies.py: manual create/list only, to prove the
-# CRM schema's read/write path end-to-end. Automated contact discovery
-# (finding purchasing contacts on a company's site) is M5, not this file.
+# Same minimal M0 scope as companies.py: manual create/list only, to prove
+# the CRM schema's read/write path end-to-end. Automated contact discovery
+# (finding purchasing contacts on a company's site) became ProspectContact
+# starting M1, not anything added to this file.
+#
+# DEPRECATED - Phase 1, same status/reasoning as companies.py. Routes kept
+# working exactly as-is; marked deprecated=True so new development doesn't
+# get built against this model. Do not extend; use ProspectContact
+# instead. See Contact's own model docstring and
+# deferred-items-and-design-boundaries.md.
 
 
-@router.get("/contacts", response_model=list[ContactRead])
+@router.get("/contacts", response_model=list[ContactRead], deprecated=True)
 def list_contacts(
     company_id: uuid.UUID | None = Query(None, description="Filter to a single company"),
     skip: int = Query(0, ge=0),
@@ -33,7 +40,7 @@ def list_contacts(
     return list(db.scalars(stmt).all())
 
 
-@router.post("/contacts", response_model=ContactRead, status_code=status.HTTP_201_CREATED)
+@router.post("/contacts", response_model=ContactRead, status_code=status.HTTP_201_CREATED, deprecated=True)
 def create_contact(
     contact_in: ContactCreate,
     db: Session = Depends(get_db),
@@ -50,7 +57,7 @@ def create_contact(
     return contact
 
 
-@router.get("/contacts/{contact_id}", response_model=ContactRead)
+@router.get("/contacts/{contact_id}", response_model=ContactRead, deprecated=True)
 def get_contact(
     contact_id: uuid.UUID,
     db: Session = Depends(get_db),

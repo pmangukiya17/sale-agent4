@@ -9,6 +9,16 @@ from app.db.base_class import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
 class WebsiteFinding(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """
+    SUPERSEDED - do not use. Same M0-era, never-wired situation as
+    Thread/Message (no route/service/frontend page references it),
+    hanging off the stale Company model rather than the live
+    Prospect/CompanyProfile model set. Discovery's real per-company
+    findings live on Prospect (description/industry_raw etc.) and
+    IntelligenceSnapshot, not here. See
+    deferred-items-and-design-boundaries.md's legacy CRM entry.
+    """
+
     __tablename__ = "website_findings"
 
     company_id: Mapped[uuid.UUID] = mapped_column(

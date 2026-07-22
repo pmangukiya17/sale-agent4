@@ -10,6 +10,15 @@ from app.models.enums import FollowUpStatus
 
 
 class FollowUp(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """
+    SUPERSEDED - do not use. Same M0-era, never-wired situation as
+    Thread/Message/WebsiteFinding - no route/service/frontend page
+    references it. Real cadence/follow-up scheduling now lives in
+    OutreachRequest.sequence_key/sequence_position (see that model's
+    docstring) once a future milestone builds the sequencing engine. See
+    deferred-items-and-design-boundaries.md's legacy CRM entry.
+    """
+
     __tablename__ = "followups"
 
     company_id: Mapped[uuid.UUID] = mapped_column(

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { apiClient } from "../api/client";
+import { TransitionalBanner } from "../components/TransitionalBanner";
 import { Table, PlaceholderNotice, type TableColumn } from "../design-system";
 
 interface Contact {
@@ -26,6 +27,13 @@ const COLUMNS: TableColumn<Contact>[] = [
  * PlaceholderNotice) instead of bespoke light-mode markup, per Section
  * 9.1 - this is one of the pages Section 9.1 names explicitly as "most at
  * risk of defaulting to a generic CRUD treatment."
+ *
+ * TransitionalBanner added during the Phase 1 legacy-CRM deprecation pass
+ * (see deferred-items-and-design-boundaries.md) - this page was migrated
+ * onto the design system in M8.7 without the same "Legacy" framing
+ * Pipeline.tsx got at the same time, even though both read off the exact
+ * same M0 Company/Contact model family. That gap is what's being closed
+ * here, not a new deprecation decision.
  */
 export default function Contacts() {
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -42,6 +50,12 @@ export default function Contacts() {
 
   return (
     <div>
+      <TransitionalBanner title="This is the original, pre-M1 CRM contact list.">
+        It's kept reachable during the M8 rebuild but is no longer the product's primary contact view - see the real
+        prospect contacts (with decision-maker level, outreach history, and archive support) inside the AI-driven
+        prospect pipeline instead. This page moves or retires alongside the legacy Pipeline list.
+      </TransitionalBanner>
+
       <h1 className="mb-1 text-h1 font-semibold text-slate-100">Contacts</h1>
       <p className="mb-6 text-body text-slate-400">
         Purchasing contacts attached to companies in the CRM. Automated contact discovery is not wired up yet — this

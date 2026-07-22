@@ -8,6 +8,14 @@ from app.db.base_class import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 
 class Contact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """
+    DEPRECATED - Phase 1, same status and reasoning as Company's own
+    docstring: still live (contacts.py routes, Contacts.tsx), a confirmed
+    strict subset of ProspectContact, not "do not use" but "do not build
+    new development against this; use ProspectContact instead." See
+    deferred-items-and-design-boundaries.md.
+    """
+
     __tablename__ = "contacts"
 
     company_id: Mapped[uuid.UUID] = mapped_column(

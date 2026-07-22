@@ -38,9 +38,11 @@ export interface NavItem {
   requiresCompany?: boolean;
   /** Small pill shown next to the label in both Sidebar and CommandPalette
    * (single source of truth - see both components' rendering). Used for
-   * "Legacy" today (the M0 Company/Pipeline page, kept reachable but
-   * explicitly marked as a transitional CRM view per the M8.3 review), not
-   * a general-purpose annotation mechanism beyond that. */
+   * "Legacy" today - the M0 Company/Contact model family's Pipeline and
+   * Contacts pages, both kept reachable but explicitly marked as
+   * transitional CRM views (Pipeline per the M8.3 review, Contacts added
+   * during the Phase 1 legacy-CRM deprecation pass alongside it) - not a
+   * general-purpose annotation mechanism beyond that. */
   badge?: string;
 }
 
@@ -90,7 +92,7 @@ export function getNavZones(activeCompanyId: string | null): NavZone[] {
       label: "CRM",
       items: [
         { label: "Companies", icon: Building2, to: "/businesses" },
-        { label: "Contacts", icon: Users, to: "/contacts" },
+        { label: "Contacts", icon: Users, to: "/contacts", badge: "Legacy" },
         { label: "Pipeline", icon: GitBranch, to: "/crm/legacy-pipeline", badge: "Legacy" },
         {
           label: "Products",

@@ -12,12 +12,20 @@ from app.schemas.company import CompanyCreate, CompanyRead
 
 router = APIRouter()
 
-# NOTE: This is deliberately minimal for M0. It exists only to prove the CRM
-# schema and the dashboard's read/write path end-to-end. Discovery, scoring,
-# and enrichment are NOT implemented here — that is M1+.
+# NOTE: This was deliberately minimal for M0 - it exists only to prove the
+# CRM schema and the dashboard's read/write path end-to-end. Discovery,
+# scoring, and enrichment were never implemented here; that's what
+# Prospect (app/api/routes/prospects.py) actually became starting M1.
+#
+# DEPRECATED - Phase 1 (see Company's own model docstring and
+# deferred-items-and-design-boundaries.md's legacy CRM entry). Routes kept
+# working exactly as-is - nothing here is removed or behavior-changed -
+# but marked deprecated=True (shows up in OpenAPI/Swagger) so new
+# development doesn't get built against this model. Do not add fields,
+# filters, or endpoints here; extend Prospect/ProspectContact instead.
 
 
-@router.get("/companies", response_model=list[CompanyRead])
+@router.get("/companies", response_model=list[CompanyRead], deprecated=True)
 def list_companies(
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
@@ -28,7 +36,7 @@ def list_companies(
     return list(db.scalars(stmt).all())
 
 
-@router.post("/companies", response_model=CompanyRead, status_code=status.HTTP_201_CREATED)
+@router.post("/companies", response_model=CompanyRead, status_code=status.HTTP_201_CREATED, deprecated=True)
 def create_company(
     company_in: CompanyCreate,
     db: Session = Depends(get_db),
@@ -41,7 +49,7 @@ def create_company(
     return company
 
 
-@router.get("/companies/{company_id}", response_model=CompanyRead)
+@router.get("/companies/{company_id}", response_model=CompanyRead, deprecated=True)
 def get_company(
     company_id: uuid.UUID,
     db: Session = Depends(get_db),

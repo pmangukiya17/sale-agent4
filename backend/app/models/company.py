@@ -7,6 +7,18 @@ from app.models.enums import PipelineStage
 
 
 class Company(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """
+    DEPRECATED - Phase 1 (see
+    deferred-items-and-design-boundaries.md's legacy CRM entry). This is
+    the M0-era, tenant-unscoped CRM company record - not company-profile-
+    scoped like everything built since M1, and a confirmed strict subset
+    of Prospect's field set. Unlike Thread/Message, this table is still
+    live (companies.py routes, Pipeline.tsx) so it is NOT "do not use" -
+    it's "do not build new development against this; use Prospect
+    instead." Phase 2 (verify zero remaining dependencies, then drop)
+    is a future milestone, not this one.
+    """
+
     __tablename__ = "companies"
 
     name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
