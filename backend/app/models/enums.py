@@ -538,3 +538,31 @@ class EventConsumptionOutcome(str, enum.Enum):
     STARTED_NEW_INSTANCE = "started_new_instance"
     RESUMED_INSTANCE = "resumed_instance"
     NO_MATCH = "no_match"
+
+
+# --- CRM Automation (relationship_stage state machine + Task/Recommended
+# Actions) -------------------------------------------------------------------
+
+
+class TaskPriority(str, enum.Enum):
+    """A Task's urgency, set deterministically at creation time by
+    app.crm_automation.state_machine's suggestion rules (e.g. a reply
+    needing human review is always HIGH) - never edited by a human
+    afterward in this milestone; if that's ever needed, it's an additive
+    PATCH, not a redesign."""
+
+    LOW = "low"
+    NORMAL = "normal"
+    HIGH = "high"
+
+
+class TaskStatus(str, enum.Enum):
+    """A Recommended Action's lifecycle - PENDING until a human acts on
+    it, then COMPLETED or DISMISSED. Deliberately just these three, same
+    "minimal, not a workflow" discipline as ConversationStatus/
+    MailboxSyncStatus elsewhere in this codebase - resist adding
+    IN_PROGRESS/SNOOZED speculatively."""
+
+    PENDING = "pending"
+    COMPLETED = "completed"
+    DISMISSED = "dismissed"

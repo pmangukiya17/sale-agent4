@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from sqlalchemy import Enum, Float, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -43,5 +44,12 @@ class ProspectContact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     timezone: Mapped[str | None] = mapped_column(String(100), nullable=True)
     working_hours: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     preferred_contact_time: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    # CRM Automation milestone - same fields, same discipline as
+    # Prospect.last_contacted_at/last_replied_at (contact-level rather
+    # than account-level; written by the same app.crm_automation.service
+    # call sites, when a specific ProspectContact is known).
+    last_contacted_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    last_replied_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
 
     prospect: Mapped["Prospect"] = relationship(back_populates="contacts")

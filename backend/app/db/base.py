@@ -88,3 +88,4 @@ from app.models.workflow_instance import WorkflowInstance  # noqa
 from app.models.workflow_step_invocation import WorkflowStepInvocation  # noqa
 from app.models.event_consumption import EventConsumption  # noqa
 from app.models.notification import Notification, NotificationDispatch  # noqa
+from app.models.task import Task  # noqa

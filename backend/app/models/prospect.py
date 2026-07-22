@@ -98,6 +98,16 @@ class Prospect(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         index=True,
     )
 
+    # CRM Automation milestone: written exclusively by
+    # app.crm_automation.service, from the two real synchronous trigger
+    # points (a successful outbound send, an inbound reply being
+    # classified) - never a batch/scheduled recompute (explicitly out of
+    # this milestone's scope). Both nullable: a Prospect that has never
+    # been contacted/replied to simply has NULL here, not a placeholder
+    # date.
+    last_contacted_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+    last_replied_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+
     # IANA format, validated the same way as CompanyProfile.timezone - so a
     # future scheduler can read this without any schema change.
     timezone: Mapped[str | None] = mapped_column(String(100), nullable=True)
