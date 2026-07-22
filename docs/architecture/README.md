@@ -77,6 +77,21 @@ to prior conversation history, start here.
   the eighteen still-unstyled pages in place, and Phase F is a final
   motion/accessibility pass. Plan only — not authorized for
   implementation.
+- [`deferred-items-and-design-boundaries.md`](./deferred-items-and-design-boundaries.md)
+  — written at the close of M8.16 (World Map Geometry Verification) and
+  M8.17 (Global Delete System). Documents five items either left
+  deliberately unbuilt or shipped narrower than originally scoped:
+  Discovery Search deletion (blocked by a real CASCADE-into-execution-
+  history risk, pending a future FK migration), ICP Criteria deletion
+  (permanently excluded — contradicts the product's own "nothing is
+  lost" versioning promise), Research/Personalization/Search Templates
+  (no management UI exists yet to attach a delete button to), Company/
+  Contact/ProspectContact lifecycle (recommends archive-over-delete,
+  mirroring `Prospect`'s existing pattern), and Workflow execution
+  history (Job/Run/Event tables — a **permanent**, not deferred,
+  immutability guarantee). Read this before adding delete support
+  anywhere in this codebase, or before assuming an entity's missing
+  delete/archive action is an oversight.
 
 ## Conventions for documents in this directory
 
