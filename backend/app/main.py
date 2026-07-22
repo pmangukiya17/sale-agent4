@@ -51,6 +51,7 @@ from app.api.routes import (
     search_templates,
     sending_profiles,
     signals,
+    tasks,
     workspace_settings,
 )
 from app.core.config import settings
@@ -239,3 +240,5 @@ app.include_router(delivery_queue_items.router, prefix=API_PREFIX)
 app.include_router(delivery_onboarding.router, prefix=API_PREFIX)
 # M6.5: Conversations UI - read-only over the M6.1-M6.4 schema
 app.include_router(conversations.router, prefix=API_PREFIX)
+# M6.6: CRM Automation - Task (Recommended Actions) read + complete/dismiss
+app.include_router(tasks.router, prefix=API_PREFIX)
