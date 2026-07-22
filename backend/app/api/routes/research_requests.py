@@ -8,13 +8,17 @@ from app.api.deps import get_current_user, get_owned_company_profile
 from app.db.session import get_db
 from app.models.company_profile import CompanyProfile
 from app.models.prospect import Prospect
-from app.models.research_job import ResearchJob
 from app.models.research_request import ResearchRequest
 from app.models.research_template import ResearchTemplate
 from app.models.user import User
-from app.research.pipeline import ResearchConfigError, run_research_request
-from app.schemas.research_job import ResearchJobRead
-from app.schemas.research_request import ResearchRequestCreate, ResearchRequestRead, ResearchRequestRunBody
+from app.research.pipeline import RESEARCH_REQUEST_RUN_REQUESTED_EVENT_TYPE
+from app.schemas.research_request import (
+    ResearchRequestCreate,
+    ResearchRequestRead,
+    ResearchRequestRunBody,
+    ResearchRequestRunQueued,
+)
+from app.workflow_engine.events import publish_event
 
 router = APIRouter()
 
@@ -98,8 +102,8 @@ def get_research_request(
 
 @router.post(
     "/company-profiles/{company_profile_id}/prospects/{prospect_id}/research-requests/{request_id}/run",
-    response_model=ResearchJobRead,
-    status_code=status.HTTP_201_CREATED,
+    response_model=ResearchRequestRunQueued,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 def run_research_request_endpoint(
     prospect_id: uuid.UUID,
@@ -108,16 +112,39 @@ def run_research_request_endpoint(
     profile: CompanyProfile = Depends(get_owned_company_profile),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> ResearchJob:
+) -> ResearchRequestRunQueued:
     """
-    Runs synchronously, in-request - no Celery/Redis/BackgroundTasks/
-    polling worker in M2. run_in supplies the per-run input (e.g. the
-    manual_document provider's "documents") since ResearchRequest itself
-    has no persisted source_spec column - see pipeline.py's docstring.
+    M8.10: no longer runs synchronously in-request - exact mirror of
+    Discovery's M8.8 change (see app/api/routes/discovery_searches.py's
+    run_search() docstring for the full reasoning). This endpoint now only
+    validates the request and publishes
+    RESEARCH_REQUEST_RUN_REQUESTED_EVENT_TYPE (subject_type=
+    "research_request", subject_id=request.id, actor_type="user",
+    actor_id=str(current_user.id)). `run_in` (the per-run input the
+    manual_document provider needs, since ResearchRequest has no
+    persisted source_spec of its own) is carried in the event's payload -
+    ResearchExecutionAction reads it back out from there (see that
+    module's own docstring).
+
+    The real execution happens asynchronously via the
+    "research_request_execution" WorkflowDefinition (app/workflow_bootstrap.py).
+    The frontend finds the resulting job by polling
+    GET .../research-jobs?research_request_id={request_id}.
     """
     request = _get_request_or_404(db, profile.id, prospect_id, request_id)
     run_input = run_in.model_dump(exclude_none=True) if run_in is not None else None
-    try:
-        return run_research_request(db, request, current_user, run_input=run_input)
-    except ResearchConfigError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    publish_event(
+        db,
+        event_type=RESEARCH_REQUEST_RUN_REQUESTED_EVENT_TYPE,
+        company_profile_id=profile.id,
+        source="app.api.routes.research_requests",
+        subject_type="research_request",
+        subject_id=request.id,
+        payload={"run_input": run_input} if run_input else None,
+        actor_type="user",
+        actor_id=str(current_user.id),
+    )
+    db.commit()
+
+    return ResearchRequestRunQueued(status="queued", research_request_id=request.id)

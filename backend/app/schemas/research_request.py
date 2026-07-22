@@ -48,3 +48,14 @@ class ResearchRequestRunBody(BaseModel):
     """
     source_types: list[str] | None = None
     documents: list[dict[str, Any]] | None = None
+
+
+class ResearchRequestRunQueued(BaseModel):
+    """M8.10: the /run endpoint's new response shape - exact mirror of
+    DiscoverySearchRunQueued (app/schemas/discovery_search.py). No
+    ResearchJob exists yet at the instant this response is sent; the
+    frontend's Live Workflow Progress view finds the resulting job by
+    polling GET .../research-jobs?research_request_id={request_id}."""
+
+    status: str = "queued"
+    research_request_id: uuid.UUID
