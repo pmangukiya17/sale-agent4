@@ -41,3 +41,15 @@ class PersonalizationRequestRunBody(BaseModel):
     run time, kept optional and empty by default.
     """
     focus_areas: list[str] | None = None
+
+
+class PersonalizationRequestRunQueued(BaseModel):
+    """M8.11: the /run endpoint's new response shape - mirrors
+    DiscoverySearchRunQueued/ResearchRequestRunQueued. No
+    PersonalizationJob exists yet at the instant this response is sent;
+    the frontend's Live Workflow Progress view finds the resulting job by
+    polling GET .../personalization-jobs?personalization_request_id=
+    {request_id}."""
+
+    status: str = "queued"
+    personalization_request_id: uuid.UUID

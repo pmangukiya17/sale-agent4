@@ -7,18 +7,18 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_owned_company_profile
 from app.db.session import get_db
 from app.models.company_profile import CompanyProfile
-from app.models.personalization_job import PersonalizationJob
 from app.models.personalization_request import PersonalizationRequest
 from app.models.personalization_template import PersonalizationTemplate
 from app.models.prospect import Prospect
 from app.models.user import User
-from app.personalization.pipeline import PersonalizationConfigError, run_personalization_request
-from app.schemas.personalization_job import PersonalizationJobRead
+from app.personalization.pipeline import PERSONALIZATION_REQUEST_RUN_REQUESTED_EVENT_TYPE
 from app.schemas.personalization_request import (
     PersonalizationRequestCreate,
     PersonalizationRequestRead,
     PersonalizationRequestRunBody,
+    PersonalizationRequestRunQueued,
 )
+from app.workflow_engine.events import publish_event
 
 router = APIRouter()
 
@@ -102,8 +102,8 @@ def get_personalization_request(
 
 @router.post(
     "/company-profiles/{company_profile_id}/prospects/{prospect_id}/personalization-requests/{request_id}/run",
-    response_model=PersonalizationJobRead,
-    status_code=status.HTTP_201_CREATED,
+    response_model=PersonalizationRequestRunQueued,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 def run_personalization_request_endpoint(
     prospect_id: uuid.UUID,
@@ -112,16 +112,37 @@ def run_personalization_request_endpoint(
     profile: CompanyProfile = Depends(get_owned_company_profile),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> PersonalizationJob:
+) -> PersonalizationRequestRunQueued:
     """
-    Runs synchronously, in-request - no Celery/Redis/BackgroundTasks/
-    polling worker in M3. Unlike Research's /run, there is no external
-    input to merge in - Personalization only reads what's already stored
-    (current Intelligence Snapshot, Signals, Recommendations, ICP,
-    Products, Knowledge Base).
+    M8.11: no longer runs synchronously in-request - mirrors Discovery's
+    (M8.8) and Research's (M8.10) identical change. This endpoint only
+    validates the request and publishes
+    PERSONALIZATION_REQUEST_RUN_REQUESTED_EVENT_TYPE (subject_type=
+    "personalization_request", subject_id=request.id, actor_type="user",
+    actor_id=str(current_user.id)). Unlike Research, there is no run_input
+    to carry in the event's payload - Personalization only reads what's
+    already stored (current Intelligence Snapshot, Signals,
+    Recommendations, ICP, Products, Knowledge Base) - `run_in` remains the
+    same unused placeholder it already was on the synchronous path (see
+    PersonalizationRequestRunBody's own docstring).
+
+    The real execution happens asynchronously via the
+    "personalization_request_execution" WorkflowDefinition. The frontend
+    finds the resulting job by polling
+    GET .../personalization-jobs?personalization_request_id={request_id}.
     """
     request = _get_request_or_404(db, profile.id, prospect_id, request_id)
-    try:
-        return run_personalization_request(db, request, current_user)
-    except PersonalizationConfigError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    publish_event(
+        db,
+        event_type=PERSONALIZATION_REQUEST_RUN_REQUESTED_EVENT_TYPE,
+        company_profile_id=profile.id,
+        source="app.api.routes.personalization_requests",
+        subject_type="personalization_request",
+        subject_id=request.id,
+        actor_type="user",
+        actor_id=str(current_user.id),
+    )
+    db.commit()
+
+    return PersonalizationRequestRunQueued(status="queued", personalization_request_id=request.id)
