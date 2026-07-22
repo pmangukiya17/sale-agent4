@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { cn } from "../design-system";
 import { lookupCentroid } from "./countryCentroids";
+import { normalizeCountryName } from "./countryNameAliases";
 import type { CountryAggregate } from "./selectors";
 
 /**
@@ -37,6 +38,47 @@ import type { CountryAggregate } from "./selectors";
  * and why future capabilities (connection lines, heatmaps, AI activity
  * overlays, zoom, drill-down) are additive layers on top of this same
  * SVG stack, not a rebuild of it.
+ *
+ * M8.16 (World Map Geometry Verification) findings and fixes, now that
+ * real geometry actually exists to verify against: the 177-feature
+ * countries-110m.geo.json converts cleanly end to end (0 skipped
+ * features, 0 out-of-bounds coordinates, 0 duplicate ids, no
+ * antimeridian wraparound artifacts - verified by running
+ * worldGeometry.ts's real conversion logic against the real file). One
+ * real data bug was found and fixed at the source: Côte d'Ivoire's NAME
+ * property had been corrupted to literal replacement characters by an
+ * earlier processing step; corrected in the data file itself (confirmed
+ * via ISO_A3="CIV" and the still-intact ADMIN="Ivory Coast" alternate
+ * name), not worked around in code.
+ *
+ * Two real UX gaps were found and fixed here: (1) the country `<path>`
+ * shapes had zero interactivity - only the small centroid marker dot
+ * was clickable, so a real, visibly-rendered country with no centroid
+ * entry (see countryCentroids.ts's own disclosed ~90-country scope) or
+ * zero prospects was inert despite looking like part of the map. Paths
+ * are now clickable/keyboard-selectable themselves, matched against the
+ * prospect aggregate via `countryNameAliases.ts`'s verified name
+ * normalization where possible, falling back to the geometry's own name
+ * (a legitimate, honest "no prospect data" selection, never fabricated).
+ * (2) hovering showed no country name anywhere except a screen-reader-only
+ * aria-label - both paths and markers now carry a native SVG `<title>`
+ * with the name and, when a matching aggregate exists, the real
+ * prospect count.
+ *
+ * Explicitly NOT part of this fix, by design (verification milestone,
+ * not a feature milestone): zoom, pan, and any interaction beyond
+ * click-to-select and hover-for-name/count. Also not fixed here:
+ * Bahrain/Hong Kong/Singapore have no polygon at all in the 110m
+ * dataset (confirmed absent, not a bug - see countryNameAliases.ts).
+ *
+ * Rendering performance and cross-browser/responsive layout remain
+ * unverified by an actual render - this sandbox's vite/rollup/esbuild
+ * binaries are all architecture-mismatched and npm has no registry
+ * access to fetch replacements, so no dev server or build could be run
+ * here. The geometry-conversion correctness above was verified by
+ * executing the real algorithm directly against the real data file
+ * instead, which is a genuine (if partial) substitute for the parts of
+ * "does the map render correctly" that don't require a browser.
  *
  * Sizing: fills its parent's box completely (`h-full w-full`), so a
  * caller controls the map's size purely through CSS layout (flex-1,
@@ -96,6 +138,16 @@ export function WorldMap({ countries, selectedCountry, onSelectCountry, geometry
 
   const unplotted = countries.length - markers.length;
 
+  // M8.16: lets a clicked/hovered country SHAPE find its real prospect
+  // aggregate (if any) via countryNameAliases.ts's verified normalization
+  // - see this file's own docstring for why the geometry layer's names
+  // and the aggregate's names are two independent vocabularies.
+  const aggregateByNormalizedName = useMemo(() => {
+    const map = new Map<string, WorldMapCountry>();
+    for (const c of countries) map.set(normalizeCountryName(c.country), c);
+    return map;
+  }, [countries]);
+
   return (
     <div className={cn("relative h-full w-full", className)}>
       <svg
@@ -106,7 +158,7 @@ export function WorldMap({ countries, selectedCountry, onSelectCountry, geometry
         className="h-full w-full rounded-lg border border-border-hairline bg-surface-2/40"
       >
         {geometry ? (
-          <g className="fill-surface-2 stroke-border-hairline-strong" strokeWidth={0.5}>
+          <g strokeWidth={0.5}>
             {/* evenodd, not the SVG default (nonzero): shapefile-derived
                 rings don't carry verified winding-direction metadata
                 through worldGeometry.ts's conversion, and a handful of
@@ -115,10 +167,48 @@ export function WorldMap({ countries, selectedCountry, onSelectCountry, geometry
                 alternating fill to render correctly regardless of ring
                 direction. A rendering-correctness detail surfaced by
                 actually having real data to render, not a component
-                redesign - same props, same architecture. */}
-            {geometry.map((path) => (
-              <path key={path.id} d={path.d} fillRule="evenodd" />
-            ))}
+                redesign - same props, same architecture.
+
+                M8.16: each path is now its own clickable/hoverable hit
+                target (previously only the marker dot was) - matched
+                against the real prospect aggregate by normalized name
+                where possible, so the tooltip and selection reflect real
+                data, never a fabricated count. A country shape with no
+                matching aggregate is still fully selectable - "no
+                prospect data for this country" is a legitimate, honest
+                state, not an error. */}
+            {geometry.map((path) => {
+              const matched = aggregateByNormalizedName.get(normalizeCountryName(path.id));
+              const displayName = matched?.country ?? path.id;
+              const selectValue = matched?.country ?? path.id;
+              const isSelected = selectValue === selectedCountry;
+              const tooltip = matched
+                ? `${displayName}: ${matched.count} prospect${matched.count === 1 ? "" : "s"}`
+                : `${displayName}: no prospect data`;
+              return (
+                <path
+                  key={path.id}
+                  d={path.d}
+                  fillRule="evenodd"
+                  className={cn(
+                    "cursor-pointer stroke-border-hairline-strong transition-colors",
+                    isSelected ? "fill-accent-ai/25" : "fill-surface-2 hover:fill-accent-primary/15"
+                  )}
+                  onClick={() => onSelectCountry(selectValue)}
+                  role="button"
+                  aria-label={tooltip}
+                  tabIndex={0}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onSelectCountry(selectValue);
+                    }
+                  }}
+                >
+                  <title>{tooltip}</title>
+                </path>
+              );
+            })}
           </g>
         ) : (
           // Placeholder background until real geometry is supplied - see
@@ -165,7 +255,12 @@ export function WorldMap({ countries, selectedCountry, onSelectCountry, geometry
                     onSelectCountry(m.country);
                   }
                 }}
-              />
+              >
+                {/* M8.16: native hover tooltip - hovering previously
+                    showed no visible name/count at all (aria-label is
+                    screen-reader only). */}
+                <title>{`${m.country}: ${m.count} prospect${m.count === 1 ? "" : "s"}`}</title>
+              </circle>
             </g>
           );
         })}
