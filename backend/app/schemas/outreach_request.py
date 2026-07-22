@@ -41,3 +41,15 @@ class OutreachRequestRunBody(BaseModel):
     (e.g. a one-off tone override) without needing to change the route
     signature later."""
     notes: str | None = None
+
+
+class OutreachRequestRunQueued(BaseModel):
+    """M8.12: the /run endpoint's new response shape - mirrors
+    PersonalizationRequestRunQueued/ResearchRequestRunQueued/
+    DiscoverySearchRunQueued. No OutreachJob exists yet at the instant
+    this response is sent; the frontend's Live Workflow Progress view
+    finds the resulting job by polling
+    GET .../outreach-jobs?outreach_request_id={request_id}."""
+
+    status: str = "queued"
+    outreach_request_id: uuid.UUID

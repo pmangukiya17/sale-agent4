@@ -7,15 +7,19 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user, get_owned_company_profile
 from app.db.session import get_db
 from app.models.company_profile import CompanyProfile
-from app.models.outreach_job import OutreachJob
 from app.models.outreach_playbook import OutreachPlaybook
 from app.models.outreach_request import OutreachRequest
 from app.models.prospect import Prospect
 from app.models.prospect_contact import ProspectContact
 from app.models.user import User
-from app.outreach.pipeline import OutreachConfigError, run_outreach_request
-from app.schemas.outreach_job import OutreachJobRead
-from app.schemas.outreach_request import OutreachRequestCreate, OutreachRequestRead, OutreachRequestRunBody
+from app.outreach.pipeline import OUTREACH_REQUEST_RUN_REQUESTED_EVENT_TYPE
+from app.schemas.outreach_request import (
+    OutreachRequestCreate,
+    OutreachRequestRead,
+    OutreachRequestRunBody,
+    OutreachRequestRunQueued,
+)
+from app.workflow_engine.events import publish_event
 
 router = APIRouter()
 
@@ -114,8 +118,8 @@ def get_outreach_request(
 
 @router.post(
     "/company-profiles/{company_profile_id}/prospects/{prospect_id}/contacts/{contact_id}/outreach-requests/{request_id}/run",
-    response_model=OutreachJobRead,
-    status_code=status.HTTP_201_CREATED,
+    response_model=OutreachRequestRunQueued,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 def run_outreach_request_endpoint(
     prospect_id: uuid.UUID,
@@ -125,19 +129,41 @@ def run_outreach_request_endpoint(
     profile: CompanyProfile = Depends(get_owned_company_profile),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> OutreachJob:
+) -> OutreachRequestRunQueued:
     """
-    Runs synchronously, in-request - no Celery/Redis/BackgroundTasks/
-    polling worker in M4. Renders one new versioned OutreachDraft for this
-    (prospect_contact, channel) pair from the current PersonalizationSnapshot
-    and the request's OutreachPlaybook - never sends anything, never
-    touches CRM Company/Contact/Thread/Message (see the pipeline's
-    docstring for why that stays deferred).
+    M8.12: no longer runs synchronously in-request - mirrors Discovery's
+    (M8.8), Research's (M8.10), and Personalization's (M8.11) identical
+    change. This endpoint only validates the request and publishes
+    OUTREACH_REQUEST_RUN_REQUESTED_EVENT_TYPE (subject_type=
+    "outreach_request", subject_id=request.id, actor_type="user",
+    actor_id=str(current_user.id)). Outreach has no per-run external
+    input either - `run_in` remains the same unused placeholder it
+    already was on the synchronous path (see OutreachRequestRunBody's own
+    docstring).
+
+    The real execution happens asynchronously via the
+    "outreach_request_execution" WorkflowDefinition: renders one new
+    versioned OutreachDraft for this (prospect_contact, channel) pair from
+    the current PersonalizationSnapshot and the request's OutreachPlaybook
+    - never sends anything, never touches CRM Company/Contact/Thread/
+    Message (see the pipeline's docstring for why that stays deferred).
+    The frontend finds the resulting job by polling
+    GET .../outreach-jobs?outreach_request_id={request_id}.
     """
     prospect = _get_prospect_or_404(db, profile.id, prospect_id)
     _get_contact_or_404(db, prospect.id, contact_id)
     request = _get_request_or_404(db, contact_id, request_id)
-    try:
-        return run_outreach_request(db, request, current_user)
-    except OutreachConfigError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    publish_event(
+        db,
+        event_type=OUTREACH_REQUEST_RUN_REQUESTED_EVENT_TYPE,
+        company_profile_id=profile.id,
+        source="app.api.routes.outreach_requests",
+        subject_type="outreach_request",
+        subject_id=request.id,
+        actor_type="user",
+        actor_id=str(current_user.id),
+    )
+    db.commit()
+
+    return OutreachRequestRunQueued(status="queued", outreach_request_id=request.id)
