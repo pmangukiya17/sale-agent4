@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { inputClass } from "../components/FormSection";
 import { Breadcrumbs } from "../components/Breadcrumbs";
@@ -75,6 +75,7 @@ const IMPORTANCE_TONES: Record<string, BadgeTone> = {
  */
 export default function ProspectResearch() {
   const { companyId, prospectId } = useParams();
+  const navigate = useNavigate();
   const base = `/company-profiles/${companyId}/prospects/${prospectId}`;
 
   const [templates, setTemplates] = useState<ResearchTemplate[]>([]);
@@ -127,15 +128,19 @@ export default function ProspectResearch() {
     setActionError(null);
     setRunningRequestId(requestId);
     try {
+      // M8.10: /run no longer returns a finished ResearchJob synchronously
+      // - it publishes a trigger event and responds "queued" (see
+      // app/api/routes/research_requests.py's own docstring). Navigate to
+      // the Live Workflow Progress screen, which finds and watches the
+      // resulting job as the Workflow Engine actually produces it.
       const documents = pastedText.trim()
         ? [{ document_type: "pasted_text", extracted_text: pastedText.trim() }]
         : [];
       await apiClient.post(`${base}/research-requests/${requestId}/run`, { documents });
       setPastedText("");
-      loadAll();
+      navigate(`/businesses/${companyId}/prospects/${prospectId}/research/${requestId}/run`);
     } catch {
-      setActionError("This research run failed. Check the Research Jobs page for details.");
-    } finally {
+      setActionError("This research run could not be started.");
       setRunningRequestId(null);
     }
   };
@@ -192,7 +197,7 @@ export default function ProspectResearch() {
         <textarea
           className={`${inputClass} mt-3`}
           rows={4}
-          placeholder="Paste any text this prospect has published (website copy, a news article, a catalog extract...) - Research runs synchronously on whatever you paste here."
+          placeholder="Paste any text this prospect has published (website copy, a news article, a catalog extract...) - shown live on the Workflow Progress screen once you click Run."
           value={pastedText}
           onChange={(e) => setPastedText(e.target.value)}
         />

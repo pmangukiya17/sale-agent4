@@ -17,6 +17,7 @@ import DiscoveryJobs from "./pages/DiscoveryJobs";
 import Prospects from "./pages/Prospects";
 import ResearchJobs from "./pages/ResearchJobs";
 import ProspectResearch from "./pages/ProspectResearch";
+import ResearchExecutionPage from "./pages/ResearchExecutionPage";
 import PersonalizationJobs from "./pages/PersonalizationJobs";
 import ProspectStrategy from "./pages/ProspectStrategy";
 import OutreachPlaybooks from "./pages/OutreachPlaybooks";
@@ -222,6 +223,19 @@ export default function App() {
           <ProtectedRoute>
             <DashboardLayout>
               <ProspectResearch />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      {/* M8.10: Live AI Workflow Visualization for Research - reached
+          only via ProspectResearch.tsx's runRequest navigating here
+          after POST .../run returns "queued". */}
+      <Route
+        path="/businesses/:companyId/prospects/:prospectId/research/:requestId/run"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <ResearchExecutionPage />
             </DashboardLayout>
           </ProtectedRoute>
         }
