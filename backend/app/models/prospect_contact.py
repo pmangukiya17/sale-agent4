@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Enum, Float, ForeignKey, String
+from sqlalchemy import Boolean, Enum, Float, ForeignKey, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -51,5 +51,23 @@ class ProspectContact(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # call sites, when a specific ProspectContact is known).
     last_contacted_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
     last_replied_at: Mapped[datetime | None] = mapped_column(nullable=True, index=True)
+
+    # Archive lifecycle, added alongside migration 0023's RESTRICT fix on
+    # this entity's execution-history FKs (delivery_queue_items,
+    # outreach_drafts/requests/jobs/runs). Same philosophy as
+    # Prospect.status == ARCHIVED: archive instead of delete, preserve
+    # history, hide from list views by default. A plain boolean (rather
+    # than reusing Prospect's multi-state status enum) because
+    # ProspectContact has no other lifecycle states to model - it's
+    # simply active or archived. Hard delete remains available (see
+    # delete_prospect_contact) but only succeeds when RESTRICT allows it,
+    # i.e. when no execution history exists. This is now the platform-wide
+    # lifecycle rule for any entity that participates in execution
+    # history - see deferred-items-and-design-boundaries.md.
+    is_archived: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, index=True)
+    archived_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    archived_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
 
     prospect: Mapped["Prospect"] = relationship(back_populates="contacts")
