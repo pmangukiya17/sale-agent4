@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import DOMPurify from "dompurify";
 import { apiClient } from "../api/client";
 import { inputClass } from "../components/FormSection";
@@ -78,6 +78,7 @@ const CHANNEL_OPTIONS = [{ key: "email", label: "Email" }];
  */
 export default function ProspectOutreach() {
   const { companyId, prospectId, contactId } = useParams();
+  const navigate = useNavigate();
   const base = `/company-profiles/${companyId}/prospects/${prospectId}/contacts/${contactId}`;
 
   const [playbooks, setPlaybooks] = useState<OutreachPlaybook[]>([]);
@@ -127,11 +128,15 @@ export default function ProspectOutreach() {
     setActionError(null);
     setRunningRequestId(requestId);
     try {
+      // M8.12: /run no longer returns a finished OutreachJob synchronously
+      // - it publishes a trigger event and responds "queued" (see
+      // app/api/routes/outreach_requests.py's own docstring). Navigate to
+      // the Live Workflow Progress screen, which finds and watches the
+      // resulting job as the Workflow Engine actually produces it.
       await apiClient.post(`${base}/outreach-requests/${requestId}/run`, {});
-      loadAll();
+      navigate(`/businesses/${companyId}/prospects/${prospectId}/contacts/${contactId}/outreach/${requestId}/run`);
     } catch {
-      setActionError("This generation run failed. Check the Outreach Jobs for details.");
-    } finally {
+      setActionError("Could not queue this generation run.");
       setRunningRequestId(null);
     }
   };

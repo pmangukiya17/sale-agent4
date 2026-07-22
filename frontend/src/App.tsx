@@ -23,6 +23,7 @@ import ProspectStrategy from "./pages/ProspectStrategy";
 import PersonalizationExecutionPage from "./pages/PersonalizationExecutionPage";
 import OutreachPlaybooks from "./pages/OutreachPlaybooks";
 import ProspectOutreach from "./pages/ProspectOutreach";
+import OutreachExecutionPage from "./pages/OutreachExecutionPage";
 import BusinessEmailSignature from "./pages/BusinessEmailSignature";
 import OAuthCallback from "./pages/OAuthCallback";
 import DeliveryLayout from "./pages/delivery/DeliveryLayout";
@@ -290,6 +291,19 @@ export default function App() {
           <ProtectedRoute>
             <DashboardLayout>
               <ProspectOutreach />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      {/* M8.12: Live AI Workflow Visualization for Outreach - reached
+          only via ProspectOutreach.tsx's runRequest navigating here after
+          POST .../run returns "queued". */}
+      <Route
+        path="/businesses/:companyId/prospects/:prospectId/contacts/:contactId/outreach/:requestId/run"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <OutreachExecutionPage />
             </DashboardLayout>
           </ProtectedRoute>
         }
