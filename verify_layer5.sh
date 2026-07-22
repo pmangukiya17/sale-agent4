@@ -79,15 +79,22 @@ docker compose exec -T backend python -m unittest discover -s tests -v
 echo
 echo "=== 6/6: live HTTP - proves the connect/{connection_id} route ordering fix actually works at runtime, not just in the OpenAPI schema ==="
 docker compose exec -T backend python -c "
-import uuid
 import httpx
 
 BASE = 'http://localhost:8000/api/v1'
-email = f'layer5-verify-{uuid.uuid4().hex[:8]}@example.com'
-r = httpx.post(f'{BASE}/auth/register', json={'email': email, 'full_name': 'Layer5 Verify', 'password': 'verify-pass-123'}, timeout=10)
-assert r.status_code == 201, f'register failed: {r.status_code} {r.text}'
-
-r = httpx.post(f'{BASE}/auth/login', data={'username': email, 'password': 'verify-pass-123'}, timeout=10)
+# Fixed (not random-suffixed) email: POST /auth/register is now admin-gated
+# except for the very first user ever created on a fresh DB (see
+# app/api/routes/auth.py's bootstrap exception, added alongside the
+# ProspectContact/legacy-CRM architectural fixes). Re-running this script
+# against a DB that already has that first user must reuse it via login
+# rather than attempt another open register call, which would now 403.
+email = 'layer5-verify@example.com'
+password = 'verify-pass-123'
+r = httpx.post(f'{BASE}/auth/login', data={'username': email, 'password': password}, timeout=10)
+if r.status_code != 200:
+    r = httpx.post(f'{BASE}/auth/register', json={'email': email, 'full_name': 'Layer5 Verify', 'password': password}, timeout=10)
+    assert r.status_code == 201, f'register failed: {r.status_code} {r.text}'
+    r = httpx.post(f'{BASE}/auth/login', data={'username': email, 'password': password}, timeout=10)
 assert r.status_code == 200, f'login failed: {r.status_code} {r.text}'
 token = r.json()['access_token']
 headers = {'Authorization': f'Bearer {token}'}
