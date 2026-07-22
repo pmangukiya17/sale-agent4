@@ -477,12 +477,40 @@ rather than picking accent colors independently is what makes the whole
 system look designed rather than assembled — this is the resolution of
 Section 0 item 8.
 
-**A rule that directly corrects a real weakness observed across several
-concepts:** glow is semantic, not default. Glow means "this element is
-live or currently AI-touched right now." A KPI card that isn't actively
-updating does not get a glowing border just because it looks nice — some
-concepts glow every card border simultaneously, which cheapens the
-signal until it means nothing. Reserve it and it stays meaningful.
+**Original rule (M8.1), still true for `Card`'s `glow` prop
+specifically:** glow is semantic, not default. Glow means "this element
+is live or currently AI-touched right now." A KPI card that isn't
+actively updating does not get a glowing border just because it looks
+nice — some concepts glow every card border simultaneously, which
+cheapens the signal until it means nothing. Reserve it and it stays
+meaningful. `Card.tsx`'s `glow` prop keeps exactly this behavior today
+(e.g. `AgentCard.tsx` on the /ai-workforce roster page).
+
+**Revised, dashboard-scoped rule (Track B1 UI refinement):** the Command
+Center's cards now use a deliberately different, two-layer model,
+requested explicitly rather than discovered as a gap in the rule above -
+this is a considered exception for one specific surface, not a reversal
+of the general principle:
+
+- **Ambient layer (always on):** every dashboard card gets a persistent,
+  low-opacity (10-15%), large-blur, unanimated identity glow in its own
+  assigned accent color, present even at rest. Purpose: give each card
+  its own visual identity and make the dashboard feel "alive" even in an
+  empty workspace, rather than only the cards with live data standing
+  out from an otherwise flat field of identical resting cards.
+- **Active layer (conditional):** cards with a real, already-existing
+  boolean signal (something is actually running, waiting, or true right
+  now) layer a brighter version of the same color on top, with a slow
+  (~3.5s) breathing opacity animation - "Apple Dynamic Island or Linear,"
+  explicitly not a flash/pulse/RGB effect. This layer is where the
+  original rule's honesty still lives: it is never set without a genuine
+  signal behind it (an honest "not implemented" placeholder card gets the
+  ambient identity glow like every other card, but never breathes).
+
+Implemented as `accent`/`active`, new and additive to `Card`'s existing
+`glow` prop (which is unchanged and still governs `AgentCard.tsx`
+outside the dashboard) - see `Card.tsx`'s own docstring for the exact
+mechanism and the full accent-color-to-card mapping.
 
 ### 4.2 Typography
 

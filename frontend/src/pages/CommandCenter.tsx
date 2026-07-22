@@ -53,26 +53,43 @@ import { ActivityTimeline } from "../dashboard/ActivityTimeline";
  * Card.tsx) and, where applicable, a `limit`/`compact` prop to show fewer
  * rows - same components, same data, denser presentation only.
  *
- * Glass/glow: kept restrained to Design Bible Section 4.5's rule (glass
- * for overlays only - command palette, modals; NOT standing dashboard
- * cards) rather than applying frosted glass broadly - that's a
- * previously-reasoned, already-approved call, not an oversight. Ambient
- * glow (Card's `glow` prop) is pushed harder here instead: the map's live
- * markers, and - per the Track B1 UI review, which found only AI
- * Pipeline reliably read as "premium" in practice (AI Workforce's own
- * glow only lights up while an agent is actually `running`, so it often
- * looked identical to a plain card) - now four cards total, each gated on
- * a genuine live signal rather than decoration: AI Pipeline/AI Workforce
- * (`ai`, real AI-engine activity), Today's Priorities (`warning`, real
- * items waiting on review), Country Intelligence (`success`, real
- * prospect count for the selected country). Deliberately NOT extended to
- * every card - SalesPipelineWidget/PipelineFunnel/AiRecommendations/
- * MailboxBrief are honest "not implemented" placeholders (glowing them
- * would imply live activity that doesn't exist), and the KPI strip/
- * Activity/Top Countries cards don't have a "this is happening right
- * now" story distinct from just "there is data" - adding glow there
- * would flatten the hierarchy this prop exists to create, the opposite
- * of what was asked for.
+ * Glass/glow: glass stays restrained to Design Bible Section 4.5's rule
+ * (overlays only - command palette, modals; NOT standing dashboard
+ * cards) - a previously-reasoned, already-approved call, not an
+ * oversight.
+ *
+ * Glow went through two rounds on this dashboard specifically. Track B1's
+ * UI review first found only AI Pipeline reliably read as "premium" in
+ * practice (AI Workforce's own conditional glow only lit up while an
+ * agent was actually `running`, so it often looked identical to a plain
+ * card), and extended the existing live-signal-only `glow` prop to two
+ * more cards. A follow-up Track B1 UI refinement then replaced that
+ * single-layer approach dashboard-wide with a two-layer system - see
+ * Section 4.1's own updated text in
+ * docs/architecture/m8-ui-ux-design-bible.md and Card.tsx's docstring
+ * for the full mechanism:
+ *
+ *  - Ambient (always on): every one of the 17 dashboard cards now has
+ *    its own persistent identity color at low opacity - KPI strip
+ *    (royal-blue/cyan/amber/purple/orange/gold), World Map (indigo),
+ *    Country Intelligence (emerald), AI Workforce (violet), AI Pipeline
+ *    (purple), Sales Pipeline (blue), Pipeline Overview (teal), Today's
+ *    Priorities (yellow), AI Recommendations (cyan), Mailbox Brief
+ *    (orange), Activity (slate), Top Countries (emerald).
+ *  - Active/breathing (conditional): only where a real, already-existing
+ *    signal exists - Needs Review/AI Tasks Running (KPI strip), World
+ *    Map (any country with activity today), Country Intelligence
+ *    (selected country has prospects), AI Workforce (an agent is
+ *    running), AI Pipeline (has prospects), Today's Priorities (has
+ *    items needing review). Deliberately NOT active on: Active
+ *    Prospects/AI Confidence Score (no "event" distinct from "there is a
+ *    number"), Open Conversations/Revenue Pipeline (ambient-only despite
+ *    the CEO's own worked examples naming them - no backend signal
+ *    exists yet to honestly drive `active` from), Sales
+ *    Pipeline/Pipeline Overview/AI Recommendations/Mailbox Brief (honest
+ *    "not implemented" placeholders - breathing would imply live
+ *    activity that doesn't exist), Activity/Top Countries (ranked/
+ *    historical snapshots, no single "happening right now" event).
  *
  * Still true, unchanged from the prior pass: I cannot pixel-verify this
  * fits with zero scroll at 1920x1080 - `vite dev`/`vite build` don't run
