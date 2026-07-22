@@ -122,6 +122,28 @@ export default {
         "glow-warning": "0 0 0 1px rgba(245,158,11,0.35), 0 0 16px -2px rgba(245,158,11,0.4)",
         "glow-danger": "0 0 0 1px rgba(239,68,68,0.35), 0 0 16px -2px rgba(239,68,68,0.4)",
       },
+      // Card two-layer lighting system (Track B1 UI refinement, revises
+      // 4.1's original "glow only when live" single-layer rule - see that
+      // section's own updated text). One shared keyframe, not one per
+      // accent color: it only animates opacity, and Card.tsx supplies the
+      // actual per-card color via an inline box-shadow on the same
+      // element this class is applied to - that's what keeps this a
+      // single reusable animation instead of a combinatorial one-per-color
+      // set of near-duplicate keyframes.
+      keyframes: {
+        "card-breathe": {
+          "0%, 100%": { opacity: "0.6" },
+          "50%": { opacity: "1" },
+        },
+      },
+      animation: {
+        // ~3.5s, ease-in-out: "gentle breathing," not a pulse/flash -
+        // matches the explicit "Apple Dynamic Island or Linear, not RGB
+        // keyboards" reference. Reduced-motion handling lives at the
+        // call site via `motion-reduce:animate-none`, same convention
+        // WorldMap's live-marker pulse already established.
+        "card-breathe": "card-breathe 3.5s ease-in-out infinite",
+      },
     },
   },
   plugins: [],
