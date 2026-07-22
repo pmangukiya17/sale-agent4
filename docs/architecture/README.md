@@ -113,6 +113,14 @@ to prior conversation history, start here.
   findings (ProspectContact CASCADE, legacy Company/Contact isolation,
   open registration) — those three are Track B2, reserved for a separate
   pass after the fixes above.
+- [`comprehensive-verification-matrix.md`](./comprehensive-verification-matrix.md)
+  — the master checklist for the Comprehensive Verification phase: all
+  37 Track B1/B2 verification areas in one table (feature, whether
+  automated coverage exists, whether manual verification is required,
+  which track it belongs to, current status). Status starts `Pending`
+  for every row and should be updated in place as each area is actually
+  executed against the real deployment — this is the single place to
+  check "is the Comprehensive Verification pass done yet."
 
 ## Conventions for documents in this directory
 
