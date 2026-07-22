@@ -21,8 +21,13 @@ class DiscoveryJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "discovery_jobs"
 
+    # RESTRICT, not CASCADE: this is real execution history (see this
+    # project's deferred-items-and-design-boundaries.md's platform-wide
+    # lifecycle rule). A DiscoverySearch that has ever produced a Job
+    # cannot be deleted while that Job's history exists - see
+    # delete_discovery_search's own IntegrityError handling.
     discovery_search_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("discovery_searches.id", ondelete="CASCADE"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("discovery_searches.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     # Denormalized, matching how Product/ICPCriteria/KnowledgeBase are
     # scoped directly rather than requiring a join through the search.

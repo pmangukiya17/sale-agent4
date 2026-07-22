@@ -32,8 +32,10 @@ class OutreachJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     prospect_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("prospects.id", ondelete="CASCADE"), nullable=False, index=True
     )
+    # RESTRICT, not CASCADE: an OutreachJob is real execution history - see
+    # deferred-items-and-design-boundaries.md.
     prospect_contact_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("prospect_contacts.id", ondelete="CASCADE"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("prospect_contacts.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     company_profile_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("company_profiles.id", ondelete="CASCADE"), nullable=False, index=True

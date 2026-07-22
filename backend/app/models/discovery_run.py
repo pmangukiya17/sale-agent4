@@ -25,8 +25,12 @@ class DiscoveryRun(UUIDPrimaryKeyMixin, TimestampMixin, Base):
 
     __tablename__ = "discovery_runs"
 
+    # RESTRICT, not CASCADE: this row is exactly the "frozen, permanent
+    # record" this class's own docstring describes - deleting the parent
+    # DiscoverySearch must never be able to silently take it out. See
+    # this project's deferred-items-and-design-boundaries.md.
     discovery_search_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("discovery_searches.id", ondelete="CASCADE"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("discovery_searches.id", ondelete="RESTRICT"), nullable=False, index=True
     )
     discovery_job_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("discovery_jobs.id", ondelete="CASCADE"), nullable=False, unique=True
