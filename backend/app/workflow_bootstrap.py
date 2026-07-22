@@ -143,6 +143,27 @@ def _research_request_execution_workflow() -> BuiltinWorkflowDefinition:
     )
 
 
+def _personalization_request_execution_workflow() -> BuiltinWorkflowDefinition:
+    """M8.11: exact structural mirror of the two workflows above."""
+    from app.workflow_actions.personalization_execution_action import PERSONALIZATION_EXECUTION_ACTION_KEY
+    from app.personalization.pipeline import PERSONALIZATION_REQUEST_RUN_REQUESTED_EVENT_TYPE
+
+    return BuiltinWorkflowDefinition(
+        key="personalization_request_execution",
+        trigger_event_type=PERSONALIZATION_REQUEST_RUN_REQUESTED_EVENT_TYPE,
+        step_graph={
+            "start_step_id": "execute_request",
+            "steps": {
+                "execute_request": {
+                    "action_key": PERSONALIZATION_EXECUTION_ACTION_KEY,
+                    "transitions": {"success": None, "failure": None},
+                    "max_attempts": 1,
+                }
+            },
+        },
+    )
+
+
 # The configuration surface - see this module's own docstring. Built
 # lazily (a list of zero-arg callables, not the resolved
 # BuiltinWorkflowDefinition instances themselves) purely so importing
@@ -153,6 +174,7 @@ BUILTIN_WORKFLOW_DEFINITIONS: list = [
     _pilot_conversation_created_workflow,
     _discovery_search_execution_workflow,
     _research_request_execution_workflow,
+    _personalization_request_execution_workflow,
 ]
 
 
