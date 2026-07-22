@@ -16,8 +16,10 @@ import { Card } from "../design-system";
  *
  * Each usage site (App.tsx) passes its own `milestone`/`title` - this
  * component itself has no knowledge of the roadmap beyond what it's told.
- * "Analytics"/"Reports" point at M8.9, a real numbered milestone already
- * on the roadmap.
+ * "Analytics"/"Reports" used to point here too (labeled "M8.9") - M8.9
+ * shipped real content for both (see Analytics.tsx/Reports.tsx) and
+ * App.tsx's routes for them no longer use this component at all. Only
+ * "Mailbox Brief"/"Conversations" remain on this placeholder today.
  *
  * "Mailbox Brief"/"Conversations" originally pointed at "M8.7" too, back
  * when M8.7 was assumed (at M8.2's time) to be the milestone that built

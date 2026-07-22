@@ -30,6 +30,8 @@ import DeliveryCampaigns from "./pages/delivery/DeliveryCampaigns";
 import DeliveryCampaignDetail from "./pages/delivery/DeliveryCampaignDetail";
 import CommandCenter from "./pages/CommandCenter";
 import AIWorkforce from "./pages/AIWorkforce";
+import Analytics from "./pages/Analytics";
+import Reports from "./pages/Reports";
 import { ComingSoon } from "./pages/ComingSoon";
 
 export default function App() {
@@ -353,12 +355,15 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      {/* M8.9: real Analytics/Reports content - built entirely from
+          already-existing endpoints (see Analytics.tsx/Reports.tsx's own
+          docstrings for the exact scope boundary). */}
       <Route
         path="/analytics"
         element={
           <ProtectedRoute>
             <DashboardLayout>
-              <ComingSoon title="Analytics" milestone="M8.9" />
+              <Analytics />
             </DashboardLayout>
           </ProtectedRoute>
         }
@@ -368,7 +373,7 @@ export default function App() {
         element={
           <ProtectedRoute>
             <DashboardLayout>
-              <ComingSoon title="Reports" milestone="M8.9" />
+              <Reports />
             </DashboardLayout>
           </ProtectedRoute>
         }
