@@ -35,6 +35,7 @@ import CommandCenter from "./pages/CommandCenter";
 import AIWorkforce from "./pages/AIWorkforce";
 import Analytics from "./pages/Analytics";
 import Reports from "./pages/Reports";
+import Conversations from "./pages/Conversations";
 import { ComingSoon } from "./pages/ComingSoon";
 
 export default function App() {
@@ -387,12 +388,17 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      {/* M6.5: real Conversations content - business-wide list + inline
+          detail over the read-only GET /conversations endpoints, reusing
+          the M6.1-M6.4 Conversation/EmailMessage/Reply Intelligence data
+          already written by the sync/thread-builder/reply-classification
+          workers. */}
       <Route
         path="/conversations"
         element={
           <ProtectedRoute>
             <DashboardLayout>
-              <ComingSoon title="Conversations" milestone="M6.6" />
+              <Conversations />
             </DashboardLayout>
           </ProtectedRoute>
         }
