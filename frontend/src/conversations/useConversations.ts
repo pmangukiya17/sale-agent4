@@ -66,6 +66,24 @@ export interface ConversationDetail extends ConversationListItem {
   messages: EmailMessage[];
 }
 
+export type TaskPriority = "low" | "normal" | "high";
+export type TaskStatus = "pending" | "completed" | "dismissed";
+
+export interface Task {
+  id: string;
+  company_profile_id: string;
+  prospect_id: string;
+  prospect_contact_id: string | null;
+  conversation_id: string | null;
+  assigned_user_id: string | null;
+  suggested_action: string;
+  source_event_type: string;
+  priority: TaskPriority;
+  status: TaskStatus;
+  resolved_at: string | null;
+  created_at: string;
+}
+
 export function useConversations() {
   const { activeCompanyId, isLoading: companiesLoading } = useCompanies();
   const [conversations, setConversations] = useState<ConversationListItem[]>([]);
@@ -132,4 +150,57 @@ export function useConversationDetail(companyId: string | undefined, conversatio
   }, [companyId, conversationId]);
 
   return { detail, isLoading, error };
+}
+
+/**
+ * useProspectTasks — M6.6 (CRM Automation). Fetches real, persisted Task
+ * (Recommended Action) rows for one prospect from the read-only
+ * GET /tasks endpoint - never computes or fabricates a suggestion
+ * itself (see Conversations.tsx's own docstring for that boundary).
+ * Scoped by prospect_id rather than conversation_id: a Task can be
+ * account-level (e.g. a relationship_stage advance with no single
+ * message behind it), so this intentionally surfaces every open
+ * Recommended Action for the prospect a conversation belongs to, not
+ * only ones tied to this exact thread.
+ */
+export function useProspectTasks(companyId: string | undefined, prospectId: string | null | undefined) {
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(() => {
+    if (!companyId || !prospectId) {
+      setTasks([]);
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    apiClient
+      .get<Task[]>(`/company-profiles/${companyId}/tasks`, { params: { prospect_id: prospectId } })
+      .then((res) => setTasks(res.data))
+      .catch(() => setError("Could not load recommended actions."))
+      .finally(() => setIsLoading(false));
+  }, [companyId, prospectId]);
+
+  useEffect(refresh, [refresh]);
+
+  const completeTask = useCallback(
+    async (taskId: string) => {
+      if (!companyId) return;
+      await apiClient.post(`/company-profiles/${companyId}/tasks/${taskId}/complete`);
+      refresh();
+    },
+    [companyId, refresh]
+  );
+
+  const dismissTask = useCallback(
+    async (taskId: string) => {
+      if (!companyId) return;
+      await apiClient.post(`/company-profiles/${companyId}/tasks/${taskId}/dismiss`);
+      refresh();
+    },
+    [companyId, refresh]
+  );
+
+  return { tasks, isLoading, error, completeTask, dismissTask };
 }

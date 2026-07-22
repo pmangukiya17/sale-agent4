@@ -1,17 +1,19 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DOMPurify from "dompurify";
-import { Badge, Card, PlaceholderNotice, Table } from "../design-system";
+import { Badge, Button, Card, PlaceholderNotice, Table } from "../design-system";
 import type { BadgeTone, TableColumn } from "../design-system";
 import { useCompanies } from "../companies/CompanyContext";
-import { useConversationDetail, useConversations } from "../conversations/useConversations";
-import type { ConversationListItem, EmailMessage, ReplyStatus } from "../conversations/useConversations";
+import { useConversationDetail, useConversations, useProspectTasks } from "../conversations/useConversations";
+import type { ConversationListItem, EmailMessage, ReplyStatus, Task, TaskPriority } from "../conversations/useConversations";
 
 /**
- * Conversations — M6.5. Business-wide Conversation list + inline detail
- * (unified message timeline + AI insights), over the read-only
- * GET /conversations list+detail endpoints (M6.5 backend) - which
- * themselves only ever project data M6.1-M6.4 already write.
+ * Conversations — M6.5 (list + detail), M6.6 (Recommended Actions panel).
+ * Business-wide Conversation list + inline detail (unified message
+ * timeline + AI insights + Recommended Actions), over the read-only
+ * GET /conversations and GET /tasks endpoints - which only ever project
+ * data M6.1-M6.4 (Conversation/EmailMessage/reply intelligence) and the
+ * CRM Automation milestone (Task) already write.
  *
  * Follows Reports.tsx's (M8.9) List -> Detail expand pattern rather than
  * introducing a new routed sub-page, and reuses the same
@@ -28,11 +30,12 @@ import type { ConversationListItem, EmailMessage, ReplyStatus } from "../convers
  * own docstring, never a per-message analysis history (no ReplyAnalysis
  * table exists - that was explicitly rejected at M6.4 approval).
  *
- * Deliberately NO Recommended Actions / Task panel - no Task table exists
- * yet (the CRM-updates milestone: relationship_stage state machine +
- * Task writes - is explicitly deferred, per this session's direction).
- * Showing an empty or fabricated "recommended action" here would violate
- * this project's "never fake state that doesn't exist yet" principle.
+ * Recommended Actions (M6.6): this component NEVER computes or fabricates
+ * a suggestion itself - it only ever renders Task rows the backend
+ * already persisted (created exclusively by app.crm_automation.service,
+ * from deterministic rules). Complete/Dismiss here are the only write
+ * actions, mirroring the "AI recommends, human decides" shape already
+ * established for OutreachDraft approve/reject.
  */
 
 const REPLY_STATUS_TONE: Record<ReplyStatus, BadgeTone> = {
@@ -133,6 +136,45 @@ function MessageBubble({ message }: { message: EmailMessage }) {
   );
 }
 
+const TASK_PRIORITY_TONE: Record<TaskPriority, BadgeTone> = {
+  low: "neutral",
+  normal: "info",
+  high: "warning",
+};
+
+function RecommendedActionsPanel({ companyId, prospectId }: { companyId: string; prospectId: string }) {
+  const { tasks, isLoading, error, completeTask, dismissTask } = useProspectTasks(companyId, prospectId);
+  const pendingTasks = tasks.filter((t) => t.status === "pending");
+
+  return (
+    <Card>
+      <h3 className="mb-1 font-semibold text-slate-100">Recommended Actions</h3>
+      <p className="mb-3 text-xs text-slate-500">
+        Persisted, deterministic suggestions from CRM Automation - never computed in this UI.
+      </p>
+      {error && <p className="mb-2 text-sm text-status-danger">{error}</p>}
+      {!isLoading && pendingTasks.length === 0 ? (
+        <PlaceholderNotice kind="no-data" reason="No open recommended actions for this prospect." />
+      ) : (
+        <div className="space-y-2">
+          {pendingTasks.map((task: Task) => (
+            <div key={task.id} className="flex items-center justify-between gap-3 rounded-lg border border-border-hairline bg-surface-2 p-3 text-sm">
+              <div className="flex items-center gap-2">
+                <Badge tone={TASK_PRIORITY_TONE[task.priority]}>{task.priority}</Badge>
+                <span className="text-slate-200">{task.suggested_action}</span>
+              </div>
+              <div className="flex shrink-0 gap-2">
+                <Button size="sm" onClick={() => completeTask(task.id)}>Complete</Button>
+                <Button size="sm" variant="secondary" onClick={() => dismissTask(task.id)}>Dismiss</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function ConversationDetailPanel({ companyId, conversationId }: { companyId: string; conversationId: string }) {
   const { detail, isLoading, error } = useConversationDetail(companyId, conversationId);
 
@@ -175,6 +217,8 @@ function ConversationDetailPanel({ companyId, conversationId }: { companyId: str
           </div>
         </div>
       </Card>
+
+      {detail.prospect_id && <RecommendedActionsPanel companyId={companyId} prospectId={detail.prospect_id} />}
 
       <div className="space-y-2">
         {detail.messages.length === 0 ? (
