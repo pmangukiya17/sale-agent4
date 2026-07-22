@@ -1,7 +1,7 @@
 """
-End-to-end verification of M8.12's Outreach -> M7 Workflow Engine wiring -
-exact structural mirror of test_personalization_workflow_e2e.py (M8.11),
-test_research_workflow_e2e.py (M8.10), and test_discovery_workflow_e2e.py
+End-to-end verification of M8.15's Outreach -> M7 Workflow Engine wiring -
+exact structural mirror of test_personalization_workflow_e2e.py (M8.14),
+test_research_workflow_e2e.py (M8.13), and test_discovery_workflow_e2e.py
 (M8.8). Proves the real production path for Outreach specifically:
 
     real run_outreach_request_endpoint() route function call
@@ -91,7 +91,7 @@ class TestOutreachWorkflowEndToEnd(unittest.TestCase):
         self.db.add(self.user)
         self.db.flush()
 
-        self.company_profile = CompanyProfile(owner_user_id=self.user.id, name="M8.12 Outreach E2E Test Co", is_default=False)
+        self.company_profile = CompanyProfile(owner_user_id=self.user.id, name="M8.15 Outreach E2E Test Co", is_default=False)
         self.db.add(self.company_profile)
         self.db.flush()
 
@@ -125,7 +125,7 @@ class TestOutreachWorkflowEndToEnd(unittest.TestCase):
 
         self.outreach_playbook = OutreachPlaybook(
             company_profile_id=self.company_profile.id,
-            name="M8.12 e2e playbook",
+            name="M8.15 e2e playbook",
             version=1,
             is_current=True,
             is_system_default=False,

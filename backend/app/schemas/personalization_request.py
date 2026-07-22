@@ -44,7 +44,7 @@ class PersonalizationRequestRunBody(BaseModel):
 
 
 class PersonalizationRequestRunQueued(BaseModel):
-    """M8.11: the /run endpoint's new response shape - mirrors
+    """M8.14: the /run endpoint's new response shape - mirrors
     DiscoverySearchRunQueued/ResearchRequestRunQueued. No
     PersonalizationJob exists yet at the instant this response is sent;
     the frontend's Live Workflow Progress view finds the resulting job by

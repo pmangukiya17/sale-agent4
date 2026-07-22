@@ -1,4 +1,4 @@
-"""M8.12: real block count on outreach_jobs.
+"""M8.15: real block count on outreach_jobs.
 
 Live Workflow Visualization for Outreach needs a real "content blocks
 generated" count - app/outreach/pipeline.py already computes

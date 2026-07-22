@@ -16,7 +16,7 @@ query_spec on top of its SearchTemplate's: `{**template_spec,
 itself - only its effects (RawDocuments, ResearchRun.config_snapshot)
 are, preserving the "per-run, not reusable" intent.
 
-M8.10 update: same treatment as Discovery got in M8.8 - this function is
+M8.13 update: same treatment as Discovery got in M8.8 - this function is
 now ALSO reachable asynchronously via ResearchExecutionAction
 (app/workflow_actions/research_execution_action.py), triggered off a real
 Event through the M7 Workflow Engine, in addition to the still-supported
@@ -69,7 +69,7 @@ from app.research.providers.base import ProviderError
 from app.research.providers.registry import get_provider
 from app.workflow_engine.events import publish_event
 
-# M8.10: the two Research event types the Live Workflow Visualization is
+# M8.13: the two Research event types the Live Workflow Visualization is
 # built on - exact mirror of DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE /
 # DISCOVERY_JOB_PROGRESS_EVENT_TYPE (app/discovery/pipeline.py).
 RESEARCH_REQUEST_RUN_REQUESTED_EVENT_TYPE = "research_request.run_requested"
@@ -154,7 +154,7 @@ def run_research_request(
     db.add(job)
     db.flush()  # need job.id before child rows reference it
 
-    # M8.10: commit + publish immediately, before a single provider has
+    # M8.13: commit + publish immediately, before a single provider has
     # run - a live viewer polling this job sees it exist and be RUNNING
     # right away (see app.discovery.pipeline's identical precedent).
     _publish_job_progress(db, job, request.company_profile_id)
@@ -181,7 +181,7 @@ def run_research_request(
                 "provider_key": provider_key, "started_at": started_at.isoformat(),
                 "finished_at": failed_at.isoformat(), "status": "failed", "error": str(exc),
             })
-            # M8.10: commit this provider's outcome + nudge immediately -
+            # M8.13: commit this provider's outcome + nudge immediately -
             # mirrors app.discovery.pipeline's identical per-provider commit.
             _publish_job_progress(db, job, request.company_profile_id)
             db.commit()
@@ -240,7 +240,7 @@ def run_research_request(
             db.add(doc)
             raw_documents.append(doc)
 
-        # M8.10: this provider (and every RawDocument it produced) is now
+        # M8.13: this provider (and every RawDocument it produced) is now
         # fully written - commit + nudge before moving to the next
         # provider, mirroring app.discovery.pipeline's identical
         # per-provider commit.
@@ -406,7 +406,7 @@ def run_research_request(
     )
     db.add(run)
 
-    # M8.10: the final transition - job.status is now terminal - one last
+    # M8.13: the final transition - job.status is now terminal - one last
     # nudge so a live viewer knows to fetch the completion summary.
     _publish_job_progress(db, job, request.company_profile_id)
     db.commit()

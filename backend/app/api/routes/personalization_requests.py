@@ -114,8 +114,8 @@ def run_personalization_request_endpoint(
     db: Session = Depends(get_db),
 ) -> PersonalizationRequestRunQueued:
     """
-    M8.11: no longer runs synchronously in-request - mirrors Discovery's
-    (M8.8) and Research's (M8.10) identical change. This endpoint only
+    M8.14: no longer runs synchronously in-request - mirrors Discovery's
+    (M8.8) and Research's (M8.13) identical change. This endpoint only
     validates the request and publishes
     PERSONALIZATION_REQUEST_RUN_REQUESTED_EVENT_TYPE (subject_type=
     "personalization_request", subject_id=request.id, actor_type="user",

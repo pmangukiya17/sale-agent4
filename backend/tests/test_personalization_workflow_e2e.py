@@ -1,7 +1,7 @@
 """
-End-to-end verification of M8.11's Personalization -> M7 Workflow Engine
+End-to-end verification of M8.14's Personalization -> M7 Workflow Engine
 wiring - exact structural mirror of test_discovery_workflow_e2e.py (M8.8)
-and test_research_workflow_e2e.py (M8.10). Proves the real production
+and test_research_workflow_e2e.py (M8.13). Proves the real production
 path for Personalization specifically:
 
     real run_personalization_request_endpoint() route function call
@@ -82,7 +82,7 @@ class TestPersonalizationWorkflowEndToEnd(unittest.TestCase):
         self.db.add(self.user)
         self.db.flush()
 
-        self.company_profile = CompanyProfile(owner_user_id=self.user.id, name="M8.11 Personalization E2E Test Co", is_default=False)
+        self.company_profile = CompanyProfile(owner_user_id=self.user.id, name="M8.14 Personalization E2E Test Co", is_default=False)
         self.db.add(self.company_profile)
         self.db.flush()
 
@@ -98,7 +98,7 @@ class TestPersonalizationWorkflowEndToEnd(unittest.TestCase):
 
         self.personalization_template = PersonalizationTemplate(
             company_profile_id=self.company_profile.id,
-            name="M8.11 e2e template",
+            name="M8.14 e2e template",
             personalization_spec={},
             is_system_default=False,
         )

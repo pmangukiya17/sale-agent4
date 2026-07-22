@@ -58,7 +58,7 @@ class OutreachJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     log: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
-    # M8.12 (migration 0021): real per-run count of content blocks this
+    # M8.15 (migration 0021): real per-run count of content blocks this
     # job's channel-provider render produced - the Live Workflow
     # Visualization's equivalent of Personalization's strategy_count.
     block_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)

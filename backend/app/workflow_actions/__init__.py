@@ -50,18 +50,18 @@ recovers the triggering user via EventConsumption + Event.actor_id, since
 WorkflowInstance.context starts empty and carries no payload from the
 triggering Event.
 
-M8.10 addition: research_execution_action.py - exact structural mirror of
+M8.13 addition: research_execution_action.py - exact structural mirror of
 discovery_execution_action.py, for app.research. Also reads `run_input`
 off the triggering Event's payload (ResearchRequest, unlike
 DiscoverySearch, needs per-run input with nowhere else to live - see that
 module's own docstring).
 
-M8.11 addition: personalization_execution_action.py - same mirror, for
+M8.14 addition: personalization_execution_action.py - same mirror, for
 app.personalization. Simplest of the three: PersonalizationRequest needs
 no per-run input at all, so this Action only ever reads the triggering
 Event's actor_id, never its payload.
 
-M8.12 addition: outreach_execution_action.py - same mirror, for
+M8.15 addition: outreach_execution_action.py - same mirror, for
 app.outreach. Same shape as Personalization's: OutreachRequest needs no
 per-run input either.
 """

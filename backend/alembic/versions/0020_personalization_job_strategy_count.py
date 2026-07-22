@@ -1,4 +1,4 @@
-"""M8.11: real strategy count on personalization_jobs.
+"""M8.14: real strategy count on personalization_jobs.
 
 Live Workflow Visualization for Personalization needs a real "strategies
 generated" count - app/personalization/pipeline.py already computes

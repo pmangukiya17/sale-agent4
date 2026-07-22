@@ -114,7 +114,7 @@ def run_research_request_endpoint(
     db: Session = Depends(get_db),
 ) -> ResearchRequestRunQueued:
     """
-    M8.10: no longer runs synchronously in-request - exact mirror of
+    M8.13: no longer runs synchronously in-request - exact mirror of
     Discovery's M8.8 change (see app/api/routes/discovery_searches.py's
     run_search() docstring for the full reasoning). This endpoint now only
     validates the request and publishes

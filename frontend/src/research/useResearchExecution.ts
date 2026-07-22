@@ -5,7 +5,7 @@ import { useEventStream } from "../realtime/useEventStream";
 import type { WorkflowExecutionMetric, WorkflowExecutionViewProps, WorkflowStage } from "../components/WorkflowExecutionView";
 
 /**
- * useResearchExecution — M8.10, exact structural mirror of
+ * useResearchExecution — M8.13, exact structural mirror of
  * useDiscoveryExecution.ts (M8.8) - see that module's own docstring for
  * the shared reasoning (poll + M8.6 stream nudge, no fabricated ETA,
  * terminal-status detection).

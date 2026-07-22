@@ -5,7 +5,7 @@ import { Button } from "../design-system";
 import { useResearchExecution } from "../research/useResearchExecution";
 
 /**
- * ResearchExecutionPage — M8.10, exact structural mirror of
+ * ResearchExecutionPage — M8.13, exact structural mirror of
  * DiscoveryExecutionPage.tsx (M8.8): the "Live Workflow Progress" screen
  * for Research, reached only after ProspectResearch.tsx's runRequest
  * navigates here post-POST .../run. That page's own request-creation/

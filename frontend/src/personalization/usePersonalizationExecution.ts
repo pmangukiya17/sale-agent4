@@ -5,8 +5,8 @@ import { useEventStream } from "../realtime/useEventStream";
 import type { WorkflowExecutionMetric, WorkflowExecutionViewProps, WorkflowStage } from "../components/WorkflowExecutionView";
 
 /**
- * usePersonalizationExecution — M8.11, exact structural mirror of
- * useResearchExecution.ts (M8.10) / useDiscoveryExecution.ts (M8.8) - see
+ * usePersonalizationExecution — M8.14, exact structural mirror of
+ * useResearchExecution.ts (M8.13) / useDiscoveryExecution.ts (M8.8) - see
  * those modules' own docstrings for the shared reasoning (poll + M8.6
  * stream nudge, no fabricated ETA, terminal-status detection).
  *

@@ -120,7 +120,7 @@ def _discovery_search_execution_workflow() -> BuiltinWorkflowDefinition:
 
 
 def _research_request_execution_workflow() -> BuiltinWorkflowDefinition:
-    """M8.10: exact structural mirror of
+    """M8.13: exact structural mirror of
     _discovery_search_execution_workflow above - one step, per-provider
     granularity comes from real domain Events published inside
     ResearchExecutionAction's single step, not from step_graph modeling."""
@@ -144,7 +144,7 @@ def _research_request_execution_workflow() -> BuiltinWorkflowDefinition:
 
 
 def _personalization_request_execution_workflow() -> BuiltinWorkflowDefinition:
-    """M8.11: exact structural mirror of the two workflows above."""
+    """M8.14: exact structural mirror of the two workflows above."""
     from app.workflow_actions.personalization_execution_action import PERSONALIZATION_EXECUTION_ACTION_KEY
     from app.personalization.pipeline import PERSONALIZATION_REQUEST_RUN_REQUESTED_EVENT_TYPE
 
@@ -165,7 +165,7 @@ def _personalization_request_execution_workflow() -> BuiltinWorkflowDefinition:
 
 
 def _outreach_request_execution_workflow() -> BuiltinWorkflowDefinition:
-    """M8.12: exact structural mirror of the three workflows above."""
+    """M8.15: exact structural mirror of the three workflows above."""
     from app.workflow_actions.outreach_execution_action import OUTREACH_EXECUTION_ACTION_KEY
     from app.outreach.pipeline import OUTREACH_REQUEST_RUN_REQUESTED_EVENT_TYPE
 

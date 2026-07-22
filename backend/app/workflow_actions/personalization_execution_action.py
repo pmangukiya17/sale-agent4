@@ -1,5 +1,5 @@
 """
-PersonalizationExecutionAction - M8.11 (Live AI Workflow Visualization,
+PersonalizationExecutionAction - M8.14 (Live AI Workflow Visualization,
 Personalization). Structural mirror of DiscoveryExecutionAction (M8.8) -
 see that module's own docstring for the shared reasoning (no DB session
 passed in, subject_type/subject_id identify which PersonalizationRequest

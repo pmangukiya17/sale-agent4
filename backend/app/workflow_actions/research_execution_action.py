@@ -1,5 +1,5 @@
 """
-ResearchExecutionAction - M8.10 (Live AI Workflow Visualization, Research).
+ResearchExecutionAction - M8.13 (Live AI Workflow Visualization, Research).
 Exact structural mirror of DiscoveryExecutionAction (M8.8) - see that
 module's own docstring for the full reasoning this one repeats: no DB
 session is passed into execute() (opens its own), the WorkflowInstance's

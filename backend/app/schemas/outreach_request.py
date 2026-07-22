@@ -44,7 +44,7 @@ class OutreachRequestRunBody(BaseModel):
 
 
 class OutreachRequestRunQueued(BaseModel):
-    """M8.12: the /run endpoint's new response shape - mirrors
+    """M8.15: the /run endpoint's new response shape - mirrors
     PersonalizationRequestRunQueued/ResearchRequestRunQueued/
     DiscoverySearchRunQueued. No OutreachJob exists yet at the instant
     this response is sent; the frontend's Live Workflow Progress view

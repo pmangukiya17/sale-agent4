@@ -131,8 +131,8 @@ def run_outreach_request_endpoint(
     db: Session = Depends(get_db),
 ) -> OutreachRequestRunQueued:
     """
-    M8.12: no longer runs synchronously in-request - mirrors Discovery's
-    (M8.8), Research's (M8.10), and Personalization's (M8.11) identical
+    M8.15: no longer runs synchronously in-request - mirrors Discovery's
+    (M8.8), Research's (M8.13), and Personalization's (M8.14) identical
     change. This endpoint only validates the request and publishes
     OUTREACH_REQUEST_RUN_REQUESTED_EVENT_TYPE (subject_type=
     "outreach_request", subject_id=request.id, actor_type="user",

@@ -1,4 +1,4 @@
-"""M8.10: per-job signal/recommendation counts on research_jobs.
+"""M8.13: per-job signal/recommendation counts on research_jobs.
 
 Live Workflow Visualization for Research needs real, per-run "signals
 found" / "recommendations generated" counts - app/research/pipeline.py

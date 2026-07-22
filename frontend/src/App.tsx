@@ -229,7 +229,7 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      {/* M8.10: Live AI Workflow Visualization for Research - reached
+      {/* M8.13: Live AI Workflow Visualization for Research - reached
           only via ProspectResearch.tsx's runRequest navigating here
           after POST .../run returns "queued". */}
       <Route
@@ -262,7 +262,7 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      {/* M8.11: Live AI Workflow Visualization for Personalization -
+      {/* M8.14: Live AI Workflow Visualization for Personalization -
           reached only via ProspectStrategy.tsx's runRequest navigating
           here after POST .../run returns "queued". */}
       <Route
@@ -295,7 +295,7 @@ export default function App() {
           </ProtectedRoute>
         }
       />
-      {/* M8.12: Live AI Workflow Visualization for Outreach - reached
+      {/* M8.15: Live AI Workflow Visualization for Outreach - reached
           only via ProspectOutreach.tsx's runRequest navigating here after
           POST .../run returns "queued". */}
       <Route

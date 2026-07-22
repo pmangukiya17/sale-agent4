@@ -44,7 +44,7 @@ class PersonalizationJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     log: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
-    # M8.11 (migration 0020): real per-run count of strategies this job's
+    # M8.14 (migration 0020): real per-run count of strategies this job's
     # synthesis pass generated - the Live Workflow Visualization's
     # equivalent of Discovery's qualified/rejected counts and Research's
     # signal/recommendation counts.

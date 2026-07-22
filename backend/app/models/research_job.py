@@ -41,7 +41,7 @@ class ResearchJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
     sources_used: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     raw_document_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
-    # M8.10 (migration 0019): real per-run AI-analysis outcomes - how many
+    # M8.13 (migration 0019): real per-run AI-analysis outcomes - how many
     # Signal/Recommendation rows THIS job's analysis pass produced, for
     # the Live Workflow Visualization's equivalent of Discovery's
     # qualified/rejected counts (see DiscoveryJob.prospect_qualified_count).

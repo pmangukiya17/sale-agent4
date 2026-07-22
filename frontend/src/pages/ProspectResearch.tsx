@@ -128,7 +128,7 @@ export default function ProspectResearch() {
     setActionError(null);
     setRunningRequestId(requestId);
     try {
-      // M8.10: /run no longer returns a finished ResearchJob synchronously
+      // M8.13: /run no longer returns a finished ResearchJob synchronously
       // - it publishes a trigger event and responds "queued" (see
       // app/api/routes/research_requests.py's own docstring). Navigate to
       // the Live Workflow Progress screen, which finds and watches the

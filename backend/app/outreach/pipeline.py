@@ -11,11 +11,11 @@ and ProspectContact for addressing. Approving a draft (a separate action,
 not part of this pipeline) is where relationship_stage would eventually
 advance - not implemented in M4's generation pipeline itself.
 
-M8.12 update: run_outreach_request() now commits incrementally at its two
+M8.15 update: run_outreach_request() now commits incrementally at its two
 real state transitions (job created/RUNNING, job terminal/COMPLETED or
 FAILED) instead of one atomic commit at the very end, each paired with a
 publish_event(OUTREACH_JOB_PROGRESS_EVENT_TYPE) nudge - the same wiring
-Discovery (M8.8), Research (M8.10), and Personalization (M8.11) each
+Discovery (M8.8), Research (M8.13), and Personalization (M8.14) each
 received, so Outreach can run through the same M7 Workflow Engine
 (OutreachExecutionAction, registered as a real Action) instead of a
 parallel execution system. Exactly like Personalization, there is no
@@ -58,7 +58,7 @@ _CHANNEL_PROMPT_KEY = {
     "email": "email_generation",
 }
 
-# M8.12: the trigger this domain's async /run route publishes, and the
+# M8.15: the trigger this domain's async /run route publishes, and the
 # progress event OutreachExecutionAction's run_outreach_request() call
 # publishes at each real state transition - exact naming convention as
 # DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE/RESEARCH_REQUEST_RUN_REQUESTED_EVENT_TYPE/
@@ -219,7 +219,7 @@ def run_outreach_request(db: Session, request: OutreachRequest, triggered_by_use
     db.add(job)
     db.flush()  # need job.id before child rows reference it
 
-    # M8.12: commit + publish immediately, before the channel provider has
+    # M8.15: commit + publish immediately, before the channel provider has
     # even run - a live viewer polling this job sees it exist and be
     # RUNNING right away (see app.personalization.pipeline's identical
     # precedent).
@@ -326,7 +326,7 @@ def run_outreach_request(db: Session, request: OutreachRequest, triggered_by_use
     )
     db.add(run)
 
-    # M8.12: the final transition - one last nudge so a live viewer knows
+    # M8.15: the final transition - one last nudge so a live viewer knows
     # to fetch the completion summary.
     _publish_job_progress(db, job, request.company_profile_id)
     db.commit()

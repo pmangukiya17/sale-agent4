@@ -5,8 +5,8 @@ import { Button } from "../design-system";
 import { useOutreachExecution } from "../outreach/useOutreachExecution";
 
 /**
- * OutreachExecutionPage — M8.12, exact structural mirror of
- * PersonalizationExecutionPage.tsx (M8.11): the "Live Workflow Progress"
+ * OutreachExecutionPage — M8.15, exact structural mirror of
+ * PersonalizationExecutionPage.tsx (M8.14): the "Live Workflow Progress"
  * screen for Outreach, reached only after ProspectOutreach.tsx's
  * runRequest navigates here post-POST .../run. That page's own
  * request-creation/draft-review UI is otherwise unchanged.

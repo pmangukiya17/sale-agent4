@@ -5,8 +5,8 @@ import { Button } from "../design-system";
 import { usePersonalizationExecution } from "../personalization/usePersonalizationExecution";
 
 /**
- * PersonalizationExecutionPage — M8.11, exact structural mirror of
- * ResearchExecutionPage.tsx (M8.10) / DiscoveryExecutionPage.tsx (M8.8):
+ * PersonalizationExecutionPage — M8.14, exact structural mirror of
+ * ResearchExecutionPage.tsx (M8.13) / DiscoveryExecutionPage.tsx (M8.8):
  * the "Live Workflow Progress" screen for Personalization, reached only
  * after ProspectStrategy.tsx's runRequest navigates here post-POST
  * .../run. That page's own request-creation/snapshot-viewing UI is

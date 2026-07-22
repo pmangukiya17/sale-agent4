@@ -11,7 +11,7 @@ relationship_stage, copying it into
 PersonalizationSnapshot.relationship_stage_at_generation for
 explainability.
 
-M8.11 update: same treatment Discovery (M8.8) and Research (M8.10) got -
+M8.14 update: same treatment Discovery (M8.8) and Research (M8.13) got -
 this function is now ALSO reachable asynchronously via
 PersonalizationExecutionAction (app/workflow_actions/
 personalization_execution_action.py), triggered off a real Event through
@@ -50,7 +50,7 @@ from app.personalization.engine.base import PersonalizationOutcome, StrategyDraf
 from app.personalization.engine.deterministic_stub import DeterministicPersonalizationEngine
 from app.workflow_engine.events import publish_event
 
-# M8.11: the two Personalization event types - exact mirror of
+# M8.14: the two Personalization event types - exact mirror of
 # DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE / DISCOVERY_JOB_PROGRESS_EVENT_TYPE.
 PERSONALIZATION_REQUEST_RUN_REQUESTED_EVENT_TYPE = "personalization_request.run_requested"
 PERSONALIZATION_JOB_PROGRESS_EVENT_TYPE = "personalization_job.progress"
@@ -211,7 +211,7 @@ def run_personalization_request(
     db.add(job)
     db.flush()  # need job.id before child rows reference it
 
-    # M8.11: commit + publish immediately, before the synthesis engine has
+    # M8.14: commit + publish immediately, before the synthesis engine has
     # even run - a live viewer polling this job sees it exist and be
     # RUNNING right away (see app.discovery.pipeline's identical precedent).
     _publish_job_progress(db, job, request.company_profile_id)
@@ -321,7 +321,7 @@ def run_personalization_request(
     )
     db.add(run)
 
-    # M8.11: the final transition - one last nudge so a live viewer knows
+    # M8.14: the final transition - one last nudge so a live viewer knows
     # to fetch the completion summary.
     _publish_job_progress(db, job, request.company_profile_id)
     db.commit()

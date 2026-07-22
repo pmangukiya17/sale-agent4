@@ -1,5 +1,5 @@
 """
-End-to-end verification of M8.10's Research -> M7 Workflow Engine wiring -
+End-to-end verification of M8.13's Research -> M7 Workflow Engine wiring -
 exact structural mirror of test_discovery_workflow_e2e.py (M8.8), itself
 built on test_pilot_workflow_e2e.py's reference pattern. Proves the real
 production path for Research specifically:
@@ -92,7 +92,7 @@ class TestResearchWorkflowEndToEnd(unittest.TestCase):
         self.db.add(self.user)
         self.db.flush()
 
-        self.company_profile = CompanyProfile(owner_user_id=self.user.id, name="M8.10 Research E2E Test Co", is_default=False)
+        self.company_profile = CompanyProfile(owner_user_id=self.user.id, name="M8.13 Research E2E Test Co", is_default=False)
         self.db.add(self.company_profile)
         self.db.flush()
 
@@ -107,7 +107,7 @@ class TestResearchWorkflowEndToEnd(unittest.TestCase):
         self.db.flush()
 
         self.research_template = ResearchTemplate(
-            company_profile_id=self.company_profile.id, name="M8.10 e2e template", research_spec={}, is_system_default=False
+            company_profile_id=self.company_profile.id, name="M8.13 e2e template", research_spec={}, is_system_default=False
         )
         self.db.add(self.research_template)
         self.db.flush()

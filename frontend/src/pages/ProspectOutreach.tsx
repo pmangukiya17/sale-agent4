@@ -128,7 +128,7 @@ export default function ProspectOutreach() {
     setActionError(null);
     setRunningRequestId(requestId);
     try {
-      // M8.12: /run no longer returns a finished OutreachJob synchronously
+      // M8.15: /run no longer returns a finished OutreachJob synchronously
       // - it publishes a trigger event and responds "queued" (see
       // app/api/routes/outreach_requests.py's own docstring). Navigate to
       // the Live Workflow Progress screen, which finds and watches the

@@ -121,7 +121,7 @@ export default function ProspectStrategy() {
     setActionError(null);
     setRunningRequestId(requestId);
     try {
-      // M8.11: /run no longer returns a finished PersonalizationJob
+      // M8.14: /run no longer returns a finished PersonalizationJob
       // synchronously - it publishes a trigger event and responds
       // "queued" (see app/api/routes/personalization_requests.py's own
       // docstring). Navigate to the Live Workflow Progress screen, which

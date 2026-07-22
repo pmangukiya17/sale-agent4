@@ -51,7 +51,7 @@ class ResearchRequestRunBody(BaseModel):
 
 
 class ResearchRequestRunQueued(BaseModel):
-    """M8.10: the /run endpoint's new response shape - exact mirror of
+    """M8.13: the /run endpoint's new response shape - exact mirror of
     DiscoverySearchRunQueued (app/schemas/discovery_search.py). No
     ResearchJob exists yet at the instant this response is sent; the
     frontend's Live Workflow Progress view finds the resulting job by

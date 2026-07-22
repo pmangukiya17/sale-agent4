@@ -1,6 +1,6 @@
 """
-OutreachExecutionAction - M8.12 (Live AI Workflow Visualization,
-Outreach). Structural mirror of PersonalizationExecutionAction (M8.11) -
+OutreachExecutionAction - M8.15 (Live AI Workflow Visualization,
+Outreach). Structural mirror of PersonalizationExecutionAction (M8.14) -
 see that module's own docstring for the shared reasoning (no DB session
 passed in, subject_type/subject_id identify which OutreachRequest to run
 since context starts empty, triggering user recovered via

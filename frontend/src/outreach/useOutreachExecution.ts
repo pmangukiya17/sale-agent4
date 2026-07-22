@@ -5,8 +5,8 @@ import { useEventStream } from "../realtime/useEventStream";
 import type { WorkflowExecutionMetric, WorkflowExecutionViewProps, WorkflowStage } from "../components/WorkflowExecutionView";
 
 /**
- * useOutreachExecution — M8.12, exact structural mirror of
- * usePersonalizationExecution.ts (M8.11) - see that module's own
+ * useOutreachExecution — M8.15, exact structural mirror of
+ * usePersonalizationExecution.ts (M8.14) - see that module's own
  * docstring for the shared reasoning (poll + M8.6 stream nudge, no
  * fabricated ETA, terminal-status detection).
  *
