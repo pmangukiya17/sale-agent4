@@ -95,10 +95,24 @@ to prior conversation history, start here.
   any entity touching execution history, legacy Company/Contact model
   retirement (Phase 1 deprecation markers complete; Phase 2 removal is
   future work), and `POST /auth/register`'s interim admin gate pending M9
-  Organization & AI Workforce Management. Read this before adding delete
+  Organization & AI Workforce Management, including the exact bootstrap-
+  exception decision logic, its honest limits (migration
+  rollback/restore, a narrow concurrent-request race), and four recorded-
+  not-implemented future hardening items. Read this before adding delete
   support anywhere in this codebase, adding a new execution-history table
   (the lifecycle rule applies automatically), or before assuming an
   entity's missing delete/archive action is an oversight.
+- [`track-b1-live-verification.md`](./track-b1-live-verification.md) —
+  the live verification execution package (prerequisites, scripted
+  `verify_*.sh` run order, and a manual UI checklist for everything from
+  M8.7 onward that has no script yet) for Track B1 of the platform's
+  first Comprehensive Verification pass. Requires Docker/Postgres/a
+  browser to execute — outside this sandbox's capabilities, so this is
+  written for the CEO (or whoever operates the real deployment) to run.
+  Explicitly scoped to areas unaffected by the three architectural
+  findings (ProspectContact CASCADE, legacy Company/Contact isolation,
+  open registration) — those three are Track B2, reserved for a separate
+  pass after the fixes above.
 
 ## Conventions for documents in this directory
 
