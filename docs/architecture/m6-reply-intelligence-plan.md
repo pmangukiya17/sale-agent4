@@ -1535,8 +1535,11 @@ Intelligence-zone convention: global route, scoped internally via the
 active company context), and shows an AI insights section limited to
 the four real M6.4 fields (`reply_status`/`needs_human_review`/
 `last_reply_at`/`last_reply_from`). **No Recommended Actions / Task
-panel** — no `Task` table exists yet; showing one here would be
-fabricating state, which this project does not do.
+panel at the time this phase shipped** — no `Task` table existed yet;
+showing one then would have been fabricating state, which this project
+does not do. **Update: the Recommended Actions panel was added in the
+CRM Automation milestone below, reading real, persisted `Task` rows —
+see that section for detail.**
 Gate: `py_compile` clean backend, `tsc -b --force` clean frontend. Full
 real-Outlook end-to-end verification (a real sent email, a real reply,
 a real classification, visible correctly in this UI) remains part of
@@ -1554,22 +1557,74 @@ a second time, to avoid a third meaning for the same token. See the
 project's roadmap-renumbering record (M8.13/M8.14/M8.15) for the
 unrelated milestones that actually shipped in this window.
 
-**Deferred, unscheduled — CRM updates & recommended actions (this
-document's original M6.5 scope).**
-Scope, unchanged from the original plan: the `relationship_stage` state
-machine (section 5), including closing the pre-existing
-`cold`→`contacted`-on-send gap in `dispatch_service`;
-`last_contacted_at`/`last_replied_at` writes; `ProspectTimelineEvent`
-entries; the `reply_signal` scoring factor; the `Task` table writes and
-suggested-action derivation.
-Gate (unchanged): a full synthetic walk — send, reply, classify —
-correctly advances `relationship_stage` through each transition in
-order, appends the expected timeline events, and produces a sensible
-`Task`; confirms no write ever touches `OutreachDraft`/
-`DeliveryCampaign`/`DeliveryQueueItem`/`SendingProfile`/`CompanyProfile`
-(the boundary section 1 and 5 commit to). Once this lands, the
-Conversation UI's Recommended Actions panel (section 6) becomes an
-additive follow-up to `Conversations.tsx`, not a redesign of it.
+**CRM Automation — relationship stage engine, Task/Recommended Actions,
+CRM field automation (this document's original M6.5 scope). IMPLEMENTED,
+with a narrower, real-data-only scope approved at implementation time.**
+
+This was tracked above as "deferred, unscheduled" until this milestone.
+At approval, the scope below was narrowed from the original plan
+(`reply_signal` scoring, Discovery scoring changes, time-based/scheduled
+automation are explicitly OUT — those remain future, unscheduled work,
+not part of what shipped here) and the `relationship_stage` mapping was
+restricted to only the transitions real data can support today (M6.4's
+`ReplyStatus` classifier has no intent/extraction fields, so the
+original plan's richer mapping was never buildable as originally
+written):
+
+    Cold        --outbound email sent-->     Contacted
+    Contacted   --any inbound reply-->       Engaged
+    Engaged     --ReplyStatus.POSITIVE-->    Qualified
+    Qualified   --manual human action-->     Negotiation (never inferred)
+
+Built as two new modules: `app/crm_automation/state_machine.py` (pure —
+no DB/Session import, unit-tested directly:
+`tests/test_crm_automation_state_machine.py`, 14 tests, actually executed
+in-sandbox and passing, not just `py_compile`-checked) and
+`app/crm_automation/service.py` (the only module touching a `Session`).
+Deliberately NOT wired through the M7 Workflow Engine's Job/Action
+model — relationship-stage advances and Task creation are instantaneous,
+deterministic bookkeeping, not long-running AI executions — instead
+called synchronously, each wrapped in its own SAVEPOINT
+(`db.begin_nested()`), from the two real existing trigger points:
+`dispatch_service.py` (on a successful send) and
+`reply_intelligence_worker.py` (after a reply is classified). Both call
+sites publish real `Event` rows (`prospect.relationship_stage_advanced`,
+`task.created`) after a successful update, for future Workflow Engine
+subscribers — no such subscriber exists yet, and none is required for
+this milestone (the Event Backbone is safely inert with zero matching
+`WorkflowDefinition`s, per its own dispatcher docstring).
+
+New `Task` table (migration `0022_crm_automation`): `priority`
+(LOW/NORMAL/HIGH), `status` (`pending`/`completed`/`dismissed`),
+`assigned_user_id` (nullable, unused — reserved for the future M9
+Organization & AI Workforce Management milestone), plus the
+company/prospect/contact/conversation FKs. New
+`GET .../tasks`, `POST .../tasks/{id}/complete`, `POST
+.../tasks/{id}/dismiss` routes — Tasks are created exclusively by
+`app.crm_automation.service`; these routes never create one, mirroring
+`OutreachDraft` approve/reject.
+
+Gate, as actually run: the 14-test pure state-machine suite (every
+approved transition, `Negotiation` unreachable except via manual
+advance, Task-suggestion priority ordering) executed for real in-sandbox
+and passing; `py_compile` clean across the full backend `app`/`tests`/
+`alembic/versions` tree; `tsc -b --force` clean frontend. A full
+synthetic real-Postgres walk (send → reply → classify →
+`relationship_stage` advance → `Task` created → visible in
+`Conversations.tsx`) remains part of this project's single, later,
+comprehensive real-environment verification phase, same as M6.5's own
+gate above — this sandbox has no Docker/Postgres/sqlalchemy install to
+run it against directly.
+
+**Note on milestone numbering.** Commit messages for this work used the
+convenience label "M6.6" for CRM Automation. That collides with this
+same document's own decision two sections up to *retire* the M6.6 token
+after Personalization/Outreach wiring shipped under a different number
+(M8.14/M8.15) — i.e., this is now a second, unresolved reassignment of
+that same token, which the earlier retirement note was explicitly trying
+to avoid a repeat of. This document does not resolve that collision
+unilaterally; it's flagged here for a real roadmap decision rather than
+silently picking a number.
 
 **What's deliberately excluded from this phase sequence, by design.**
 `GmailProvider`/`IMAPProvider`/`ExchangeProvider` implementations are not
