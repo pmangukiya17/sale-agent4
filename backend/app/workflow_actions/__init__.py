@@ -49,7 +49,14 @@ time instead of Supervisor. See that module's own docstring for how it
 recovers the triggering user via EventConsumption + Event.actor_id, since
 WorkflowInstance.context starts empty and carries no payload from the
 triggering Event.
+
+M8.10 addition: research_execution_action.py - exact structural mirror of
+discovery_execution_action.py, for app.research. Also reads `run_input`
+off the triggering Event's payload (ResearchRequest, unlike
+DiscoverySearch, needs per-run input with nowhere else to live - see that
+module's own docstring).
 """
 from app.workflow_actions import discovery_execution_action  # noqa: F401  (self-registration side effect)
 from app.workflow_actions import record_execution_action  # noqa: F401  (self-registration side effect)
+from app.workflow_actions import research_execution_action  # noqa: F401  (self-registration side effect)
 from app.workflow_actions import supervisor_invocation_action  # noqa: F401  (self-registration side effect)

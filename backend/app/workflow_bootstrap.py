@@ -119,6 +119,30 @@ def _discovery_search_execution_workflow() -> BuiltinWorkflowDefinition:
     )
 
 
+def _research_request_execution_workflow() -> BuiltinWorkflowDefinition:
+    """M8.10: exact structural mirror of
+    _discovery_search_execution_workflow above - one step, per-provider
+    granularity comes from real domain Events published inside
+    ResearchExecutionAction's single step, not from step_graph modeling."""
+    from app.workflow_actions.research_execution_action import RESEARCH_EXECUTION_ACTION_KEY
+    from app.research.pipeline import RESEARCH_REQUEST_RUN_REQUESTED_EVENT_TYPE
+
+    return BuiltinWorkflowDefinition(
+        key="research_request_execution",
+        trigger_event_type=RESEARCH_REQUEST_RUN_REQUESTED_EVENT_TYPE,
+        step_graph={
+            "start_step_id": "execute_request",
+            "steps": {
+                "execute_request": {
+                    "action_key": RESEARCH_EXECUTION_ACTION_KEY,
+                    "transitions": {"success": None, "failure": None},
+                    "max_attempts": 1,
+                }
+            },
+        },
+    )
+
+
 # The configuration surface - see this module's own docstring. Built
 # lazily (a list of zero-arg callables, not the resolved
 # BuiltinWorkflowDefinition instances themselves) purely so importing
@@ -128,6 +152,7 @@ def _discovery_search_execution_workflow() -> BuiltinWorkflowDefinition:
 BUILTIN_WORKFLOW_DEFINITIONS: list = [
     _pilot_conversation_created_workflow,
     _discovery_search_execution_workflow,
+    _research_request_execution_workflow,
 ]
 
 
