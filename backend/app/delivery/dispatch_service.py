@@ -32,6 +32,15 @@ inside its own SAVEPOINT (_record_outbound_conversation, below): the
 email has ALREADY been sent by the time this code runs, so a bug in this
 bookkeeping must never make DeliveryQueueItem look like the send itself
 failed - it is logged, never raised, on failure.
+
+CRM AUTOMATION MILESTONE ADDITION - a second, likewise-SAVEPOINT-isolated
+call (_record_crm_automation_for_send, below) invokes
+app.crm_automation.service.record_outbound_sent() right after the
+Conversation mirroring above, advancing Prospect.relationship_stage
+COLD -> CONTACTED and writing last_contacted_at - see that package's own
+docstring for why this is synchronous, same-transaction bookkeeping
+rather than a Workflow Engine Action/Job. Same never-raise discipline as
+every other addition to this success path.
 """
 import logging
 import uuid
@@ -40,6 +49,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.crm_automation.service import record_outbound_sent
 from app.delivery import campaign_service
 from app.delivery.connection_service import ConnectionError_, refresh_credential_if_needed
 from app.delivery.context import DeliveryContext
@@ -58,6 +68,8 @@ from app.models.enums import (
     MessageDirection,
     ProviderConnectionStatus,
 )
+from app.models.prospect import Prospect
+from app.models.prospect_contact import ProspectContact
 from app.models.provider_connection import ProviderConnection
 from app.models.sending_profile import SendingProfile
 from app.reply_intelligence.conversation_resolver import get_or_create_conversation_for_outbound, upsert_participant
@@ -168,6 +180,7 @@ def dispatch(db: Session, item: DeliveryQueueItem) -> None:
     _log_event(db, item.id, DeliveryEventType.SENT, detail=outcome.detail)
 
     _record_outbound_conversation(db, item, sending_profile, connection, outcome)
+    _record_crm_automation_for_send(db, item)
 
     db.commit()
     campaign_service.maybe_mark_completed(db, item.delivery_campaign_id)
@@ -263,5 +276,26 @@ def _record_outbound_conversation(
     except Exception:  # noqa: BLE001 - see this function's own docstring: never let bookkeeping failure undo a real send
         logger.exception(
             "Failed to record outbound Conversation/EmailMessage for DeliveryQueueItem %s - the email was still sent successfully.",
+            item.id,
+        )
+
+
+def _record_crm_automation_for_send(db: Session, item: DeliveryQueueItem) -> None:
+    """CRM Automation milestone: advances Prospect.relationship_stage
+    COLD -> CONTACTED and writes last_contacted_at, via
+    app.crm_automation.service.record_outbound_sent() - see that
+    package's own docstring for why this is a synchronous, same-
+    transaction call rather than a Workflow Engine Action. Isolated in
+    its own SAVEPOINT, same discipline as _record_outbound_conversation
+    immediately above: the send already succeeded by the time this
+    runs, so a bug in CRM bookkeeping must never be allowed to undo it."""
+    try:
+        with db.begin_nested():
+            prospect = db.get(Prospect, item.prospect_id)
+            prospect_contact = db.get(ProspectContact, item.prospect_contact_id) if item.prospect_contact_id else None
+            record_outbound_sent(db, prospect, prospect_contact, item.sent_at)
+    except Exception:  # noqa: BLE001 - see this function's own docstring: never let bookkeeping failure undo a real send
+        logger.exception(
+            "Failed to run CRM automation for DeliveryQueueItem %s - the email was still sent successfully.",
             item.id,
         )

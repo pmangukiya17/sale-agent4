@@ -54,6 +54,19 @@ and deliberately not built ahead of that need.
 Same third-process-entrypoint mapper-registration requirement as every
 other standalone worker in this codebase - `from app.db import base as
 _base` below is required, not optional decoration.
+
+CRM AUTOMATION MILESTONE ADDITION: process_one_conversation() now also
+calls app.crm_automation.service.record_inbound_reply_classified()
+right after writing the four Conversation fields above, in the same
+transaction (isolated in its own SAVEPOINT - see that call site's own
+comment). This advances Prospect.relationship_stage (CONTACTED ->
+ENGAGED on any reply, ENGAGED -> QUALIFIED on ReplyStatus.POSITIVE),
+writes Prospect/ProspectContact.last_replied_at, and creates a Task
+(Recommended Action) when the deterministic suggestion rules warrant
+one. This worker still NEVER writes EmailMessage or touches
+conversation_id - that boundary is unchanged; the new call only ever
+reads the Conversation/EmailMessage this worker already loaded and
+writes to Prospect/ProspectContact/Task, a disjoint set of tables.
 """
 import logging
 import time as time_module
@@ -63,6 +76,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.text_extraction import extract_plain_text
+from app.crm_automation.service import record_inbound_reply_classified
 from app.db import base as _base  # noqa: F401  (imports every model so relationship() string refs resolve - see module docstring)
 from app.db.session import SessionLocal
 from app.models.conversation import Conversation
@@ -126,6 +140,24 @@ def process_one_conversation(db: Session, conversation_id) -> bool:
     conversation.last_reply_at = message.received_at or message.sent_at
     conversation.last_reply_from = message.from_email
     conversation.needs_human_review = result.needs_human_review
+
+    # CRM Automation milestone: same transaction, before this function's
+    # own db.commit() below - advances relationship_stage, writes
+    # last_replied_at, and creates a Task when the deterministic
+    # suggestion rules warrant one. See app.crm_automation's own
+    # docstring for why this is a plain synchronous call, not a Workflow
+    # Engine Action. Isolated in its own SAVEPOINT, same discipline as
+    # dispatch_service.py's _record_crm_automation_for_send - a bug here
+    # must roll back only this nested transaction, never prevent this
+    # Conversation's real classification (already set above) from being
+    # committed, and never leave the outer transaction in Postgres's
+    # aborted-transaction state for the db.commit() below.
+    try:
+        with db.begin_nested():
+            record_inbound_reply_classified(db, conversation, message, result.reply_status, result.needs_human_review)
+    except Exception:  # noqa: BLE001 - the classification above must still commit even if CRM automation fails
+        logger.exception("CRM automation failed for Conversation %s - reply classification will still be committed.", conversation_id)
+
     db.commit()
     return True
 
