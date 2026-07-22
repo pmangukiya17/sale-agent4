@@ -132,6 +132,20 @@ export default function DiscoverySearches() {
 
   useEffect(load, [companyId]);
 
+  // M8.17 (Global Delete System): deliberately NOT wired here. The
+  // backend's delete_discovery_search route exists, but
+  // DiscoveryJob.discovery_search_id and DiscoveryRun.discovery_search_id
+  // are both `ondelete="CASCADE"` (see those models) - deleting a
+  // DiscoverySearch would silently cascade-delete every DiscoveryJob/
+  // DiscoveryRun (execution history) tied to it, including DiscoveryRun
+  // rows whose own docstring calls them a "frozen, permanent record."
+  // That directly conflicts with the explicit "keep execution history
+  // immutable" requirement this milestone was scoped under. Flagged for
+  // a real decision (e.g. change the FK to RESTRICT/SET NULL in a
+  // dedicated migration, or accept the cascade and warn loudly) rather
+  // than silently shipping a button that can destroy audit history, or
+  // silently changing FK cascade semantics without approval.
+
   const updateCandidateRow = (searchId: string, index: number, field: keyof CandidateBuyerRow, value: string) => {
     setCandidateRows((prev) => {
       const rows = [...(prev[searchId] ?? [emptyCandidateRow()])];

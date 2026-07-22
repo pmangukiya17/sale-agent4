@@ -3,7 +3,8 @@ import { useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { FormSection, Field, inputClass } from "../components/FormSection";
 import { TagInput } from "../components/TagInput";
-import { Card, Button, Input, PlaceholderNotice } from "../design-system";
+import { Card, Button, Input, PlaceholderNotice, ConfirmDialog } from "../design-system";
+import { useDeleteResource } from "../hooks/useDeleteResource";
 
 interface KnowledgeBaseEntry {
   id: string;
@@ -89,11 +90,12 @@ export default function CompanyKnowledgeBase() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this knowledge base entry?")) return;
-    await apiClient.delete(`/company-profiles/${companyId}/knowledge-base/${id}`);
-    load();
-  };
+  // M8.17: shared Global Delete System pattern - see hooks/useDeleteResource.ts.
+  const del = useDeleteResource({
+    entityLabel: "Knowledge base entry",
+    buildUrl: (id) => `/company-profiles/${companyId}/knowledge-base/${id}`,
+    onDeleted: load,
+  });
 
   return (
     <div>
@@ -158,7 +160,7 @@ export default function CompanyKnowledgeBase() {
                 <button onClick={() => startEdit(entry)} className="text-slate-300 hover:underline">
                   Edit
                 </button>
-                <button onClick={() => handleDelete(entry.id)} className="text-status-danger hover:underline">
+                <button onClick={() => del.requestDelete(entry.id)} className="text-status-danger hover:underline">
                   Delete
                 </button>
               </div>
@@ -176,6 +178,15 @@ export default function CompanyKnowledgeBase() {
           </Card>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={del.pendingId !== null}
+        title="Delete knowledge base entry?"
+        message="This can't be undone. AI agents drawing on this business's knowledge base will no longer see this entry."
+        isLoading={del.isDeleting}
+        onConfirm={del.confirmDelete}
+        onCancel={del.cancel}
+      />
     </div>
   );
 }

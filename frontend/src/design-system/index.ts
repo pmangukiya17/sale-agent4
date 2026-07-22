@@ -20,6 +20,9 @@ export { Table } from "./Table";
 export type { TableColumn, TableProps } from "./Table";
 export { Modal } from "./Modal";
 export type { ModalProps } from "./Modal";
+// M8.17 — Global Delete System's shared confirmation surface.
+export { ConfirmDialog } from "./ConfirmDialog";
+export type { ConfirmDialogProps } from "./ConfirmDialog";
 export { ToastProvider, useToast } from "./Toast";
 export type { ToastOptions, ToastTone } from "./Toast";
 export { Tooltip } from "./Tooltip";

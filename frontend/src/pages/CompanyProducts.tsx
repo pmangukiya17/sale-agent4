@@ -3,7 +3,8 @@ import { useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { FormSection, Field, inputClass } from "../components/FormSection";
 import { TagInput } from "../components/TagInput";
-import { Card, Badge, Button, Input, Select, PlaceholderNotice } from "../design-system";
+import { Card, Badge, Button, Input, Select, PlaceholderNotice, ConfirmDialog } from "../design-system";
+import { useDeleteResource } from "../hooks/useDeleteResource";
 
 interface Product {
   id: string;
@@ -144,11 +145,15 @@ export default function CompanyProducts() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this product?")) return;
-    await apiClient.delete(`/company-profiles/${companyId}/products/${id}`);
-    load();
-  };
+  // M8.17: shared Global Delete System pattern - see hooks/useDeleteResource.ts
+  // and design-system/ConfirmDialog.tsx. Replaces the previous native
+  // window.confirm() call with a styled dialog, a loading state on the
+  // confirm button, and a success/error toast.
+  const del = useDeleteResource({
+    entityLabel: "Product",
+    buildUrl: (id) => `/company-profiles/${companyId}/products/${id}`,
+    onDeleted: load,
+  });
 
   return (
     <div>
@@ -277,7 +282,7 @@ export default function CompanyProducts() {
                 Edit
               </button>
               <button
-                onClick={() => handleDelete(p.id)}
+                onClick={() => del.requestDelete(p.id)}
                 className="rounded-lg border border-border-hairline px-3 py-1.5 text-status-danger hover:bg-status-danger/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent-primary"
               >
                 Delete
@@ -286,6 +291,15 @@ export default function CompanyProducts() {
           </Card>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={del.pendingId !== null}
+        title="Delete product?"
+        message="This can't be undone. The product will no longer inform Discovery, Research, or Outreach for this business."
+        isLoading={del.isDeleting}
+        onConfirm={del.confirmDelete}
+        onCancel={del.cancel}
+      />
     </div>
   );
 }

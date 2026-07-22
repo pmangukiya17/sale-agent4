@@ -4,7 +4,8 @@ import { apiClient } from "../../api/client";
 import { FormSection, Field, inputClass } from "../../components/FormSection";
 import { MultiSelect } from "../../components/MultiSelect";
 import { Toggle } from "../../components/Toggle";
-import { Card, Badge, Button, Input, Select, PlaceholderNotice } from "../../design-system";
+import { Card, Badge, Button, Input, Select, PlaceholderNotice, ConfirmDialog } from "../../design-system";
+import { useDeleteResource } from "../../hooks/useDeleteResource";
 
 interface ConnectableProvider {
   provider_key: string;
@@ -226,16 +227,15 @@ export default function DeliverySendingProfiles() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this sending profile?")) return;
-    try {
-      await apiClient.delete(`/company-profiles/${companyId}/sending-profiles/${id}`);
-      load();
-    } catch (err: unknown) {
-      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
-      setError(detail ?? "Could not delete this sending profile.");
-    }
-  };
+  // M8.17: shared Global Delete System pattern - see hooks/useDeleteResource.ts.
+  // Same error-detail extraction this page's own handleSubmit already
+  // used, now centralized in the hook and surfaced via toast instead of
+  // this page's own inline `error` banner.
+  const del = useDeleteResource({
+    entityLabel: "Sending profile",
+    buildUrl: (id) => `/company-profiles/${companyId}/sending-profiles/${id}`,
+    onDeleted: load,
+  });
 
   // Only offer connections whose provider_key matches what's selected -
   // attaching a Gmail connection to an Outlook-typed profile is rejected
@@ -372,7 +372,7 @@ export default function DeliverySendingProfiles() {
                 Edit
               </button>
               <button
-                onClick={() => handleDelete(p.id)}
+                onClick={() => del.requestDelete(p.id)}
                 className="rounded-lg border border-border-hairline px-3 py-1.5 text-status-danger hover:bg-status-danger/10"
               >
                 Delete
@@ -381,6 +381,15 @@ export default function DeliverySendingProfiles() {
           </Card>
         ))}
       </div>
+
+      <ConfirmDialog
+        open={del.pendingId !== null}
+        title="Delete sending profile?"
+        message="This can't be undone. Any campaigns still using this profile to send will need a new one."
+        isLoading={del.isDeleting}
+        onConfirm={del.confirmDelete}
+        onCancel={del.cancel}
+      />
     </div>
   );
 }

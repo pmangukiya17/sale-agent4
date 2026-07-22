@@ -3,8 +3,9 @@ import { useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { FormSection, Field, inputClass } from "../components/FormSection";
 import { Breadcrumbs } from "../components/Breadcrumbs";
-import { Card, Badge, Button, Input } from "../design-system";
+import { Card, Badge, Button, Input, ConfirmDialog } from "../design-system";
 import type { BadgeTone } from "../design-system";
+import { useDeleteResource } from "../hooks/useDeleteResource";
 
 interface OutreachBlock {
   id: string;
@@ -75,6 +76,25 @@ export default function OutreachPlaybooks() {
   };
 
   useEffect(load, [companyId]);
+
+  // M8.17: shared Global Delete System pattern - see hooks/useDeleteResource.ts.
+  // Safe by construction: outreach_block.py's FK to this table is the
+  // only CASCADE (a playbook's own sub-blocks, not execution history -
+  // expected parent/child cleanup), while outreach_draft.py/
+  // outreach_request.py both use ondelete="RESTRICT" - the database
+  // itself refuses to delete a playbook version any real Outreach
+  // draft/request already used, surfacing as a clear error toast rather
+  // than silent data loss. Only offered for superseded, non-default
+  // versions (see the `!playbook.is_current && !playbook.is_system_default`
+  // guard below) - the current/default version stays undeletable here
+  // even though the database would also protect it once anything real
+  // references it, simply so a business is never left with no current
+  // playbook to fall back on.
+  const del = useDeleteResource({
+    entityLabel: "Playbook version",
+    buildUrl: (id) => `/company-profiles/${companyId}/outreach-playbooks/${id}`,
+    onDeleted: load,
+  });
 
   const clonePlaybook = async (playbook: OutreachPlaybook) => {
     setError(null);
@@ -214,6 +234,14 @@ export default function OutreachPlaybooks() {
                         Revise (creates v{playbook.version + 1})
                       </Button>
                     )}
+                    {/* M8.17: only offered for superseded versions - see
+                        this page's own useDeleteResource comment for why
+                        the current/default version never shows this. */}
+                    {!playbook.is_system_default && !playbook.is_current && (
+                      <Button size="sm" variant="destructive" onClick={() => del.requestDelete(playbook.id)}>
+                        Delete this version
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}
@@ -276,6 +304,15 @@ export default function OutreachPlaybooks() {
           );
         })}
       </div>
+
+      <ConfirmDialog
+        open={del.pendingId !== null}
+        title="Delete this playbook version?"
+        message="This can't be undone. Blocked automatically if any real Outreach Request or Draft still uses this version."
+        isLoading={del.isDeleting}
+        onConfirm={del.confirmDelete}
+        onCancel={del.cancel}
+      />
     </div>
   );
 }
