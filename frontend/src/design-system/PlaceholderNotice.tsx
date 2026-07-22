@@ -63,9 +63,21 @@ export function PlaceholderNotice({
   return (
     <div className={cn("flex items-start gap-2 rounded-lg border border-dashed p-3 text-xs", style.border, style.bg, style.text)}>
       <Icon className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", style.iconColor)} aria-hidden="true" />
-      <div>
-        <p className="font-medium">{kind === "no-data" ? "No data yet" : "Capability not yet implemented"}</p>
-        <p className="mt-0.5">{reason}</p>
+      {/* min-w-0 is the actual fix, not the p/break-words below - in a
+          flex row, a child's default min-width is `auto`, which means it
+          refuses to shrink below its own content's intrinsic width no
+          matter how narrow the parent Card gets. That's what let a long
+          `reason` string push straight through the card boundary in
+          narrow bottom-row cards (Pipeline Overview being the worst
+          offender - the longest reason string of any consumer). min-w-0
+          removes that floor so this column can actually shrink to the
+          space Card gives it; break-words then wraps within that space
+          instead of a single unbroken overflowing line. Fixed once here,
+          not per-consumer, since every PlaceholderNotice usage across the
+          app (26 files) shares this exact container shape. */}
+      <div className="min-w-0">
+        <p className="break-words font-medium">{kind === "no-data" ? "No data yet" : "Capability not yet implemented"}</p>
+        <p className="mt-0.5 break-words">{reason}</p>
         {children}
       </div>
     </div>
