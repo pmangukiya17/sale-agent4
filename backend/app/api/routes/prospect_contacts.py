@@ -1,18 +1,24 @@
 import uuid
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_owned_company_profile
+from app.api.deps import get_current_user, get_owned_company_profile
 from app.db.session import get_db
 from app.models.company_profile import CompanyProfile
 from app.models.prospect import Prospect
 from app.models.prospect_contact import ProspectContact
+from app.models.user import User
 from app.schemas.prospect_contact import ProspectContactCreate, ProspectContactRead, ProspectContactUpdate
 
 router = APIRouter()
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def _get_prospect_or_404(db: Session, profile_id: uuid.UUID, prospect_id: uuid.UUID) -> Prospect:
@@ -28,11 +34,19 @@ def _get_prospect_or_404(db: Session, profile_id: uuid.UUID, prospect_id: uuid.U
 )
 def list_prospect_contacts(
     prospect_id: uuid.UUID,
+    include_archived: bool = Query(False),
     profile: CompanyProfile = Depends(get_owned_company_profile),
     db: Session = Depends(get_db),
 ) -> list[ProspectContact]:
     prospect = _get_prospect_or_404(db, profile.id, prospect_id)
-    stmt = select(ProspectContact).where(ProspectContact.prospect_id == prospect.id).order_by(ProspectContact.created_at)
+    stmt = select(ProspectContact).where(ProspectContact.prospect_id == prospect.id)
+    if not include_archived:
+        # Platform-wide lifecycle rule: archived contacts are hidden from
+        # list views by default (see
+        # deferred-items-and-design-boundaries.md). Callers that need
+        # them (e.g. an "Archived" tab) pass ?include_archived=true.
+        stmt = stmt.where(ProspectContact.is_archived.is_(False))
+    stmt = stmt.order_by(ProspectContact.created_at)
     return list(db.scalars(stmt).all())
 
 
@@ -77,6 +91,53 @@ def update_prospect_contact(
     contact = _get_contact_or_404(db, prospect.id, contact_id)
     for field, value in contact_in.model_dump(exclude_unset=True).items():
         setattr(contact, field, value)
+    db.commit()
+    db.refresh(contact)
+    return contact
+
+
+@router.post(
+    "/company-profiles/{company_profile_id}/prospects/{prospect_id}/contacts/{contact_id}/archive",
+    response_model=ProspectContactRead,
+)
+def archive_prospect_contact(
+    prospect_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    profile: CompanyProfile = Depends(get_owned_company_profile),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> ProspectContact:
+    """
+    The preferred way to remove a contact from active use: preserves the
+    row (and therefore all of its RESTRICT-protected execution history)
+    while hiding it from list_prospect_contacts by default. Mirrors
+    Prospect.archive's pattern of recording who archived it and when.
+    """
+    prospect = _get_prospect_or_404(db, profile.id, prospect_id)
+    contact = _get_contact_or_404(db, prospect.id, contact_id)
+    contact.is_archived = True
+    contact.archived_at = _now()
+    contact.archived_by_user_id = current_user.id
+    db.commit()
+    db.refresh(contact)
+    return contact
+
+
+@router.post(
+    "/company-profiles/{company_profile_id}/prospects/{prospect_id}/contacts/{contact_id}/unarchive",
+    response_model=ProspectContactRead,
+)
+def unarchive_prospect_contact(
+    prospect_id: uuid.UUID,
+    contact_id: uuid.UUID,
+    profile: CompanyProfile = Depends(get_owned_company_profile),
+    db: Session = Depends(get_db),
+) -> ProspectContact:
+    prospect = _get_prospect_or_404(db, profile.id, prospect_id)
+    contact = _get_contact_or_404(db, prospect.id, contact_id)
+    contact.is_archived = False
+    contact.archived_at = None
+    contact.archived_by_user_id = None
     db.commit()
     db.refresh(contact)
     return contact

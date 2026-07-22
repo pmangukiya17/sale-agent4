@@ -33,5 +33,8 @@ class ProspectContactRead(ProspectContactBase):
 
     id: uuid.UUID
     prospect_id: uuid.UUID
+    is_archived: bool
+    archived_at: datetime | None = None
+    archived_by_user_id: uuid.UUID | None = None
     created_at: datetime
     updated_at: datetime
