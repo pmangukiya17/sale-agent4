@@ -486,6 +486,24 @@ at all — there is no seed script or CLI for user creation today, and
 `get_current_active_admin` existed unused in `app/api/deps.py` before
 this change (confirmed zero routes referenced it).
 
+**This is intentionally, explicitly temporary — not the platform's
+permanent registration model.** To be unambiguous for any future
+contributor (human or AI) reading this file:
+
+- The bootstrap exception exists **only** to support first-time
+  initialization of a fresh deployment, before M9 exists. It is not a
+  general-purpose account-creation convenience and should not be reused,
+  extended, or repurposed for any other case.
+- It is **expected to be replaced entirely** by M9's organization-scoped
+  invitation and membership system — not extended, wrapped, or built on
+  top of. When M9 is scoped, the correct move is to delete this bootstrap
+  logic and this endpoint's flat admin check, not to add invitation logic
+  alongside them.
+- It **must never be treated as, or allowed to drift into, the platform's
+  long-term registration architecture.** If a future milestone finds
+  itself extending this mechanism rather than replacing it, that is a
+  sign the milestone should be M9 itself, not a workaround around it.
+
 **Reason this is interim, not permanent:** this project has no
 organization-scoped invitation/membership system yet. A single flat
 admin-gate is a reasonable stopgap for the current single-organization
@@ -499,15 +517,66 @@ this change, per explicit instruction — the code and documentation are
 left in a state that naturally evolves into M9, not one that anticipates
 its exact shape.
 
-**Current limitation:** the bootstrap exception (open registration when
-zero users exist) is a real, if narrow, security consideration — it means
-a brand-new, not-yet-configured deployment has a window where anyone who
-can reach the API can create the first (admin) account. This is
-considered acceptable for the current internal-tool deployment model (a
-fresh install is expected to be immediately configured by the deploying
-admin, not left publicly reachable in an unconfigured state), but should
-be revisited if this project's deployment model ever changes to
-self-service or public-facing.
+**Current limitation — how the bootstrap exception actually decides,
+verified by direct code inspection, not assumption:** the entire gate is
+one line — `is_bootstrap = db.query(User.id).first() is None` — re-
+evaluated fresh on every request. There is no persisted "setup complete"
+flag, timestamp, or environment marker anywhere; the condition is purely
+"does the `users` table have any rows right now." This means:
+
+- It is reachable under exactly one condition: the `users` table is
+  empty at the moment a request hits this route. In the common case
+  that's true exactly once (first boot), because nothing in the product
+  today deletes users (confirmed: no `DELETE` route for `User` exists
+  anywhere, and no seed/truncate script touches the `users` table).
+- Nothing *structurally* prevents it firing again later — the invariant
+  holds only because nothing empties the table today, not because the
+  check itself remembers that initialization already happened.
+- It **can** become reachable again after a migration downgrade to 0001
+  (whose `downgrade()` drops the `users` table) followed by a re-upgrade,
+  or after restoring a database backup taken before the first user
+  existed, or pointing a fresh/misconfigured environment at an empty DB.
+  None of these are hypothetical edge cases invented for caution — they
+  are direct, verified consequences of the check being state-based
+  ("is this table empty") rather than event-based ("has this ever
+  happened before").
+- There is also a narrow race condition: two concurrent unauthenticated
+  `/auth/register` calls arriving before either commits would both read
+  `is_bootstrap = True` under default transaction isolation, and both
+  could be granted admin.
+
+This was surfaced to, and explicitly reviewed and accepted by, the CEO as
+a known, bounded characteristic of the interim mechanism — not an
+oversight. It is considered acceptable for the current internal-tool,
+single-tenant deployment model (a fresh install is expected to be
+immediately configured by the deploying admin, not left publicly
+reachable in an unconfigured state), but should be revisited before this
+project's deployment model ever changes to self-service or public-facing,
+and definitely before/during M9.
+
+**Future security hardening (recorded here as future work, explicitly
+NOT implemented and NOT a blocker for this milestone):**
+
+1. Replace table-emptiness bootstrap detection with a more robust
+   initialization mechanism — e.g. a one-way marker that survives a
+   `users` table becoming empty again (a separate, never-dropped
+   "system initialized" record, or an out-of-band signal such as an
+   environment variable / file checked at deploy time) rather than
+   re-querying table emptiness on every request.
+2. Eliminate the bootstrap race condition described above (e.g. a
+   serializable transaction or a unique constraint plus retry around the
+   check-then-insert).
+3. Ensure migration rollback/restore scenarios cannot silently reopen
+   bootstrap registration — today, nothing distinguishes "genuinely fresh
+   install" from "table is empty for some other reason."
+4. Optionally emit an audit log entry whenever the bootstrap path is
+   actually taken, so any unexpected re-trigger (post-rollback, post-
+   restore, or otherwise) is visible to an operator immediately instead
+   of silent.
+
+None of these four are required for this milestone to be considered
+complete — they are hardening for whenever this interim mechanism is
+revisited, most likely as part of scoping M9.
 
 **Recommended future milestone:** M9 Organization & AI Workforce
 Management, as already anticipated by `assigned_user_id` on `Task`
