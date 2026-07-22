@@ -11,6 +11,7 @@ from app.api.routes import (
     companies,
     company_profiles,
     contacts,
+    conversations,
     delivery_campaigns,
     delivery_onboarding,
     delivery_queue_items,
@@ -236,3 +237,5 @@ app.include_router(provider_connections.router, prefix=API_PREFIX)
 app.include_router(delivery_campaigns.router, prefix=API_PREFIX)
 app.include_router(delivery_queue_items.router, prefix=API_PREFIX)
 app.include_router(delivery_onboarding.router, prefix=API_PREFIX)
+# M6.5: Conversations UI - read-only over the M6.1-M6.4 schema
+app.include_router(conversations.router, prefix=API_PREFIX)
