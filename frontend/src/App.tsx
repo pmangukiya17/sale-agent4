@@ -20,6 +20,7 @@ import ProspectResearch from "./pages/ProspectResearch";
 import ResearchExecutionPage from "./pages/ResearchExecutionPage";
 import PersonalizationJobs from "./pages/PersonalizationJobs";
 import ProspectStrategy from "./pages/ProspectStrategy";
+import PersonalizationExecutionPage from "./pages/PersonalizationExecutionPage";
 import OutreachPlaybooks from "./pages/OutreachPlaybooks";
 import ProspectOutreach from "./pages/ProspectOutreach";
 import BusinessEmailSignature from "./pages/BusinessEmailSignature";
@@ -256,6 +257,19 @@ export default function App() {
           <ProtectedRoute>
             <DashboardLayout>
               <ProspectStrategy />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      />
+      {/* M8.11: Live AI Workflow Visualization for Personalization -
+          reached only via ProspectStrategy.tsx's runRequest navigating
+          here after POST .../run returns "queued". */}
+      <Route
+        path="/businesses/:companyId/prospects/:prospectId/strategy/:requestId/run"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <PersonalizationExecutionPage />
             </DashboardLayout>
           </ProtectedRoute>
         }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Card, Badge, Button, Select } from "../design-system";
@@ -78,6 +78,7 @@ const READINESS_TONES: Record<string, BadgeTone> = {
  */
 export default function ProspectStrategy() {
   const { companyId, prospectId } = useParams();
+  const navigate = useNavigate();
   const base = `/company-profiles/${companyId}/prospects/${prospectId}`;
 
   const [templates, setTemplates] = useState<PersonalizationTemplate[]>([]);
@@ -120,11 +121,16 @@ export default function ProspectStrategy() {
     setActionError(null);
     setRunningRequestId(requestId);
     try {
+      // M8.11: /run no longer returns a finished PersonalizationJob
+      // synchronously - it publishes a trigger event and responds
+      // "queued" (see app/api/routes/personalization_requests.py's own
+      // docstring). Navigate to the Live Workflow Progress screen, which
+      // finds and watches the resulting job as the Workflow Engine
+      // actually produces it.
       await apiClient.post(`${base}/personalization-requests/${requestId}/run`, {});
-      loadAll();
+      navigate(`/businesses/${companyId}/prospects/${prospectId}/strategy/${requestId}/run`);
     } catch {
-      setActionError("This strategy run failed. Check the Personalization Jobs page for details.");
-    } finally {
+      setActionError("Could not queue this strategy run.");
       setRunningRequestId(null);
     }
   };
