@@ -60,8 +60,13 @@ M8.11 addition: personalization_execution_action.py - same mirror, for
 app.personalization. Simplest of the three: PersonalizationRequest needs
 no per-run input at all, so this Action only ever reads the triggering
 Event's actor_id, never its payload.
+
+M8.12 addition: outreach_execution_action.py - same mirror, for
+app.outreach. Same shape as Personalization's: OutreachRequest needs no
+per-run input either.
 """
 from app.workflow_actions import discovery_execution_action  # noqa: F401  (self-registration side effect)
+from app.workflow_actions import outreach_execution_action  # noqa: F401  (self-registration side effect)
 from app.workflow_actions import personalization_execution_action  # noqa: F401  (self-registration side effect)
 from app.workflow_actions import record_execution_action  # noqa: F401  (self-registration side effect)
 from app.workflow_actions import research_execution_action  # noqa: F401  (self-registration side effect)
