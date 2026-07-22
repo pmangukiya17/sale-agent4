@@ -1358,15 +1358,21 @@ cleaner contract.
 
 ---
 
-## 14. Phased Implementation Plan (M6.1–M6.5, plus one deferred, unscheduled phase)
+## 14. Phased Implementation Plan (M6.1–M6.6)
 
-**Note on numbering (post-M6.5 rescoping):** this section originally ran
-M6.1 through M6.6. M6.5 was rescoped at approval time to build
-Conversation UI (this document's original M6.6 scope) instead of CRM
-updates & recommended actions (this document's original M6.5 scope) —
-see M6.5's own entry below for the full reasoning. The token "M6.6" is
-retired, not reused for a second meaning; CRM updates & recommended
-actions is tracked below as deferred and unscheduled.
+**Note on numbering (finalized):** this section originally ran M6.1
+through M6.6, with M6.5 = "CRM updates & recommended actions" and M6.6 =
+"Conversation UI & end-to-end verification." At approval time the two
+were reordered: Conversation UI shipped first, taking the M6.5 slot
+(see M6.5's own entry below for the sequencing reasoning), and CRM
+updates & recommended actions — built later as the CRM Automation
+milestone — now canonically holds **M6.6**, matching every real code
+comment and commit message that already used that number
+(`app/crm_automation/`, `dispatch_service.py`,
+`reply_intelligence_worker.py`, `tasks.py`, `Conversations.tsx`,
+`useConversations.ts`, and 5 commits). This is the final, single meaning
+of the M6.6 token; no further reassignment. The M6 roadmap is
+considered finalized as of this reconciliation.
 
 M6 will be implemented in the same layer-by-layer, build-test-verify
 discipline M5 was built under — each phase ships something concrete and
@@ -1537,9 +1543,9 @@ the four real M6.4 fields (`reply_status`/`needs_human_review`/
 `last_reply_at`/`last_reply_from`). **No Recommended Actions / Task
 panel at the time this phase shipped** — no `Task` table existed yet;
 showing one then would have been fabricating state, which this project
-does not do. **Update: the Recommended Actions panel was added in the
-CRM Automation milestone below, reading real, persisted `Task` rows —
-see that section for detail.**
+does not do. **Update: the Recommended Actions panel was added in M6.6
+(CRM Automation) below, reading real, persisted `Task` rows — see that
+section for detail.**
 Gate: `py_compile` clean backend, `tsc -b --force` clean frontend. Full
 real-Outlook end-to-end verification (a real sent email, a real reply,
 a real classification, visible correctly in this UI) remains part of
@@ -1547,19 +1553,16 @@ the single, later, comprehensive verification phase this project's
 standing discipline already defers all real-Postgres/browser
 verification to — not a per-milestone gate here.
 
-**M6.6 (renumbered from this document's original M6.6) — Wire
-Personalization/Outreach into the M7 Workflow Engine. COMPLETED under a
-different name.** What this document originally called "M6.6" (below)
-was Conversation UI + end-to-end verification; that work is now M6.5
-above. The *number* M6.6 itself was never actually used for anything —
-it is retired from this document's own numbering rather than reassigned
-a second time, to avoid a third meaning for the same token. See the
-project's roadmap-renumbering record (M8.13/M8.14/M8.15) for the
-unrelated milestones that actually shipped in this window.
+**M6.6 — CRM Automation: relationship stage engine, Task/Recommended
+Actions, CRM field automation (this document's original M6.5 scope).
+IMPLEMENTED, with a narrower, real-data-only scope approved at
+implementation time.**
 
-**CRM Automation — relationship stage engine, Task/Recommended Actions,
-CRM field automation (this document's original M6.5 scope). IMPLEMENTED,
-with a narrower, real-data-only scope approved at implementation time.**
+(Personalization/Outreach → M7 Workflow Engine wiring is unrelated work
+that shipped separately, under its own clean numbering — M8.13/M8.14/
+M8.15 — see the project's roadmap-renumbering record. It was never
+part of the M6 sequence and no earlier version of this document
+correctly said otherwise.)
 
 This was tracked above as "deferred, unscheduled" until this milestone.
 At approval, the scope below was narrowed from the original plan
@@ -1616,15 +1619,14 @@ comprehensive real-environment verification phase, same as M6.5's own
 gate above — this sandbox has no Docker/Postgres/sqlalchemy install to
 run it against directly.
 
-**Note on milestone numbering.** Commit messages for this work used the
-convenience label "M6.6" for CRM Automation. That collides with this
-same document's own decision two sections up to *retire* the M6.6 token
-after Personalization/Outreach wiring shipped under a different number
-(M8.14/M8.15) — i.e., this is now a second, unresolved reassignment of
-that same token, which the earlier retirement note was explicitly trying
-to avoid a repeat of. This document does not resolve that collision
-unilaterally; it's flagged here for a real roadmap decision rather than
-silently picking a number.
+**Note on milestone numbering — resolved.** Commit messages for this
+work used "M6.6" for CRM Automation. An earlier draft of this document
+had separately (and incorrectly) claimed M6.6 was already spent on
+Personalization/Outreach wiring; that claim did not match any real
+commit or code comment and has been removed. M6.6 = CRM Automation is
+now the canonical, final meaning of the token, reconciled across this
+document and the codebase's comments. The M6 roadmap (M6.1–M6.6) is
+finalized.
 
 **What's deliberately excluded from this phase sequence, by design.**
 `GmailProvider`/`IMAPProvider`/`ExchangeProvider` implementations are not

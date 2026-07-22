@@ -18,8 +18,12 @@ import { Card } from "../design-system";
  * component itself has no knowledge of the roadmap beyond what it's told.
  * "Analytics"/"Reports" used to point here too (labeled "M8.9") - M8.9
  * shipped real content for both (see Analytics.tsx/Reports.tsx) and
- * App.tsx's routes for them no longer use this component at all. Only
- * "Mailbox Brief"/"Conversations" remain on this placeholder today.
+ * App.tsx's routes for them no longer use this component at all.
+ * "Conversations" also used to point here (labeled "M6.6" - see below
+ * for why that was already wrong even at the time) - M6.5 shipped real
+ * content for it (see Conversations.tsx) and App.tsx's route no longer
+ * uses this component either. Only "Mailbox Brief" remains on this
+ * placeholder today.
  *
  * "Mailbox Brief"/"Conversations" originally pointed at "M8.7" too, back
  * when M8.7 was assumed (at M8.2's time) to be the milestone that built
@@ -31,21 +35,20 @@ import { Card } from "../design-system";
  * dashboard-widget placeholder text during M8.7 Phase C, just missed
  * here since this route lives in App.tsx, outside that audit's scope.
  *
- * Corrected against the actual documented plan rather than a guess:
- * - Conversations -> **M6.6** ("Conversation UI & end-to-end
- *   verification" - docs/architecture/m6-reply-intelligence-plan.md's
- *   Phased Implementation Plan; also named in the M8 Design Bible's IA
- *   reconciliation table, m8-ui-ux-design-bible.md line 364: "M6.1-M6.4
- *   (Conversation, EmailMessage threading, reply classification)").
- *   M6.1-M6.4 (the backend) are already implemented; M6.5-M6.6 (this
- *   page) are not.
- * - Mailbox Brief -> **M6** generally (Reply Intelligence & Conversation
- *   Management), per m8-ui-ux-design-bible.md line 363 ("M5 Delivery
- *   (mailbox activity) + M6 Reply Intelligence") and
- *   future-milestones.md's note 9, which explicitly places it under M6,
- *   not M5, even after its manual-only design was superseded by M6's
- *   persistent Conversation model.
- * Neither is M8.8/M8.9/M9 - no such assignment exists anywhere in docs/.
+ * "Conversations" was then mislabeled a second time as "M6.6" (this
+ * document's original Phased Implementation Plan draft, before the M6.5
+ * rescoping) - already stale by the time it was written here, since
+ * Conversation UI shipped as **M6.5**, not M6.6. M6.6 is now the
+ * project's finalized number for the CRM Automation milestone (see
+ * docs/architecture/m6-reply-intelligence-plan.md section 14) - a
+ * different scope entirely, unrelated to this page's own history.
+ *
+ * Mailbox Brief -> **M6** generally (Reply Intelligence & Conversation
+ * Management), per m8-ui-ux-design-bible.md line 363 ("M5 Delivery
+ * (mailbox activity) + M6 Reply Intelligence") and future-milestones.md's
+ * note 9, which explicitly places it under M6, not M5, even after its
+ * manual-only design was superseded by M6's persistent Conversation
+ * model. No M6 sub-milestone has built it yet.
  */
 export function ComingSoon({ title, milestone }: { title: string; milestone: string }) {
   return (

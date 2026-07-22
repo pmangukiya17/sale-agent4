@@ -30,9 +30,13 @@ import { BarChart3, Layers, Star, Users } from "lucide-react";
  * What's deliberately NOT here, and why (see the M8.9 scope discussion):
  * a cross-domain Discovered->Researched->Outreach->Replied->Won
  * conversion funnel (no such tracked chain exists in the backend - see
- * PipelineFunnel.tsx's own identical finding), Conversation/reply
- * analytics (no Conversations API exists yet - M6.5/M6.6), and CSV
- * export (no export mechanism exists anywhere in this codebase yet).
+ * PipelineFunnel.tsx's own identical finding), and CSV export (no export
+ * mechanism exists anywhere in this codebase yet). Conversation/reply
+ * analytics is no longer missing for the reason this comment used to
+ * say - M6.5 (Conversations.tsx) and M6.6 (CRM Automation) both shipped
+ * after this page did; a dedicated Conversation/Task analytics view is
+ * simply out of this page's own scope (M8.9 predates both), not still
+ * blocked on a missing API.
  */
 
 const STATUS_TONE: Record<string, BadgeTone> = {
