@@ -2,6 +2,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_owned_company_profile
@@ -91,7 +92,21 @@ def delete_prospect_contact(
     profile: CompanyProfile = Depends(get_owned_company_profile),
     db: Session = Depends(get_db),
 ) -> None:
+    # Hard delete only remains safe for contacts with zero execution
+    # history (RESTRICT on delivery_queue_items/outreach_* now enforces
+    # this at the DB level). A dedicated archive lifecycle - the
+    # preferred path for contacts that do have history, matching
+    # Prospect's approve/reject/archive pattern - is tracked as a
+    # follow-up; see deferred-items-and-design-boundaries.md.
     prospect = _get_prospect_or_404(db, profile.id, prospect_id)
     contact = _get_contact_or_404(db, prospect.id, contact_id)
     db.delete(contact)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This contact has outreach/delivery history and can't be hard-deleted. "
+            "Archive it instead once archiving is available.",
+        )

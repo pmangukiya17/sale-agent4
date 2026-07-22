@@ -2,6 +2,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user, get_owned_company_profile
@@ -109,7 +110,15 @@ def delete_discovery_search(
 ) -> None:
     search = _get_search_or_404(db, profile.id, search_id)
     db.delete(search)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This discovery search has run history (jobs/runs) and can't be deleted. "
+            "See docs/architecture/deferred-items-and-design-boundaries.md.",
+        )
 
 
 @router.post(
