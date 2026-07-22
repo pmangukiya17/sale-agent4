@@ -10,6 +10,20 @@ other upstream table - Outreach only ever READS Personalization's output
 and ProspectContact for addressing. Approving a draft (a separate action,
 not part of this pipeline) is where relationship_stage would eventually
 advance - not implemented in M4's generation pipeline itself.
+
+M8.12 update: run_outreach_request() now commits incrementally at its two
+real state transitions (job created/RUNNING, job terminal/COMPLETED or
+FAILED) instead of one atomic commit at the very end, each paired with a
+publish_event(OUTREACH_JOB_PROGRESS_EVENT_TYPE) nudge - the same wiring
+Discovery (M8.8), Research (M8.10), and Personalization (M8.11) each
+received, so Outreach can run through the same M7 Workflow Engine
+(OutreachExecutionAction, registered as a real Action) instead of a
+parallel execution system. Exactly like Personalization, there is no
+provider/fan-out loop here - one internal channel-provider render call -
+so only these two real transitions exist; a fabricated "halfway" event
+would violate the project's "never fake progress" principle. block_count
+(migration 0021) is a real, already-computed local variable
+(len(outcome.blocks)) that was simply never persisted per-job before.
 """
 from datetime import datetime, timezone
 
@@ -35,6 +49,7 @@ from app.models.user import User
 from app.outreach.channels.base import ChannelRenderOutcome
 from app.outreach.channels.registry import get_channel_provider
 from app.outreach.context import OutreachContext
+from app.workflow_engine.events import publish_event
 
 # Every registered channel reads its AI-behavior instructions from exactly
 # one prompt_key - kept as a simple mapping here (configuration), not a
@@ -42,6 +57,26 @@ from app.outreach.context import OutreachContext
 _CHANNEL_PROMPT_KEY = {
     "email": "email_generation",
 }
+
+# M8.12: the trigger this domain's async /run route publishes, and the
+# progress event OutreachExecutionAction's run_outreach_request() call
+# publishes at each real state transition - exact naming convention as
+# DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE/RESEARCH_REQUEST_RUN_REQUESTED_EVENT_TYPE/
+# PERSONALIZATION_REQUEST_RUN_REQUESTED_EVENT_TYPE.
+OUTREACH_REQUEST_RUN_REQUESTED_EVENT_TYPE = "outreach_request.run_requested"
+OUTREACH_JOB_PROGRESS_EVENT_TYPE = "outreach_job.progress"
+
+
+def _publish_job_progress(db: Session, job: OutreachJob, company_profile_id) -> None:
+    publish_event(
+        db,
+        event_type=OUTREACH_JOB_PROGRESS_EVENT_TYPE,
+        company_profile_id=company_profile_id,
+        source="app.outreach.pipeline",
+        subject_type="outreach_job",
+        subject_id=job.id,
+        payload={"status": job.status.value if hasattr(job.status, "value") else job.status},
+    )
 
 
 class OutreachConfigError(Exception):
@@ -184,6 +219,14 @@ def run_outreach_request(db: Session, request: OutreachRequest, triggered_by_use
     db.add(job)
     db.flush()  # need job.id before child rows reference it
 
+    # M8.12: commit + publish immediately, before the channel provider has
+    # even run - a live viewer polling this job sees it exist and be
+    # RUNNING right away (see app.personalization.pipeline's identical
+    # precedent).
+    _publish_job_progress(db, job, request.company_profile_id)
+    db.commit()
+    db.refresh(job)
+
     job_log: list[dict] = []
 
     try:
@@ -200,6 +243,7 @@ def run_outreach_request(db: Session, request: OutreachRequest, triggered_by_use
         job.error_message = error_message
         job.log = job_log
         request.status = job.status
+        _publish_job_progress(db, job, request.company_profile_id)
         db.commit()
         db.refresh(job)
         return job
@@ -257,6 +301,7 @@ def run_outreach_request(db: Session, request: OutreachRequest, triggered_by_use
     job.status = OutreachJobStatus.COMPLETED
     job.error_message = None
     job.log = job_log
+    job.block_count = len(outcome.blocks)
     request.status = job.status
 
     run = OutreachRun(
@@ -281,6 +326,9 @@ def run_outreach_request(db: Session, request: OutreachRequest, triggered_by_use
     )
     db.add(run)
 
+    # M8.12: the final transition - one last nudge so a live viewer knows
+    # to fetch the completion summary.
+    _publish_job_progress(db, job, request.company_profile_id)
     db.commit()
     db.refresh(job)
     return job

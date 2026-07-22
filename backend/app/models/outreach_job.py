@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Enum, ForeignKey, Text
+from sqlalchemy import Enum, ForeignKey, Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -58,6 +58,10 @@ class OutreachJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     log: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # M8.12 (migration 0021): real per-run count of content blocks this
+    # job's channel-provider render produced - the Live Workflow
+    # Visualization's equivalent of Personalization's strategy_count.
+    block_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     outreach_request: Mapped["OutreachRequest"] = relationship(back_populates="jobs")
     personalization_snapshot: Mapped["PersonalizationSnapshot | None"] = relationship()
