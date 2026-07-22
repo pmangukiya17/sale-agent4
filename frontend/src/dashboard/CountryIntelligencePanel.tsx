@@ -27,6 +27,13 @@ import { averageScore } from "./selectors";
  *    useCountryReference.ts) - fabricating numbers here would violate the
  *    "no fabricated data" requirement, so this tier states the gap plainly
  *    instead.
+ *
+ * Track B1 UI review: `glow="success"` mirrors the same real signal this
+ * card's own "Active" Badge already shows (slice.length > 0) - not a new
+ * color invented for this, and not decorative: Card's contract is that
+ * glow means "live/AI-touched right now," so this only lights up when
+ * there's actually a real prospect count behind it, same conditional
+ * pattern as AiPipelineWidget/AiWorkforceStatusWidget/TodaysPriorities.
  */
 export function CountryIntelligencePanel({
   country,
@@ -65,7 +72,11 @@ export function CountryIntelligencePanel({
   }, [reference]);
 
   return (
-    <Card padding="compact" className="flex h-full flex-col gap-2.5 overflow-y-auto">
+    <Card
+      padding="compact"
+      glow={slice.length > 0 ? "success" : false}
+      className="flex h-full flex-col gap-2.5 overflow-y-auto"
+    >
       <div className="flex items-center justify-between">
         <div className="flex min-w-0 items-center gap-1.5">
           <Globe2 className="h-3.5 w-3.5 shrink-0 text-accent-primary" aria-hidden="true" />

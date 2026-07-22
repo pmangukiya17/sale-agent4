@@ -58,7 +58,21 @@ import { ActivityTimeline } from "../dashboard/ActivityTimeline";
  * cards) rather than applying frosted glass broadly - that's a
  * previously-reasoned, already-approved call, not an oversight. Ambient
  * glow (Card's `glow` prop) is pushed harder here instead: the map's live
- * markers, the AI Pipeline/AI Workforce cards when there's real activity.
+ * markers, and - per the Track B1 UI review, which found only AI
+ * Pipeline reliably read as "premium" in practice (AI Workforce's own
+ * glow only lights up while an agent is actually `running`, so it often
+ * looked identical to a plain card) - now four cards total, each gated on
+ * a genuine live signal rather than decoration: AI Pipeline/AI Workforce
+ * (`ai`, real AI-engine activity), Today's Priorities (`warning`, real
+ * items waiting on review), Country Intelligence (`success`, real
+ * prospect count for the selected country). Deliberately NOT extended to
+ * every card - SalesPipelineWidget/PipelineFunnel/AiRecommendations/
+ * MailboxBrief are honest "not implemented" placeholders (glowing them
+ * would imply live activity that doesn't exist), and the KPI strip/
+ * Activity/Top Countries cards don't have a "this is happening right
+ * now" story distinct from just "there is data" - adding glow there
+ * would flatten the hierarchy this prop exists to create, the opposite
+ * of what was asked for.
  *
  * Still true, unchanged from the prior pass: I cannot pixel-verify this
  * fits with zero scroll at 1920x1080 - `vite dev`/`vite build` don't run

@@ -17,6 +17,14 @@ import { useCompanies } from "../companies/CompanyContext";
  * smaller `limit` and tighter `compact` typography let this same
  * component serve both a full card (elsewhere) and this dense role
  * without a second implementation.
+ *
+ * Track B1 UI review: `glow="warning"` when there's at least one real
+ * item waiting on review - same conditional-on-real-activity pattern
+ * AiPipelineWidget/AiWorkforceStatusWidget already use (Card's own
+ * contract: glow means "live/AI-touched right now", never decorative),
+ * and the same `warning` tone this card's own per-row Badge already uses
+ * for "Needs review" - not a new color invented for this, reusing what
+ * this exact card already says about itself.
  */
 export function TodaysPriorities({
   prospects,
@@ -34,7 +42,11 @@ export function TodaysPriorities({
   const priorities = needsReviewList(prospects, limit);
 
   return (
-    <Card padding={compact ? "compact" : "normal"} className="flex h-full flex-col gap-2">
+    <Card
+      padding={compact ? "compact" : "normal"}
+      glow={priorities.length > 0 ? "warning" : false}
+      className="flex h-full flex-col gap-2"
+    >
       <h3 className={compact ? "text-xs font-semibold text-slate-100" : "text-sm font-semibold text-slate-100"}>
         Today's Priorities
       </h3>
