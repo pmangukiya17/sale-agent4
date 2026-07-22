@@ -19,5 +19,6 @@ class PersonalizationJobRead(BaseModel):
     finished_at: datetime | None
     error_message: str | None
     log: list[dict[str, Any]]
+    strategy_count: int
     created_at: datetime
     updated_at: datetime

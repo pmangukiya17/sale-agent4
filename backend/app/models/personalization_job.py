@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Enum, ForeignKey, Text
+from sqlalchemy import Enum, ForeignKey, Integer, Text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -44,6 +44,11 @@ class PersonalizationJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     finished_at: Mapped[datetime | None] = mapped_column(nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     log: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    # M8.11 (migration 0020): real per-run count of strategies this job's
+    # synthesis pass generated - the Live Workflow Visualization's
+    # equivalent of Discovery's qualified/rejected counts and Research's
+    # signal/recommendation counts.
+    strategy_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     personalization_request: Mapped["PersonalizationRequest"] = relationship(back_populates="jobs")
     run: Mapped["PersonalizationRun | None"] = relationship(back_populates="personalization_job", uselist=False)

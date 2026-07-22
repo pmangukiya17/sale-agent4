@@ -1,10 +1,8 @@
 """
-Synchronous Personalization pipeline orchestrator - structural mirror of
-Discovery's (M1) and Research's (M2) pipelines, minus the provider-fan-out
-layer neither is present here: Personalization fetches nothing external,
-it only reads what M1/M2 already stored and synthesizes a strategy. No
-Celery/Redis/BackgroundTasks/polling worker - running a personalization
-request means doing all of this within one request/response cycle.
+Personalization pipeline orchestrator - structural mirror of Discovery's
+(M1) and Research's (M2) pipelines, minus the provider-fan-out layer:
+Personalization fetches nothing external, it only reads what M1/M2
+already stored and synthesizes a strategy in one internal engine call.
 
 This pipeline never writes Prospect.ai_reasoning (that field is M2's) and
 never writes Prospect.relationship_stage (that field is live, mutable,
@@ -12,6 +10,19 @@ and owned by future M4-M7 outreach systems) - it only ever READS
 relationship_stage, copying it into
 PersonalizationSnapshot.relationship_stage_at_generation for
 explainability.
+
+M8.11 update: same treatment Discovery (M8.8) and Research (M8.10) got -
+this function is now ALSO reachable asynchronously via
+PersonalizationExecutionAction (app/workflow_actions/
+personalization_execution_action.py), triggered off a real Event through
+the M7 Workflow Engine, in addition to the still-supported synchronous
+/run route. Unlike Discovery/Research, there is no provider fan-out to
+report incremental progress on - a personalization run is genuinely one
+atomic synthesis step, so there are only two real transitions to publish:
+job created (RUNNING) and job terminal (COMPLETED/FAILED). Publishing a
+fake "halfway" event here would be exactly the fabricated-progress
+Principle 1 forbids - this pipeline does not invent one just to have more
+than two events.
 """
 from datetime import datetime, timezone
 
@@ -37,6 +48,24 @@ from app.models.user import User
 from app.personalization.context import PersonalizationContext
 from app.personalization.engine.base import PersonalizationOutcome, StrategyDraft
 from app.personalization.engine.deterministic_stub import DeterministicPersonalizationEngine
+from app.workflow_engine.events import publish_event
+
+# M8.11: the two Personalization event types - exact mirror of
+# DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE / DISCOVERY_JOB_PROGRESS_EVENT_TYPE.
+PERSONALIZATION_REQUEST_RUN_REQUESTED_EVENT_TYPE = "personalization_request.run_requested"
+PERSONALIZATION_JOB_PROGRESS_EVENT_TYPE = "personalization_job.progress"
+
+
+def _publish_job_progress(db: Session, job: PersonalizationJob, company_profile_id) -> None:
+    publish_event(
+        db,
+        event_type=PERSONALIZATION_JOB_PROGRESS_EVENT_TYPE,
+        company_profile_id=company_profile_id,
+        source="app.personalization.pipeline",
+        subject_type="personalization_job",
+        subject_id=job.id,
+        payload={"status": job.status.value if hasattr(job.status, "value") else job.status},
+    )
 
 # Maps a Recommendation's type onto which {{...}} variable slot it fills -
 # see PersonalizationSnapshot's docstring for the personalization_variables
@@ -182,6 +211,13 @@ def run_personalization_request(
     db.add(job)
     db.flush()  # need job.id before child rows reference it
 
+    # M8.11: commit + publish immediately, before the synthesis engine has
+    # even run - a live viewer polling this job sees it exist and be
+    # RUNNING right away (see app.discovery.pipeline's identical precedent).
+    _publish_job_progress(db, job, request.company_profile_id)
+    db.commit()
+    db.refresh(job)
+
     job_log: list[dict] = []
     error_message: str | None = None
 
@@ -197,6 +233,7 @@ def run_personalization_request(
         job.error_message = error_message
         job.log = job_log
         request.status = job.status
+        _publish_job_progress(db, job, request.company_profile_id)
         db.commit()
         db.refresh(job)
         return job
@@ -260,6 +297,7 @@ def run_personalization_request(
     job.status = PersonalizationJobStatus.COMPLETED
     job.error_message = None
     job.log = job_log
+    job.strategy_count = len(outcome.strategies)
     request.status = job.status
 
     run = PersonalizationRun(
@@ -283,6 +321,9 @@ def run_personalization_request(
     )
     db.add(run)
 
+    # M8.11: the final transition - one last nudge so a live viewer knows
+    # to fetch the completion summary.
+    _publish_job_progress(db, job, request.company_profile_id)
     db.commit()
     db.refresh(job)
     return job
