@@ -15,10 +15,15 @@ import { Card, PlaceholderNotice } from "../design-system";
  * genuinely future, unscheduled work, not something to imply is already
  * arriving. Honest placeholder either way, not a fabricated inbox
  * summary.
+ *
+ * Track B1 UI refinement: `accent="orange"` ambient identity glow only -
+ * no `active` state, same "don't imply live activity on an honest
+ * placeholder" reasoning as SalesPipelineWidget/PipelineFunnel/
+ * AiRecommendations.
  */
 export function MailboxBrief() {
   return (
-    <Card padding="compact" className="flex h-full flex-col gap-2">
+    <Card padding="compact" accent="orange" className="flex h-full flex-col gap-2">
       <h3 className="text-xs font-semibold text-slate-100">Mailbox Brief</h3>
       <PlaceholderNotice kind="not-implemented" reason="No conversations API route exists yet to summarize." />
     </Card>

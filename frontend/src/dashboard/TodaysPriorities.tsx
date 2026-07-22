@@ -18,13 +18,19 @@ import { useCompanies } from "../companies/CompanyContext";
  * component serve both a full card (elsewhere) and this dense role
  * without a second implementation.
  *
- * Track B1 UI review: `glow="warning"` when there's at least one real
- * item waiting on review - same conditional-on-real-activity pattern
- * AiPipelineWidget/AiWorkforceStatusWidget already use (Card's own
- * contract: glow means "live/AI-touched right now", never decorative),
- * and the same `warning` tone this card's own per-row Badge already uses
- * for "Needs review" - not a new color invented for this, reusing what
- * this exact card already says about itself.
+ * Track B1 UI review (superseded by the follow-up two-layer lighting
+ * refinement below, kept here for history): originally shipped as
+ * `glow="warning"` when at least one real item needed review.
+ *
+ * Track B1 UI refinement (two-layer lighting system): migrated to
+ * `accent="yellow"` (ambient, always on - this card's own persistent
+ * identity color, per the CEO's palette) + `active={priorities.length >
+ * 0}` (the same real signal as before, now the breathing layer). Note
+ * this card's per-row Badge still uses `warning`/amber for "Needs
+ * review" - that's a distinct, deliberately different color from this
+ * card's own `yellow` identity glow, matching the CEO's palette giving
+ * "Needs Review" (the KPI card) amber and "Today's Priorities" (this
+ * card) yellow as two related-but-distinct identities.
  */
 export function TodaysPriorities({
   prospects,
@@ -44,7 +50,8 @@ export function TodaysPriorities({
   return (
     <Card
       padding={compact ? "compact" : "normal"}
-      glow={priorities.length > 0 ? "warning" : false}
+      accent="yellow"
+      active={priorities.length > 0}
       className="flex h-full flex-col gap-2"
     >
       <h3 className={compact ? "text-xs font-semibold text-slate-100" : "text-sm font-semibold text-slate-100"}>

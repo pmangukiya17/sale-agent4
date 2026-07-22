@@ -21,10 +21,16 @@ import { Card, PlaceholderNotice } from "../design-system";
  *
  * A true deal/opportunity model with stage + value tracking is a real,
  * separate backend milestone - not something to fake or approximate here.
+ *
+ * Track B1 UI refinement: `accent="blue"` ambient identity glow only -
+ * no `active` state. This is an honest "not implemented" placeholder
+ * (see PlaceholderNotice below); giving it a breathing glow would imply
+ * live activity that doesn't exist, the same reasoning this card's own
+ * docstring already applies to what data it's allowed to show.
  */
 export function SalesPipelineWidget() {
   return (
-    <Card padding="compact" className="flex h-full flex-col gap-2">
+    <Card padding="compact" accent="blue" className="flex h-full flex-col gap-2">
       <h3 className="text-xs font-semibold text-accent-primary">Sales Pipeline</h3>
       <PlaceholderNotice kind="not-implemented" reason="No opportunity/deal model exists in the backend yet." />
     </Card>

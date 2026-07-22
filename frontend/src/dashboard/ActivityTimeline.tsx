@@ -27,6 +27,13 @@ import { recentActivity } from "./selectors";
  * literally insert one new DOM row with a transition), so there is no
  * category-1 motion here yet needing a `prefers-reduced-motion` variant -
  * only the aria-live wiring applies for now.
+ *
+ * Track B1 UI refinement: `accent="slate"` ambient identity glow only -
+ * no `active` state. Unlike TodaysPriorities/AiPipelineWidget, this card
+ * shows a historical feed, not a "something is happening right now"
+ * event - "there is recent activity" isn't meaningfully different from
+ * "there is data," so it doesn't get the breathing layer, same judgment
+ * already applied to the KPI strip's static count cards.
  */
 export function ActivityTimeline({
   prospects,
@@ -42,7 +49,7 @@ export function ActivityTimeline({
   const items = recentActivity(prospects, limit);
 
   return (
-    <Card padding={compact ? "compact" : "normal"} className="flex h-full flex-col gap-2">
+    <Card padding={compact ? "compact" : "normal"} accent="slate" className="flex h-full flex-col gap-2">
       <h3 className={compact ? "text-xs font-semibold text-slate-100" : "text-sm font-semibold text-slate-100"}>Activity</h3>
       {isLoading ? (
         <p className="text-xs text-slate-500">Loading…</p>

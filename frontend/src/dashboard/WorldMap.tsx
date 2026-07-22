@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { cn } from "../design-system";
+import { ACTIVE_GLOW_OVERLAY_CLASSNAME, activeGlowStyle, ambientGlowStyle, cn } from "../design-system";
 import { lookupCentroid } from "./countryCentroids";
 import { normalizeCountryName } from "./countryNameAliases";
 import type { CountryAggregate } from "./selectors";
@@ -138,6 +138,16 @@ export function WorldMap({ countries, selectedCountry, onSelectCountry, geometry
 
   const unplotted = countries.length - markers.length;
 
+  // Track B1 UI refinement: World Map = indigo, ambient always, active
+  // (breathing) when at least one country has real activity today - same
+  // `hasActivityToday` flag CommandCenter.tsx already computes for the
+  // individual marker pulse rings below, not a new signal invented for
+  // this. Not a Card (this component fills whatever box its parent
+  // gives it, reused outside the dashboard too), so it calls the same
+  // ambientGlowStyle/activeGlowStyle helpers Card.tsx itself uses,
+  // rather than duplicating the box-shadow math.
+  const hasAnyActivityToday = countries.some((c) => c.hasActivityToday);
+
   // M8.16: lets a clicked/hovered country SHAPE find its real prospect
   // aggregate (if any) via countryNameAliases.ts's verified normalization
   // - see this file's own docstring for why the geometry layer's names
@@ -156,6 +166,7 @@ export function WorldMap({ countries, selectedCountry, onSelectCountry, geometry
         role="img"
         aria-label="World map showing prospect distribution by country"
         className="h-full w-full rounded-lg border border-border-hairline bg-surface-2/40"
+        style={ambientGlowStyle("indigo")}
       >
         {geometry ? (
           <g strokeWidth={0.5}>
@@ -274,6 +285,9 @@ export function WorldMap({ countries, selectedCountry, onSelectCountry, geometry
         <p className="absolute bottom-1.5 right-2 text-[10px] text-slate-500">
           {unplotted} unplotted {unplotted === 1 ? "country" : "countries"}
         </p>
+      )}
+      {hasAnyActivityToday && (
+        <div aria-hidden="true" className={cn(ACTIVE_GLOW_OVERLAY_CLASSNAME, "rounded-lg")} style={activeGlowStyle("indigo")} />
       )}
     </div>
   );

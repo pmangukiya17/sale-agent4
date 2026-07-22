@@ -28,12 +28,17 @@ import { averageScore } from "./selectors";
  *    "no fabricated data" requirement, so this tier states the gap plainly
  *    instead.
  *
- * Track B1 UI review: `glow="success"` mirrors the same real signal this
- * card's own "Active" Badge already shows (slice.length > 0) - not a new
- * color invented for this, and not decorative: Card's contract is that
- * glow means "live/AI-touched right now," so this only lights up when
- * there's actually a real prospect count behind it, same conditional
- * pattern as AiPipelineWidget/AiWorkforceStatusWidget/TodaysPriorities.
+ * Track B1 UI review (superseded by the follow-up two-layer lighting
+ * refinement below, kept here for history): originally shipped as
+ * `glow="success"`, mirroring this card's own "Active" Badge signal.
+ *
+ * Track B1 UI refinement (two-layer lighting system): migrated to
+ * `accent="emerald"` (ambient, always on - Country Intelligence's
+ * persistent identity color) + `active={slice.length > 0}` (the same
+ * real signal the old `glow="success"` used, now the brighter breathing
+ * layer instead of the only layer). Card's `glow` prop itself still
+ * exists and is unchanged elsewhere (see Card.tsx's own docstring) - this
+ * card just moved off it onto the newer system, it wasn't deprecated.
  */
 export function CountryIntelligencePanel({
   country,
@@ -74,7 +79,8 @@ export function CountryIntelligencePanel({
   return (
     <Card
       padding="compact"
-      glow={slice.length > 0 ? "success" : false}
+      accent="emerald"
+      active={slice.length > 0}
       className="flex h-full flex-col gap-2.5 overflow-y-auto"
     >
       <div className="flex items-center justify-between">

@@ -21,6 +21,18 @@ import { PROSPECT_STATUS_LABELS, PROSPECT_STATUS_ORDER, countByStatus } from "./
  * by count are shown, capped height, tight spacing - a single-screen
  * operational card, not a full breakdown (that fuller view still exists
  * on the Prospects/Pipeline pages this feeds from).
+ *
+ * Track B1 UI refinement: migrated from `glow={... ? "ai" : false}` to
+ * `accent="purple"` (ambient, always on) + `active={prospects.length > 0}`
+ * (same condition as before, now the breathing layer). Purple is a
+ * deliberately DIFFERENT rgb from AI Workforce's violet, per the CEO's
+ * explicit palette - the two AI cards now have distinct, not identical,
+ * identity colors, even though both are still "AI-attributed." Scope
+ * note: only the Card-level glow changed here - the title text
+ * (`text-accent-ai-soft`) and progress-bar fill (`bg-accent-ai`) below
+ * are untouched, still the original ai/violet tokens, since recoloring
+ * those wasn't part of the requested change (glow only, no functional/
+ * broader visual changes).
  */
 export function AiPipelineWidget({ prospects, isLoading }: { prospects: DashboardProspect[]; isLoading: boolean }) {
   const counts = countByStatus(prospects);
@@ -28,7 +40,7 @@ export function AiPipelineWidget({ prospects, isLoading }: { prospects: Dashboar
   const topStages = PROSPECT_STATUS_ORDER.filter((s) => counts[s]).slice(0, 4);
 
   return (
-    <Card padding="compact" glow={prospects.length > 0 ? "ai" : false} className="flex h-full flex-col gap-2">
+    <Card padding="compact" accent="purple" active={prospects.length > 0} className="flex h-full flex-col gap-2">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold text-accent-ai-soft">AI Pipeline</h3>
         <span className="text-[11px] text-slate-500">{prospects.length}</span>

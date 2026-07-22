@@ -26,10 +26,14 @@ import { Card, PlaceholderNotice } from "../design-system";
  * SalesPipelineWidget. Fixed the same way, not left as a fabricated
  * chart: an honest "not yet implemented" placeholder, distinctly labeled
  * from Sales Pipeline so the two slots are never confused for each other.
+ *
+ * Track B1 UI refinement: `accent="teal"` ambient identity glow only - no
+ * `active` state, same "don't imply live activity on an honest
+ * placeholder" reasoning as SalesPipelineWidget.
  */
 export function PipelineFunnel() {
   return (
-    <Card padding="compact" className="flex h-full flex-col gap-2">
+    <Card padding="compact" accent="teal" className="flex h-full flex-col gap-2">
       <h3 className="text-xs font-semibold text-slate-100">Pipeline Overview</h3>
       <PlaceholderNotice
         kind="not-implemented"

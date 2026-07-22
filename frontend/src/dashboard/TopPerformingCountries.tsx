@@ -12,6 +12,15 @@ import { topPerformingCountries } from "./selectors";
  *
  * `limit`/`compact` - see TodaysPriorities.tsx's docstring for why these
  * exist (single-screen operational row, M8.3 revision).
+ *
+ * Track B1 UI refinement: `accent="emerald"` ambient identity glow only -
+ * no `active` state. This is a ranked snapshot (like ActivityTimeline),
+ * not a single "country X currently has activity" event the way
+ * CountryIntelligencePanel's own emerald identity is - that panel's
+ * `active` condition is about ONE selected country, this card ranks
+ * several at once, so there's no equally clean single boolean signal to
+ * drive a breathing layer from without it applying to the whole list
+ * indiscriminately.
  */
 export function TopPerformingCountries({
   prospects,
@@ -27,7 +36,7 @@ export function TopPerformingCountries({
   const ranked = topPerformingCountries(prospects, limit);
 
   return (
-    <Card padding={compact ? "compact" : "normal"} className="flex h-full flex-col gap-2">
+    <Card padding={compact ? "compact" : "normal"} accent="emerald" className="flex h-full flex-col gap-2">
       <h3 className={compact ? "text-xs font-semibold text-slate-100" : "text-sm font-semibold text-slate-100"}>
         Top Countries
       </h3>

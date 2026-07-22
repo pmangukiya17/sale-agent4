@@ -15,6 +15,15 @@ const SUMMARY_STATES: AgentActivityState[] = ["running", "waiting", "queued", "c
  * reuses useAgentActivities() and describeAgentState() as-is. "View full
  * roster" routes to the real page rather than duplicating its content
  * here in miniature.
+ *
+ * Track B1 UI refinement: migrated from `glow={... ? "ai" : false}` to
+ * the two-layer system - `accent="violet"` (ambient, always on; the CEO's
+ * review specifically found this card often looked identical to a plain
+ * card in practice, since the old glow only appeared while an agent was
+ * actually `running`) + `active={counts[0].count > 0}` (same condition
+ * as before, now the brighter breathing layer). `violet` is the exact
+ * same rgb as the old `ai` tone - this card's identity color didn't
+ * change, only which layer carries the "is anything running" signal.
  */
 export function AiWorkforceStatusWidget() {
   const { activities, isLoading } = useAgentActivities();
@@ -27,7 +36,7 @@ export function AiWorkforceStatusWidget() {
   }));
 
   return (
-    <Card padding="compact" glow={counts[0].count > 0 ? "ai" : false} className="flex h-full flex-col gap-2">
+    <Card padding="compact" accent="violet" active={counts[0].count > 0} className="flex h-full flex-col gap-2">
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold text-accent-ai-soft">AI Workforce</h3>
         <button

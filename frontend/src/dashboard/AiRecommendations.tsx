@@ -12,10 +12,14 @@ import { Card, PlaceholderNotice } from "../design-system";
  * does, and not something to quietly introduce into a "production
  * quality" dashboard. Until a real aggregate endpoint exists, this is an
  * honest placeholder rather than either a fabricated list or a silent N+1.
+ *
+ * Track B1 UI refinement: `accent="cyan"` ambient identity glow only - no
+ * `active` state, same "don't imply live activity on an honest
+ * placeholder" reasoning as SalesPipelineWidget/PipelineFunnel.
  */
 export function AiRecommendations() {
   return (
-    <Card padding="compact" className="flex h-full flex-col gap-2">
+    <Card padding="compact" accent="cyan" className="flex h-full flex-col gap-2">
       <h3 className="text-xs font-semibold text-slate-100">AI Recommendations</h3>
       <PlaceholderNotice kind="not-implemented" reason="No cross-portfolio recommendations endpoint exists yet." />
     </Card>
