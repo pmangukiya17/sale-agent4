@@ -37,6 +37,8 @@ class ResearchJobRead(BaseModel):
     finished_at: datetime | None
     sources_used: list[str]
     raw_document_count: int
+    signal_count: int
+    recommendation_count: int
     error_message: str | None
     log: list[dict[str, Any]]
     provider_runs: list[ResearchJobProviderRunRead] = []

@@ -1,9 +1,6 @@
 """
-Synchronous Research pipeline orchestrator - exact structural mirror of
-Discovery's pipeline.py (M1), extended with an AI Analysis pass. M2 is
-manual-execution-only, same as M1: no Celery/Redis/BackgroundTasks/
-polling worker - running a research job means doing all of this within
-one request/response cycle.
+Research pipeline orchestrator - exact structural mirror of Discovery's
+pipeline.py (M1), extended with an AI Analysis pass.
 
 One deliberate, disclosed adaptation vs. Discovery: DiscoverySearch is a
 reusable saved config with its own persisted query_spec column, so its
@@ -18,6 +15,22 @@ query_spec on top of its SearchTemplate's: `{**template_spec,
 **run_input}`. The merged dict is never persisted on ResearchRequest
 itself - only its effects (RawDocuments, ResearchRun.config_snapshot)
 are, preserving the "per-run, not reusable" intent.
+
+M8.10 update: same treatment as Discovery got in M8.8 - this function is
+now ALSO reachable asynchronously via ResearchExecutionAction
+(app/workflow_actions/research_execution_action.py), triggered off a real
+Event through the M7 Workflow Engine, in addition to the still-supported
+synchronous /run route. To make the async path produce genuinely live,
+incremental progress, this function commits at multiple points instead of
+one (job created -> each provider as it finishes -> final, after the AI
+Analysis pass), each paired with a real
+publish_event(RESEARCH_JOB_PROGRESS_EVENT_TYPE) - identical shape to
+DISCOVERY_JOB_PROGRESS_EVENT_TYPE, see that module's own docstring for the
+full reasoning. The synchronous /run route no longer calls this directly
+(see app/api/routes/research_requests.py) - it publishes
+RESEARCH_REQUEST_RUN_REQUESTED_EVENT_TYPE instead - but this function's
+own signature and every existing synchronous caller continue to work
+unchanged; incremental commits are an internal implementation detail.
 """
 from datetime import datetime, timezone
 
@@ -54,6 +67,13 @@ from app.research.analysis.deterministic_stub import DeterministicAnalysisEngine
 from app.research.context import ResearchContext
 from app.research.providers.base import ProviderError
 from app.research.providers.registry import get_provider
+from app.workflow_engine.events import publish_event
+
+# M8.10: the two Research event types the Live Workflow Visualization is
+# built on - exact mirror of DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE /
+# DISCOVERY_JOB_PROGRESS_EVENT_TYPE (app/discovery/pipeline.py).
+RESEARCH_REQUEST_RUN_REQUESTED_EVENT_TYPE = "research_request.run_requested"
+RESEARCH_JOB_PROGRESS_EVENT_TYPE = "research_job.progress"
 
 
 class ResearchConfigError(Exception):
@@ -97,6 +117,22 @@ def _unset_previous_current_snapshot(db: Session, prospect_id) -> None:
         snapshot.is_current = False
 
 
+def _publish_job_progress(db: Session, job: ResearchJob, company_profile_id) -> None:
+    """Mirrors app.discovery.pipeline._publish_job_progress exactly - a
+    nudge, no payload beyond enough to identify the job. Flushes but does
+    not commit; callers pair this with their own db.commit() immediately
+    after."""
+    publish_event(
+        db,
+        event_type=RESEARCH_JOB_PROGRESS_EVENT_TYPE,
+        company_profile_id=company_profile_id,
+        source="app.research.pipeline",
+        subject_type="research_job",
+        subject_id=job.id,
+        payload={"status": job.status.value if hasattr(job.status, "value") else job.status},
+    )
+
+
 def run_research_request(
     db: Session,
     request: ResearchRequest,
@@ -118,6 +154,13 @@ def run_research_request(
     db.add(job)
     db.flush()  # need job.id before child rows reference it
 
+    # M8.10: commit + publish immediately, before a single provider has
+    # run - a live viewer polling this job sees it exist and be RUNNING
+    # right away (see app.discovery.pipeline's identical precedent).
+    _publish_job_progress(db, job, request.company_profile_id)
+    db.commit()
+    db.refresh(job)
+
     sources_used: list[str] = []
     error_messages: list[str] = []
     job_log: list[dict] = []
@@ -138,6 +181,10 @@ def run_research_request(
                 "provider_key": provider_key, "started_at": started_at.isoformat(),
                 "finished_at": failed_at.isoformat(), "status": "failed", "error": str(exc),
             })
+            # M8.10: commit this provider's outcome + nudge immediately -
+            # mirrors app.discovery.pipeline's identical per-provider commit.
+            _publish_job_progress(db, job, request.company_profile_id)
+            db.commit()
             continue
 
         try:
@@ -153,6 +200,8 @@ def run_research_request(
                 "provider_key": provider_key, "started_at": started_at.isoformat(),
                 "finished_at": failed_at.isoformat(), "status": "failed", "error": str(exc),
             })
+            _publish_job_progress(db, job, request.company_profile_id)
+            db.commit()
             continue
 
         finished_at = _now()
@@ -190,6 +239,16 @@ def run_research_request(
             )
             db.add(doc)
             raw_documents.append(doc)
+
+        # M8.10: this provider (and every RawDocument it produced) is now
+        # fully written - commit + nudge before moving to the next
+        # provider, mirroring app.discovery.pipeline's identical
+        # per-provider commit.
+        job.raw_document_count = len(raw_documents)
+        job.sources_used = sources_used
+        _publish_job_progress(db, job, request.company_profile_id)
+        db.commit()
+        db.refresh(job)
 
     db.flush()  # need every RawDocument.id before AI analysis references them
 
@@ -314,6 +373,8 @@ def run_research_request(
 
     job.sources_used = sources_used
     job.raw_document_count = len(raw_documents)
+    job.signal_count = signal_count
+    job.recommendation_count = recommendation_count
     job.finished_at = _now()
     job.error_message = "; ".join(error_messages) if error_messages else None
     job.log = job_log
@@ -345,6 +406,9 @@ def run_research_request(
     )
     db.add(run)
 
+    # M8.10: the final transition - job.status is now terminal - one last
+    # nudge so a live viewer knows to fetch the completion summary.
+    _publish_job_progress(db, job, request.company_profile_id)
     db.commit()
     db.refresh(job)
     return job
