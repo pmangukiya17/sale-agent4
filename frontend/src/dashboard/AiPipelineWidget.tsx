@@ -40,7 +40,22 @@ export function AiPipelineWidget({ prospects, isLoading }: { prospects: Dashboar
   const topStages = PROSPECT_STATUS_ORDER.filter((s) => counts[s]).slice(0, 4);
 
   return (
-    <Card padding="compact" accent="purple" active={prospects.length > 0} className="flex h-full flex-col gap-2">
+    <Card
+      padding="compact"
+      accent="purple"
+      active={prospects.length > 0}
+      className="flex h-full flex-col gap-2"
+      // TEMPORARY DEBUG OVERRIDE - not a production value. Card merges
+      // `{...ambientGlowStyle(accent), ...style}`, so this `style` prop
+      // wins and replaces the normal ambient box-shadow outright on this
+      // one card only. Deliberately extreme (60px blur, +8px POSITIVE
+      // spread so the shadow rect can't be swallowed behind the card's
+      // own opaque background the way a negative spread can, 85% alpha)
+      // purely to give an unmistakable yes/no signal on whether the
+      // rendering path (DOM/CSS/build) works at all, before touching any
+      // other card's real values. Revert once confirmed.
+      style={{ boxShadow: "0 0 60px 8px rgba(168,85,247,0.85)" }}
+    >
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-semibold text-accent-ai-soft">AI Pipeline</h3>
         <span className="text-[11px] text-slate-500">{prospects.length}</span>
