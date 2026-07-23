@@ -16,25 +16,38 @@ import { cn } from "./cn";
  *
  * `accent`/`active` are the Track B1 UI refinement's two-layer lighting
  * system, additive to `glow`, not a replacement of it:
- *  - `accent` (always-on, when set): a very low-opacity, large-blur,
- *    unanimated "ambient" glow that gives a card its own persistent
- *    color identity, present even at rest. This is a deliberate,
- *    explicit reversal of Section 4.1's original "glow only when live"
- *    rule - see that section's own updated text in
+ *  - `accent` (always-on, when set): an "ambient" glow that gives a card
+ *    its own persistent color identity, present even at rest. This is a
+ *    deliberate, explicit reversal of Section 4.1's original "glow only
+ *    when live" rule - see that section's own updated text in
  *    docs/architecture/m8-ui-ux-design-bible.md for why, and Card's own
  *    git history for the fact that this reversal was requested, not
  *    discovered as a bug.
- *  - `active` (boolean, requires `accent`): layers a second, brighter
- *    version of the same accent color on top, with a slow (~3.5s)
- *    breathing opacity animation - "gentle," per the explicit "Apple
- *    Dynamic Island or Linear, not RGB keyboards" instruction, never a
- *    flash/pulse. This is the ONLY layer that is conditional on real
- *    activity; `accent` alone is decorative identity, `active` is what
- *    still carries the "something is genuinely happening" signal. A
+ *  - `active` (boolean, requires `accent`): layers a second, ~40%
+ *    brighter version of the same accent color on top, with a slow
+ *    (~3.5s) breathing opacity animation - "gentle," per the explicit
+ *    "Apple Dynamic Island or Linear, not RGB keyboards" instruction,
+ *    never a flash/pulse. This is the ONLY layer that is conditional on
+ *    real activity; `accent` alone is decorative identity, `active` is
+ *    what still carries the "something is genuinely happening" signal. A
  *    caller should never set `active` without a real, already-existing
  *    boolean condition behind it (see AiPipelineWidget.tsx etc. for the
  *    established pattern) - the honesty rule from `glow` carries over to
  *    this layer even though the ambient layer no longer needs it.
+ *
+ * Retuning note (second Track B1 pass): the first cut of `accent` used a
+ * 32px blur / -4px spread / 0.13-alpha shadow, which real-browser
+ * feedback called "too broad and diffused... slightly hazy." The values
+ * below are a direct retune of that same mechanism, not a new one -
+ * tighter blur/spread so the glow reads as hugging the card edge rather
+ * than bleeding into the surrounding canvas, and higher alpha so it's
+ * visible rather than merely present. `active`'s peak alpha is exactly
+ * 1.4x ambient's (0.28 vs 0.20), landing in the requested "30-40%
+ * brighter" range. The overlay is now always mounted (not conditionally
+ * rendered) specifically so toggling `active` off transitions the
+ * overlay's opacity back to 0 over `duration-state-change` instead of
+ * the glow vanishing on the same frame the condition flips - see
+ * `activeGlowOverlayClassName` below.
  *
  * Implementation note: `accent`'s ambient shadow and `active`'s brighter
  * overlay both derive from ONE rgb triplet per accent color (ACCENT_RGB
@@ -114,23 +127,45 @@ const ACCENT_RGB: Record<AccentColor, string> = {
  * that may not wrap it in one) but still needs an "World Map = indigo"
  * identity per the same Track B1 request. One recipe, two call sites,
  * not two copies of the same box-shadow math.
+ *
+ * Tighter/brighter retune: 22px blur / -2px spread / 0.20 alpha - a
+ * meaningfully closer, more visible bloom than the first pass's 32px/
+ * -4px/0.13, without adding a hard ring (still "soft edge," per the
+ * original spec - just less diffuse).
  */
 export function ambientGlowStyle(accent: AccentColor): CSSProperties {
-  return { boxShadow: `0 0 32px -4px rgba(${ACCENT_RGB[accent]},0.13)` };
+  return { boxShadow: `0 0 22px -2px rgba(${ACCENT_RGB[accent]},0.20)` };
 }
 
+/** Peak of the breathing animation - 28px blur / -1px spread / 0.28
+ * alpha, i.e. exactly 1.4x ambient's alpha (the requested "30-40%
+ * brighter"), tightened slightly further than ambient so the active
+ * state also reads as hugging the edge more closely, not just "brighter
+ * at the same spread." The `card-breathe` keyframe animates this
+ * overlay's own opacity between 0.6 and 1, so the visible glow actually
+ * breathes between roughly the ambient level and this peak - never
+ * fully off, never a flash. */
 export function activeGlowStyle(accent: AccentColor): CSSProperties {
-  return { boxShadow: `0 0 40px -2px rgba(${ACCENT_RGB[accent]},0.38)` };
+  return { boxShadow: `0 0 28px -1px rgba(${ACCENT_RGB[accent]},0.28)` };
 }
 
 /** className for the absolutely-positioned breathing overlay - pair with
- * an inline `style={activeGlowStyle(accent)}` on the same element. Does
+ * an inline `style={activeGlowStyle(accent)}` on the same element. Takes
+ * `active` itself (rather than being a static constant) because the
+ * overlay is now always mounted when a card has an accent: `active`
+ * toggles which classes apply, so leaving the active state transitions
+ * the overlay's opacity down over `duration-state-change` instead of the
+ * previous "conditionally rendered, vanishes instantly" behavior. Does
  * NOT include a border-radius utility: Card uses `rounded-card`, but
  * WorldMap.tsx's own wrapper uses `rounded-lg` - the caller appends
  * whichever radius already matches its own container so the glow's
  * corners line up with the element it's actually glowing around. */
-export const ACTIVE_GLOW_OVERLAY_CLASSNAME =
-  "pointer-events-none absolute inset-0 animate-card-breathe motion-reduce:animate-none motion-reduce:opacity-90";
+export function activeGlowOverlayClassName(active: boolean): string {
+  return cn(
+    "pointer-events-none absolute inset-0 transition-opacity duration-state-change ease-standard",
+    active ? "animate-card-breathe motion-reduce:animate-none motion-reduce:opacity-90" : "opacity-0"
+  );
+}
 
 type GlowTone = Exclude<CardProps["glow"], false | undefined>;
 
@@ -158,10 +193,11 @@ export function Card({
   style,
   ...rest
 }: CardProps) {
-  // Ambient: always visible when `accent` is set, 10-15% opacity, large
-  // blur, no ring/border component (a crisp inset ring reads as an
-  // outline, not a "soft edge glow") - applied as this card's own
-  // box-shadow directly, not an overlay, since it never animates.
+  // Ambient: always visible when `accent` is set, tighter-blur/brighter
+  // than the first pass (see ambientGlowStyle's own docstring), no
+  // ring/border component (a crisp inset ring reads as an outline, not a
+  // "soft edge glow") - applied as this card's own box-shadow directly,
+  // not an overlay, since it never animates.
   const ambientStyle = accent ? ambientGlowStyle(accent) : undefined;
 
   return (
@@ -177,8 +213,12 @@ export function Card({
       {...rest}
     >
       {children}
-      {accent && active && (
-        <div aria-hidden="true" className={cn(ACTIVE_GLOW_OVERLAY_CLASSNAME, "rounded-card")} style={activeGlowStyle(accent)} />
+      {/* Always mounted (not `accent && active &&`) so toggling `active`
+          off fades this overlay back down via activeGlowOverlayClassName's
+          transition instead of the glow disappearing on the same frame -
+          see that function's docstring. */}
+      {accent && (
+        <div aria-hidden="true" className={cn(activeGlowOverlayClassName(active), "rounded-card")} style={activeGlowStyle(accent)} />
       )}
     </div>
   );

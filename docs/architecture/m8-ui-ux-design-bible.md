@@ -493,11 +493,11 @@ this is a considered exception for one specific surface, not a reversal
 of the general principle:
 
 - **Ambient layer (always on):** every dashboard card gets a persistent,
-  low-opacity (10-15%), large-blur, unanimated identity glow in its own
-  assigned accent color, present even at rest. Purpose: give each card
-  its own visual identity and make the dashboard feel "alive" even in an
-  empty workspace, rather than only the cards with live data standing
-  out from an otherwise flat field of identical resting cards.
+  unanimated identity glow in its own assigned accent color, present even
+  at rest. Purpose: give each card its own visual identity and make the
+  dashboard feel "alive" even in an empty workspace, rather than only the
+  cards with live data standing out from an otherwise flat field of
+  identical resting cards.
 - **Active layer (conditional):** cards with a real, already-existing
   boolean signal (something is actually running, waiting, or true right
   now) layer a brighter version of the same color on top, with a slow
@@ -511,6 +511,19 @@ Implemented as `accent`/`active`, new and additive to `Card`'s existing
 `glow` prop (which is unchanged and still governs `AgentCard.tsx`
 outside the dashboard) - see `Card.tsx`'s own docstring for the exact
 mechanism and the full accent-color-to-card mapping.
+
+**Retune (third Track B1 pass):** the first cut's ambient layer (10-15%
+opacity, 32px blur) read as "too broad and diffused... slightly hazy" in
+real-browser feedback, which asked for tighter, brighter glow closer to
+the original single-layer `glow` tokens' look. The mechanism is
+unchanged - only the box-shadow numbers in `Card.tsx` were retuned:
+tighter blur/spread and roughly 20% alpha for ambient (visibly brighter,
+still a soft bloom, no hard ring), and the active layer's breathing peak
+set to exactly 1.4x ambient's alpha (the requested "30-40% brighter").
+The breathing overlay is also now always mounted (rather than
+conditionally rendered), so a card's `active` signal clearing transitions
+the glow back down to ambient over ~350ms instead of it disappearing
+outright on the same frame.
 
 ### 4.2 Typography
 

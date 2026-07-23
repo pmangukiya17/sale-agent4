@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { ACTIVE_GLOW_OVERLAY_CLASSNAME, activeGlowStyle, ambientGlowStyle, cn } from "../design-system";
+import { activeGlowOverlayClassName, activeGlowStyle, ambientGlowStyle, cn } from "../design-system";
 import { lookupCentroid } from "./countryCentroids";
 import { normalizeCountryName } from "./countryNameAliases";
 import type { CountryAggregate } from "./selectors";
@@ -144,8 +144,11 @@ export function WorldMap({ countries, selectedCountry, onSelectCountry, geometry
   // individual marker pulse rings below, not a new signal invented for
   // this. Not a Card (this component fills whatever box its parent
   // gives it, reused outside the dashboard too), so it calls the same
-  // ambientGlowStyle/activeGlowStyle helpers Card.tsx itself uses,
-  // rather than duplicating the box-shadow math.
+  // ambientGlowStyle/activeGlowStyle/activeGlowOverlayClassName helpers
+  // Card.tsx itself uses, rather than duplicating the box-shadow math.
+  // The overlay below is always mounted (see activeGlowOverlayClassName's
+  // docstring) so this flag going false fades the glow back down instead
+  // of it vanishing outright.
   const hasAnyActivityToday = countries.some((c) => c.hasActivityToday);
 
   // M8.16: lets a clicked/hovered country SHAPE find its real prospect
@@ -286,9 +289,7 @@ export function WorldMap({ countries, selectedCountry, onSelectCountry, geometry
           {unplotted} unplotted {unplotted === 1 ? "country" : "countries"}
         </p>
       )}
-      {hasAnyActivityToday && (
-        <div aria-hidden="true" className={cn(ACTIVE_GLOW_OVERLAY_CLASSNAME, "rounded-lg")} style={activeGlowStyle("indigo")} />
-      )}
+      <div aria-hidden="true" className={cn(activeGlowOverlayClassName(hasAnyActivityToday), "rounded-lg")} style={activeGlowStyle("indigo")} />
     </div>
   );
 }

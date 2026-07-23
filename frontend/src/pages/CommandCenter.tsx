@@ -91,6 +91,19 @@ import { ActivityTimeline } from "../dashboard/ActivityTimeline";
  *    activity that doesn't exist), Activity/Top Countries (ranked/
  *    historical snapshots, no single "happening right now" event).
  *
+ * Glow retune (third Track B1 pass): real-browser feedback on the
+ * two-layer system above called the ambient layer "too broad and
+ * diffused... slightly hazy" and asked for the original single-layer
+ * `glow` look (tight blur, visibly brighter) as the reference point.
+ * Same `accent`/`active` props, same 17-card mapping - only the box-
+ * shadow recipe changed, in Card.tsx: tighter blur/spread and higher
+ * opacity for the always-on ambient layer, and `active`'s breathing peak
+ * retuned to exactly 1.4x ambient's alpha (the requested "30-40%
+ * brighter"). The breathing overlay is now always mounted rather than
+ * conditionally rendered, so a card's `active` condition clearing fades
+ * the glow back down smoothly instead of it disappearing on the same
+ * frame - see Card.tsx's `activeGlowOverlayClassName` for the mechanism.
+ *
  * Still true, unchanged from the prior pass: I cannot pixel-verify this
  * fits with zero scroll at 1920x1080 - `vite dev`/`vite build` don't run
  * in this sandbox. The `max-h-[46vh]` cap is a deliberate, load-bearing

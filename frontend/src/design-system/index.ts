@@ -7,7 +7,7 @@ export { Button } from "./Button";
 export type { ButtonProps } from "./Button";
 export { Badge } from "./Badge";
 export type { BadgeProps, BadgeTone } from "./Badge";
-export { Card, ambientGlowStyle, activeGlowStyle, ACTIVE_GLOW_OVERLAY_CLASSNAME } from "./Card";
+export { Card, ambientGlowStyle, activeGlowStyle, activeGlowOverlayClassName } from "./Card";
 export type { CardProps, AccentColor } from "./Card";
 export { Input } from "./Input";
 export { StatusIndicator } from "./StatusIndicator";
