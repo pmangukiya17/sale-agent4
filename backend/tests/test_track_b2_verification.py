@@ -33,6 +33,7 @@ Run standalone with:
 """
 import unittest
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import HTTPException
 from starlette.requests import Request
@@ -96,7 +97,22 @@ class TestProspectContactArchiveDeleteLifecycle(unittest.TestCase):
         self.db.add(self.profile)
         self.db.flush()
 
-        self.prospect = Prospect(company_profile_id=self.profile.id, name="Track B2 Test Prospect")
+        # first_discovered_at/last_seen_at are both nullable=False with no
+        # column default (see app/models/prospect.py) - the real Discovery
+        # pipeline always sets both to the same "fetched_at" timestamp at
+        # creation (app/discovery/pipeline.py), which this fixture mirrors.
+        # An earlier version of this fixture omitted both, which is a real
+        # NOT NULL violation caught by an actual `verify_track_b2.sh` run
+        # against Postgres, not something the pre-execution review here
+        # (py_compile + manual signature cross-checks) could have caught -
+        # constraint violations only surface at real insert time.
+        now = datetime.now(timezone.utc)
+        self.prospect = Prospect(
+            company_profile_id=self.profile.id,
+            name="Track B2 Test Prospect",
+            first_discovered_at=now,
+            last_seen_at=now,
+        )
         self.db.add(self.prospect)
         self.db.flush()
 
@@ -217,21 +233,48 @@ class TestAuthRegistrationAdminGate(unittest.TestCase):
         )
         self.db.add_all([self.admin, self.operator])
         self.db.commit()
-        self.admin_token = create_access_token(subject=str(self.admin.id))
-        self.operator_token = create_access_token(subject=str(self.operator.id))
+        # Captured as plain UUIDs, not read off self.admin/self.operator
+        # again later - see tearDown's own comment for why touching those
+        # ORM objects' attributes after a rollback/commit elsewhere is
+        # exactly what caused the ObjectDeletedError this fixture used to
+        # trigger.
+        self.admin_id = self.admin.id
+        self.operator_id = self.operator.id
+        self.admin_token = create_access_token(subject=str(self.admin_id))
+        self.operator_token = create_access_token(subject=str(self.operator_id))
         self._created_emails: list[str] = []
 
     def tearDown(self):
         self.db.rollback()
         if self._created_emails:
             self.db.query(User).filter(User.email.in_(self._created_emails)).delete(synchronize_session=False)
-        self.db.query(User).filter(User.id.in_([self.admin.id, self.operator.id])).delete(synchronize_session=False)
+        # Filtered by the plain UUIDs captured in setUp, never by
+        # self.admin.id/self.operator.id directly: `self.db.rollback()`
+        # above expires every ORM object still attached to this session,
+        # so reading an attribute off self.admin/self.operator here would
+        # force SQLAlchemy to re-SELECT that row to refresh it. That's
+        # exactly what broke test_registration_rejects_duplicate_email -
+        # its email IS self.admin.email, so the `_created_emails` bulk
+        # delete just above already removed self.admin's row from the DB;
+        # accessing the (now rollback-expired) self.admin.id afterwards
+        # raised ObjectDeletedError trying to refresh a row that's already
+        # gone. Plain UUIDs captured before any commit/rollback can ever
+        # expire them sidestep the whole problem.
+        self.db.query(User).filter(User.id.in_([self.admin_id, self.operator_id])).delete(synchronize_session=False)
         self.db.commit()
         self.db.close()
 
     def _register(self, email: str, token: str | None):
+        result = register(user_in=UserCreate(email=email, password="testpassword123"), request=_fake_request(token), db=self.db)
+        # Only track emails that actually landed a new row - not every
+        # email this test attempted to register with. The duplicate-email
+        # test deliberately calls this with self.admin.email, which must
+        # NEVER be queued for deletion here: it's self.admin's own fixture
+        # row, not a row this call created (register() raises before
+        # creating anything in that case, so this line is unreached for
+        # that test, which is exactly the point).
         self._created_emails.append(email)
-        return register(user_in=UserCreate(email=email, password="testpassword123"), request=_fake_request(token), db=self.db)
+        return result
 
     def test_registration_without_token_is_403(self):
         with self.assertRaises(HTTPException) as ctx:
