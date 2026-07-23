@@ -91,3 +91,4 @@ from app.models.notification import Notification, NotificationDispatch  # noqa
 from app.models.task import Task  # noqa
 from app.models.opportunity import Opportunity  # noqa
 from app.models.opportunity_stage_history import OpportunityStageHistory  # noqa
+from app.models.mailbox_brief import MailboxBrief  # noqa

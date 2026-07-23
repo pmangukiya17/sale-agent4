@@ -126,30 +126,34 @@ scripts.
 | 38 | Open Conversations KPI — count endpoint tenant-isolated, status-filtered, zero-conversations edge case (`verify_track_c1.sh`) | Yes | Yes (visual: real number + breathing glow on count > 0) | C1 | Pass |
 | 39 | AI Recommendations — cross-portfolio endpoint tenant-isolated, status filter, limit, empty-portfolio edge case (`verify_track_c2.sh`) | Yes | Yes (visual: real recommendation rows + breathing glow on recommendations > 0) | C2 | Pass |
 | 40 | Opportunity domain — migration applied, pure state-machine unit tests (stage skipping/no-op rejection), route ordering, CRUD/stage-transition/tenant-isolation/history-tracking/edge-case real-DB tests (`verify_track_c3.sh`) | Yes | No (no frontend surface in this track - see Track C4) | C3 | Pass |
-| 41 | Sales Pipeline / Pipeline Overview / Revenue Pipeline — funnel conversion-rate math, per-currency revenue breakdown, empty-pipeline edge case, tenant isolation (`verify_track_c4.sh`) | Yes | Yes (visual: stage boxes, conversion %s, and KPI value all real; breathing glow on real Opportunity activity) | C4 | Pending |
+| 41 | Sales Pipeline / Pipeline Overview / Revenue Pipeline — funnel conversion-rate math, per-currency revenue breakdown, empty-pipeline edge case, tenant isolation (`verify_track_c4.sh`) | Yes | Yes (visual: stage boxes, conversion %s, and KPI value all real; breathing glow on real Opportunity activity) | C4 | Pass |
+| 42 | Mailbox Brief — persisted-brief generation/retrieval (GET never generates, POST `.../generate` is the only write path), regeneration creates a new row (frozen-snapshot proof against later workspace changes), tenant isolation, empty-workspace and edge-case real-DB tests (`verify_track_c5.sh`) | Yes | Yes (visual: real generated summary + recommendations render, Regenerate creates a new brief, breathing glow on a brief existing) | C5 | Pending |
 
 ---
 
 ## Summary
 
-- **41 total verification areas.**
-- **24 automated** (Group 1's 17 existing scripts + Group 3's 3 rows,
+- **42 total verification areas.**
+- **25 automated** (Group 1's 17 existing scripts + Group 3's 3 rows,
   covered by `test_track_b2_verification.py`/`verify_track_b2.sh`, +
   Group 4's row 38, covered by `test_open_conversations_count.py`/
   `verify_track_c1.sh`, + Group 4's row 39, covered by
   `test_ai_recommendations_portfolio.py`/`verify_track_c2.sh`, + Group 4's
   row 40, covered by `test_opportunity_state_machine.py`/
   `test_opportunities_e2e.py`/`verify_track_c3.sh`, + Group 4's row 41,
-  covered by `test_pipeline_dashboard_metrics.py`/`verify_track_c4.sh`) +
-  **20 manual** (Group 2's 17 + Group 4's 3 visual checks - row 40 has no
-  visual check, since Track C3 has no frontend surface of its own).
+  covered by `test_pipeline_dashboard_metrics.py`/`verify_track_c4.sh`, +
+  Group 4's row 42, covered by `test_mailbox_brief_e2e.py`/
+  `verify_track_c5.sh`) + **21 manual** (Group 2's 17 + Group 4's 4 visual
+  checks - row 40 has no visual check, since Track C3 has no frontend
+  surface of its own).
 - **34 areas in Track B1**, **3 areas in Track B2**, **1 area in Track C1**,
-  **1 area in Track C2**, **1 area in Track C3**, **1 area in Track C4**
-  (more Track C rows will be added as C5 lands).
-- **3 executed (row 38, Track C1; row 39, Track C2; row 40, Track C3 —
-  all `Pass`, confirmed by the CEO against a real Docker/Postgres/browser
-  run). 38 rows remain `Pending`, including row 41 (Track C4) pending the
-  same real Docker/Postgres/browser run.**
+  **1 area in Track C2**, **1 area in Track C3**, **1 area in Track C4**,
+  **1 area in Track C5** (this closes the six-capability dashboard set
+  `dashboard-capabilities-architecture-plan.md` scoped).
+- **4 executed (row 38, Track C1; row 39, Track C2; row 40, Track C3; row
+  41, Track C4 — all `Pass`, confirmed by the CEO against a real
+  Docker/Postgres/browser run). 38 rows remain `Pending`, including row 42
+  (Track C5) until the CEO runs `verify_track_c5.sh` for real.**
 
 This matrix should be updated in place as each row executes — mark each
 `Status` as `Pass`, `Fail`, or `Skipped` (with a one-line reason) rather

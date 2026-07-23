@@ -23,6 +23,7 @@ from app.api.routes import (
     icp_criteria,
     intelligence_snapshots,
     knowledge_base,
+    mailbox_brief,
     notifications,
     opportunities,
     outreach_drafts,
@@ -247,3 +248,7 @@ app.include_router(tasks.router, prefix=API_PREFIX)
 # domain - the first real, monetary sales-deal record. See
 # app/opportunities/__init__.py for the package boundary.
 app.include_router(opportunities.router, prefix=API_PREFIX)
+# Track C5 (dashboard-capabilities-architecture-plan.md): Mailbox Brief -
+# a persisted, on-demand executive summary over existing CRM data. See
+# app/mailbox_brief/__init__.py for the package boundary.
+app.include_router(mailbox_brief.router, prefix=API_PREFIX)

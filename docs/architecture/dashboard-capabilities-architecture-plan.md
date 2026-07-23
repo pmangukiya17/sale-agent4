@@ -1153,6 +1153,121 @@ in this sandbox) - Status stays `Pending` until the CEO runs
   briefs have been generated and saved yet — otherwise archive, don't
   drop, per this project's own platform-wide lifecycle rule.
 
+**As built (implemented, pending live verification):** matches this
+scope's intent (a synthesis capability that reads only existing
+Conversation/Recommendation/Opportunity/Pipeline data, no duplicate
+business data created or stored) with the CEO's own explicit direction
+resolving both open questions this section originally deferred, plus one
+disclosed engine-choice departure from Section 6.7:
+
+- **Persistence: chosen, not deferred.** The CEO's own C5 instructions
+  required persisted briefs with an explicit regeneration action, not the
+  stateless "regenerate on every click" v1 this section left as the
+  default. The `mailbox_briefs` table matches this section's own 6.3
+  sketch (id, `company_profile_id` FK `ON DELETE CASCADE`, `summary`,
+  `generated_at`) with three additions the CEO's own C5 requirements
+  named directly: `ai_provider`/`ai_model` (plain `String` columns, not
+  an enum — mirroring `ProviderConnection.provider_key`'s own convention
+  that adding a new provider must be a code+registry change, never a
+  migration), `recommendations` (JSONB list) and `statistics` (JSONB
+  dict) in place of 6.3's single `conversation_count` integer, so the
+  stored snapshot carries the full recommendation set and the numeric
+  context a brief was computed from, not just one count. `requested_by_
+  user_id` (nullable FK `ON DELETE SET NULL`) records who triggered each
+  generation, matching `Task.assigned_user_id`'s own nullable-FK
+  precedent. Migration `0026_mailbox_brief.py`, `down_revision = "0025"` —
+  additive only, no existing table touched.
+- **Engine choice: deterministic stub, not a live `app/ai_gateway` call —
+  a disclosed departure from Section 6.7's "the one genuinely new
+  AI-generation call among all six capabilities."** This sandbox has no
+  `anthropic`/`openai`/`google-genai` SDK installed and no provider API
+  key configured, so a real `ai_gateway` call could not be authored,
+  exercised, or tested here at all — only `app/ai_agents/runtime.py`
+  (the M7.2/M7.3 Agent Runtime/Supervisor layer) actually calls
+  `AIGateway` today; the M1–M4 straight-line engines
+  (Discovery/Research/Personalization/Outreach) do not, and
+  Personalization's own `DeterministicPersonalizationEngine`
+  (`app/personalization/engine/deterministic_stub.py`,
+  `MODEL_USED = "deterministic-strategy-stub"`) is this project's own
+  established, already-approved precedent for exactly this situation —
+  a rule-based, zero-network-call engine behind an abstract interface a
+  real provider can implement later with zero schema or route change.
+  Mirrored exactly here: `app/mailbox_brief/engine/base.py`'s
+  `MailboxBriefEngine` ABC (`synthesize(context) -> BriefOutcome`) has
+  one implementation, `DeterministicMailboxBriefEngine`
+  (`AI_PROVIDER = "internal"`, `AI_MODEL = "deterministic-brief-stub-v1"`
+  — plain strings stored in `ai_provider`/`ai_model`, so a future real
+  engine swaps in by implementing the same ABC and changing which
+  instance `service.py` constructs, never a schema change). The
+  generated `summary` is genuine, honest prose built from real numbers
+  (e.g. "No opportunities have been created yet." when the pipeline is
+  empty) — not placeholder text — but it is template-composed, not
+  LLM-authored, until a real provider is wired in.
+- **Bounded context, reusing Track C3/C4 math rather than re-deriving
+  it** (this section's own 6.2 intent, "assembles a bounded context"):
+  `app/mailbox_brief/context.py`'s `assemble_context()` calls
+  `app.opportunities.service.compute_funnel`/`compute_pipeline_value`
+  directly for pipeline/revenue figures, plus direct scoped queries for
+  open-conversation count, up to 5 conversations needing human review,
+  and up to 5 top NEW recommendations by confidence — never
+  re-implementing funnel/revenue math a second time, and never storing
+  raw email/message content anywhere in `MailboxBrief` (carrying forward
+  `future-milestones.md` note 9's privacy constraint exactly as this
+  section required).
+- **Two routes, matching 6.4's persisted-variant shape exactly:**
+  `GET /company-profiles/{id}/mailbox-brief` is purely read-only (404 if
+  nothing has ever been generated — a real, valid, honest state, not an
+  error) and never generates a brief as a side effect (proven by a
+  dedicated test asserting row count is unchanged across repeated GETs);
+  `POST /company-profiles/{id}/mailbox-brief/generate` is the only write
+  path, always creates a new row (never overwrites), and is the sole
+  action the frontend's "Generate Brief"/"Regenerate" button calls.
+- **Frozen-snapshot proof.** A dedicated test
+  (`test_earlier_briefs_stay_a_frozen_snapshot_after_workspace_data_changes`)
+  generates a brief on an empty workspace, mutates the workspace (adds an
+  Opportunity), generates a second brief, and confirms via `db.refresh()`
+  that the first brief's stored `statistics` did not change — proving
+  each `MailboxBrief` row is a true persisted snapshot, not a live view,
+  satisfying the CEO's own "do not regenerate automatically" requirement
+  at the data-integrity level, not just the route level.
+
+Backend: `app/models/mailbox_brief.py`, `alembic/versions/
+0026_mailbox_brief.py`, `app/mailbox_brief/` (`context.py`, `engine/
+base.py`, `engine/deterministic_stub.py`, `service.py`), `app/schemas/
+mailbox_brief.py`, `app/api/routes/mailbox_brief.py`, router registration
+in `app/main.py`. `tests/test_mailbox_brief_e2e.py` (real-DB): generation
+persists a row with real derived data, retrieval (404 before generation,
+GET never side-effect-generates, GET returns the generated brief),
+regeneration (new row each call, GET returns most recent, frozen-snapshot
+proof above), tenant isolation (invisible across businesses, independent
+generation with different data per business), empty-workspace and edge
+cases (honest zero-state summary text, dismissed recommendations
+excluded, closed opportunities reflected in `statistics` and summary
+text).
+
+Frontend: `useMailboxBrief.ts` (new hook — `axios.isAxiosError(err) &&
+err.response?.status === 404` distinguishes the valid "nothing generated
+yet" state from a genuine fetch error, matching this project's own
+established 404-as-valid-state pattern), `MailboxBrief.tsx` (rewritten —
+generated-at timestamp + provider/model, summary, up to 3 recommendation
+titles, a "Generate Brief"/"Regenerate" button with its own `isGenerating`
+state separate from the initial load). `active` now fires on a real brief
+existing, replacing the prior ambient-only placeholder state — see
+`CommandCenter.tsx`'s own updated glow-system docstring, which now states
+every one of the 17 dashboard cards has a real signal or an honest,
+deliberate reason not to.
+
+Verification: `verify_track_c5.sh` at the repo root (rebuild+boot,
+`alembic upgrade head` to confirm migration 0026 applies, re-runs Track
+C3/C4's own regression suites, runs the new Track C5 test suite, manual
+browser checklist, disclosed-limitations footer); Group 4 row 42 in
+`comprehensive-verification-matrix.md`. `py_compile` and `tsc -b --force`
+both clean. Not yet executed against a real Postgres/browser (no Docker
+in this sandbox) — Status stays `Pending` until the CEO runs
+`verify_track_c5.sh` for real. This closes the six-capability dashboard
+set this document was originally scoped to (Section 0) — no honest
+placeholder cards remain on the Command Center dashboard.
+
 ---
 
 ## 10. Explicit non-goals for this review

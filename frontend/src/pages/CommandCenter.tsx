@@ -86,12 +86,14 @@ import { ActivityTimeline } from "../dashboard/ActivityTimeline";
  *    Pipeline Overview (at least one real Opportunity exists - real
  *    signal since Track C4, see note below), Today's Priorities (has
  *    items needing review), AI Recommendations (has recommendations -
- *    real signal since Track C2, see note below). Deliberately NOT
- *    active on: Active Prospects/AI Confidence Score (no "event"
- *    distinct from "there is a number"), Mailbox Brief (honest "not
- *    implemented" placeholder - breathing would imply live activity that
- *    doesn't exist; pending Track C5), Activity/Top Countries (ranked/
- *    historical snapshots, no single "happening right now" event).
+ *    real signal since Track C2, see note below), Mailbox Brief (a
+ *    brief has been generated - real signal since Track C5, see note
+ *    below). Deliberately NOT active on: Active Prospects/AI Confidence
+ *    Score (no "event" distinct from "there is a number"), Activity/Top
+ *    Countries (ranked/historical snapshots, no single "happening right
+ *    now" event). Every one of the 17 dashboard cards now has a real
+ *    signal or an honest, deliberate reason not to - no placeholder
+ *    cards remain.
  *
  * Track C1 (dashboard-capabilities-architecture-plan.md): Open
  * Conversations moved from an honest placeholder to real data - a new
@@ -124,6 +126,18 @@ import { ActivityTimeline } from "../dashboard/ActivityTimeline";
  * also resolves the architecture doc's own explicitly-deferred Section
  * 4.10 currency-mixing decision - see
  * useOpportunityPipelineValue.ts's own docstring for the fix.
+ *
+ * Track C5 (dashboard-capabilities-architecture-plan.md): Mailbox Brief
+ * moved from an honest placeholder to real, persisted data - the final
+ * one of the six capabilities this dashboard's placeholder review set
+ * out to resolve. GET .../mailbox-brief (app/api/routes/mailbox_brief.py)
+ * reads whatever was last explicitly generated via the card's own
+ * "Generate New Brief" button (POST .../mailbox-brief/generate) - never
+ * auto-generated on page load, per the CEO's explicit persistence model.
+ * `active` fires on a brief actually existing. The brief itself is a
+ * pure projection over Conversation/Recommendation/Opportunity data this
+ * project already had (see app/mailbox_brief/context.py) - no raw email
+ * content is stored or read here.
  *
  * Glow retune (third Track B1 pass): real-browser feedback on the
  * two-layer system above called the ambient layer "too broad and
