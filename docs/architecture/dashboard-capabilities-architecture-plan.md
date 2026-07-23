@@ -829,6 +829,32 @@ other.
   placeholder instantly) and/or remove the one new route — no migration
   to reverse, the lowest-risk rollback of any track in this plan.
 
+**As built (implemented, pending live verification):** matches this
+scope exactly, with a naming/mechanism refinement over the original
+sketch above worth recording here. `GET
+/company-profiles/{id}/conversations/count` (`app/api/routes/
+conversations.py`, `ConversationCountRead` in `app/schemas/
+conversation.py`) — registered BEFORE the existing
+`/conversations/{conversation_id}` route, since FastAPI/Starlette
+resolve routes in registration order and the dynamic route would
+otherwise greedily match the literal `count` path segment and fail UUID
+parsing; `verify_track_c1.sh`'s own step 2 asserts this ordering directly
+against the real running app rather than trusting it by inspection.
+`frontend/src/dashboard/useOpenConversationsCount.ts` is its own scoped
+hook (mirroring `useAgentActivities.ts`'s shape, not
+`useDashboardPortfolio`'s, since Conversation is a different entity with
+its own endpoint) wired into `KpiStrip.tsx`, including `active` now
+firing on `count > 0` — the "Unread Conversations -> Orange breathing
+glow" behavior the CEO's original glow-system request named but this
+project had to defer for lack of a backend signal; Track C1 is what
+supplies that signal. Backend: `tests/test_open_conversations_count.py`
+(tenant isolation across two businesses, status filtering, zero-
+conversations edge case). Verification: `verify_track_c1.sh` at the repo
+root; Group 4 row 38 in `comprehensive-verification-matrix.md`. `tsc -b
+--force` and `py_compile` both clean. Not yet executed against a real
+Postgres/browser (no Docker in the authoring sandbox) — Status stays
+`Pending` until the CEO runs `verify_track_c1.sh` for real.
+
 ### Track C2 — AI Recommendations
 - **Scope:** one new cross-portfolio endpoint in
   `recommendations.py`; `AiRecommendations.tsx` wired to a real fetch

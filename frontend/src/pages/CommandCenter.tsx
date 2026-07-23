@@ -77,19 +77,29 @@ import { ActivityTimeline } from "../dashboard/ActivityTimeline";
  *    Priorities (yellow), AI Recommendations (cyan), Mailbox Brief
  *    (orange), Activity (slate), Top Countries (emerald).
  *  - Active/breathing (conditional): only where a real, already-existing
- *    signal exists - Needs Review/AI Tasks Running (KPI strip), World
- *    Map (any country with activity today), Country Intelligence
- *    (selected country has prospects), AI Workforce (an agent is
- *    running), AI Pipeline (has prospects), Today's Priorities (has
- *    items needing review). Deliberately NOT active on: Active
- *    Prospects/AI Confidence Score (no "event" distinct from "there is a
- *    number"), Open Conversations/Revenue Pipeline (ambient-only despite
- *    the CEO's own worked examples naming them - no backend signal
- *    exists yet to honestly drive `active` from), Sales
- *    Pipeline/Pipeline Overview/AI Recommendations/Mailbox Brief (honest
- *    "not implemented" placeholders - breathing would imply live
- *    activity that doesn't exist), Activity/Top Countries (ranked/
- *    historical snapshots, no single "happening right now" event).
+ *    signal exists - Needs Review/AI Tasks Running/Open Conversations
+ *    (KPI strip; Open Conversations gained a real signal in Track C1 -
+ *    see that note below), World Map (any country with activity today),
+ *    Country Intelligence (selected country has prospects), AI Workforce
+ *    (an agent is running), AI Pipeline (has prospects), Today's
+ *    Priorities (has items needing review). Deliberately NOT active on:
+ *    Active Prospects/AI Confidence Score (no "event" distinct from
+ *    "there is a number"), Revenue Pipeline (ambient-only - no backend
+ *    signal exists yet to honestly drive `active` from; still pending
+ *    Track C4), Sales Pipeline/Pipeline Overview/AI Recommendations/
+ *    Mailbox Brief (honest "not implemented" placeholders - breathing
+ *    would imply live activity that doesn't exist), Activity/Top
+ *    Countries (ranked/historical snapshots, no single "happening right
+ *    now" event).
+ *
+ * Track C1 (dashboard-capabilities-architecture-plan.md): Open
+ * Conversations moved from an honest placeholder to real data - a new
+ * GET .../conversations/count endpoint (app/api/routes/conversations.py)
+ * backs KpiStrip's own count, and `active` now fires on
+ * `count > 0`, exactly the "Unread Conversations -> Orange breathing
+ * glow" behavior the CEO's original glow-system worked example named -
+ * deferred at the time only because no backend signal existed yet, not
+ * because the design was wrong.
  *
  * Glow retune (third Track B1 pass): real-browser feedback on the
  * two-layer system above called the ambient layer "too broad and

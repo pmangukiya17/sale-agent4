@@ -81,3 +81,17 @@ class ConversationRead(BaseModel):
 class ConversationDetailRead(ConversationRead):
     participants: list[ConversationParticipantRead]
     messages: list[EmailMessageRead]
+
+
+class ConversationCountRead(BaseModel):
+    """Track C1 (dashboard capabilities architecture review): the Open
+    Conversations KPI card's own shape - a single aggregate number, not a
+    list projection. Deliberately its own schema/endpoint rather than the
+    frontend computing `len(list_conversations(...))` client-side: this
+    keeps the KPI strip's own network cost to "one COUNT(*) query" instead
+    of "fetch every open conversation row just to measure its length,"
+    same reasoning `topPerformingCountries`/`aggregateByCountry` already
+    apply to World Map/Top Countries (aggregation belongs server-side, the
+    client never re-derives it from a full list)."""
+
+    count: int

@@ -110,14 +110,34 @@ real characteristic of the interim design worth the CEO knowing about.
 
 ---
 
+## Group 4 — Track C (new capability delivery, not re-verification)
+
+Unlike Groups 1-3 (all re-verifying already-shipped M0-M8 work), Track C
+rows are net-new capability delivery per
+[`dashboard-capabilities-architecture-plan.md`](./dashboard-capabilities-architecture-plan.md)
+(approved architecture, implementation in progress). Added here rather
+than a separate matrix so "is everything this project has shipped
+actually verified" stays answerable from one place. Each row gets its own
+`verify_track_cN.sh` at the repo root, same conventions as Group 1's
+scripts.
+
+| # | Feature | Automated verification available | Manual verification required | Track | Status |
+|---|---|---|---|---|---|
+| 38 | Open Conversations KPI — count endpoint tenant-isolated, status-filtered, zero-conversations edge case (`verify_track_c1.sh`) | Yes | Yes (visual: real number + breathing glow on count > 0) | C1 | Pending |
+
+---
+
 ## Summary
 
-- **37 total verification areas.**
-- **20 automated** (Group 1's 17 existing scripts + Group 3's 3 rows, now
-  covered by `test_track_b2_verification.py`/`verify_track_b2.sh`) + **17
-  manual** (Group 2).
-- **34 areas in Track B1**, **3 areas in Track B2**.
-- **0 executed. All 37 rows are `Pending`.** Writing automated coverage
+- **38 total verification areas.**
+- **21 automated** (Group 1's 17 existing scripts + Group 3's 3 rows,
+  covered by `test_track_b2_verification.py`/`verify_track_b2.sh`, +
+  Group 4's row 38, covered by `test_open_conversations_count.py`/
+  `verify_track_c1.sh`) + **18 manual** (Group 2's 17 + Group 4's 1
+  visual check).
+- **34 areas in Track B1**, **3 areas in Track B2**, **1 area in Track C1**
+  (more Track C rows will be added as C2-C5 land).
+- **0 executed. All 38 rows are `Pending`.** Writing automated coverage
   is not the same as running it — every row still needs a real
   Docker/Postgres/browser pass before this line changes.
 
