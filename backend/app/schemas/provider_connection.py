@@ -45,10 +45,20 @@ class ConnectableProviderRead(BaseModel):
     - lets the frontend render a "Connect Gmail" / "Connect Outlook" list
     without hardcoding provider keys or scope strings. Adding a provider
     to the registry makes it appear here automatically; no schema change
-    needed."""
+    needed.
+
+    `read_scopes` (Outlook Integration milestone): empty for a provider
+    that doesn't implement IncrementalSyncCapable at all (Gmail, today) -
+    lets the frontend show a "Enable Mailbox Reading" action only where
+    it could ever do something, without hardcoding provider_key ==
+    "outlook" anywhere. This is a Pydantic API-response field only - no
+    database column, no migration; ProviderConnection.scopes_granted
+    (already a JSONB column) is what actually records whether a specific
+    connection has been granted these scopes."""
 
     provider_key: str
     send_scopes: list[str]
+    read_scopes: list[str] = []
 
 
 class ProviderConnectionCallbackBody(BaseModel):

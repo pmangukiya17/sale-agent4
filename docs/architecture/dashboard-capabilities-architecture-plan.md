@@ -1270,6 +1270,125 @@ placeholder cards remain on the Command Center dashboard.
 
 ---
 
+## 9a. Outlook Integration milestone (post-Track-C5 fix, not one of the original six capabilities)
+
+Found during the CEO's own live testing of Track C5: the Executive Daily
+Brief technically worked, but reported an empty Outlook mailbox despite
+real unread mail, and separately, outbound send was failing with a
+permanent Microsoft Graph 403. Both root-caused from this codebase's own
+implementation before any code was written - no live Graph access exists
+in this sandbox, and none was needed.
+
+**Root cause 1 (send):** M6.3 switched `OutlookProvider.send()` from a
+single `POST /me/sendMail` call (needs only `Mail.Send`) to a
+create-draft-then-send pattern (`POST /me/messages`, then
+`POST /me/messages/{id}/send}` - see M6.3's own docstring for why:
+Graph's create-draft response is what hands back the real
+`internetMessageId`/`conversationId` the Thread Builder needs). That
+switch quietly introduced a new permission requirement `send_scopes` was
+never updated for: Graph requires `Mail.ReadWrite` to create a draft via
+`POST /me/messages` (`Mail.Send` alone only covers the send action on a
+message reachable another way). Every token issued before this fix had
+`Mail.Send` but not `Mail.ReadWrite`, so the draft-creation call - step 1
+of 2 - was rejected with a **permanent** 403 before the send step ever
+ran, on every attempt. This was confirmed, not guessed, from the code's
+own error string (`outlook_provider.py`'s "Graph rejected the draft:
+{status} {body}") matching the CEO's reported message verbatim -
+identifying which of the two Graph calls was actually failing without
+needing live Graph access.
+
+**Root cause 2 (sync):** exactly the gap identified in this document's
+own C5-adjacent investigation - every real Outlook connection only ever
+has `send_scopes` granted; nothing in the app has ever driven a Reconnect
+flow requesting `Mail.Read`, so `has_read_scope()` correctly returns
+`False` for every connection and the already-real, already-tested
+`mailbox_sync_worker` never has an eligible connection to sync. Every
+downstream stage (Thread Builder, Reply Intelligence, the Brief) was
+waiting for data, not malfunctioning.
+
+**Fix - four parts, all OAuth-authorization-flow-only, matching the
+CEO's explicit constraints (no schema changes, no new workers, no
+architectural redesign):**
+
+- **A.** `OutlookProvider.send_scopes` now includes
+  `Mail.ReadWrite` alongside `Mail.Send`/`User.Read`/`offline_access`.
+- **B.** `connection_service.build_reconnect_authorize_url` no longer
+  replays exactly `connection.scopes_granted` (which meant a
+  product-side scope-requirement change would never reach an
+  already-connected business no matter how many times it reconnected) -
+  it now always unions in the provider's CURRENT `send_scopes` baseline,
+  read fresh on every call, so a plain Reconnect self-heals an existing
+  broken connection. The pure list-math for this (`top_up_scopes`) was
+  extracted into a new, zero-dependency `app/delivery/scope_utils.py` -
+  no sqlalchemy/FastAPI import at all - specifically so it could be
+  unit-tested without a database, the same "pure logic, actually run in
+  the authoring sandbox" precedent `app/opportunities/state_machine.py`
+  set for Track C3. `tests/test_scope_utils.py` (8 tests) was actually
+  executed here (`python -m unittest tests.test_scope_utils -v` — 8/8
+  passing), the second Track-C-era suite (after C3's) to run to
+  completion before hand-off, not merely `py_compile`-checked.
+- **C.** `Mail.Read` stays a separate, explicit opt-in - the union above
+  only includes it when a caller passes `include_read_scopes=True` (the
+  new `GET .../reconnect?read_access=true` query param on the existing
+  Reconnect route - no new route). Requesting it for a provider with no
+  `IncrementalSyncCapable` implementation (Gmail, today) raises
+  `ConnectionError_` rather than silently no-op-ing.
+- **D.** `DeliveryConnections.tsx` now shows two distinct actions per
+  connection: "Reconnect" (repairs send permissions, never grants
+  mailbox reading) and "Enable Mailbox Reading" (shown only for a
+  provider whose `read_scopes` is non-empty and not yet fully granted) -
+  plus two honest status badges, "Send: Ready"/"Send: Needs Reconnect"
+  and "Mailbox reading: Enabled"/"Off", both derived directly from
+  `ProviderConnection.scopes_granted` (never fabricated). The top-of-page
+  copy was corrected to no longer claim mailbox reading is always off by
+  default project-wide, since it is now a real, reachable per-connection
+  choice.
+
+**Confirmed zero schema/worker/architecture impact:** no new Alembic
+migration (head stays `0026`); `ConnectableProviderRead.read_scopes` is
+an additive Pydantic response field, not a database column;
+`mailbox_sync_worker`/`thread_builder_worker`/`reply_intelligence_worker`
+are byte-for-byte unchanged - they already gated correctly on scope, they
+just never had an eligible row to act on; one existing route gained one
+optional query parameter, no new route was added.
+
+Backend: `app/delivery/providers/outlook_provider.py` (`send_scopes`),
+`app/delivery/scope_utils.py` (new), `app/delivery/connection_service.py`
+(`build_reconnect_authorize_url`), `app/api/routes/provider_connections.py`
+(`start_provider_reconnect`'s new `read_access` param,
+`list_connectable_providers`'s new `read_scopes` field),
+`app/schemas/provider_connection.py` (`ConnectableProviderRead.
+read_scopes`). Tests: `tests/test_scope_utils.py` (pure, actually run -
+see above), `tests/test_connection_service_reconnect_scopes.py` (new,
+real-DB: an existing connection with the old narrow grant tops up to the
+full current baseline on a plain Reconnect, a plain Reconnect never adds
+read scopes, a connection with no prior grant gets the full baseline, an
+already-upgraded connection is unaffected by reconnecting again,
+`include_read_scopes=True` adds `Mail.Read` for Outlook while keeping the
+send baseline, and raises for Gmail).
+
+Frontend: `frontend/src/pages/delivery/DeliveryConnections.tsx` per part
+D above. `tsc -b --force` clean.
+
+Verification: `verify_outlook_integration.sh` at the repo root
+(rebuild+boot, confirms migration head unchanged, re-runs every
+regression suite this milestone could plausibly have affected — Track
+C3/C4/C5's own suites plus every M6 sync/thread/reply-intelligence suite
+— then the two new suites, then an extensive manual checklist covering
+every one of the CEO's nine explicit verification requirements: outbound
+send succeeds, delivery queue succeeds with no more 403s, reconnect
+upgrades scopes correctly, EmailMessage rows get created, Conversations
+get created, Reply Intelligence processes them, the Executive Daily
+Brief shows real data, a reply to a sent email updates the existing
+Conversation rather than creating a duplicate, and multi-business
+isolation holds); Group 4 row 43 in `comprehensive-verification-
+matrix.md`. `py_compile` (full backend sweep) and `tsc -b --force` both
+clean. Status stays `Pending` until the CEO runs
+`verify_outlook_integration.sh` against a real Microsoft 365 tenant and
+Docker/Postgres environment, which this sandbox has neither of.
+
+---
+
 ## 10. Explicit non-goals for this review
 
 Not designed here, deliberately: multi-user deal ownership/assignment

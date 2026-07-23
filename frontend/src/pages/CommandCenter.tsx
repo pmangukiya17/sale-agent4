@@ -152,6 +152,20 @@ import { ActivityTimeline } from "../dashboard/ActivityTimeline";
  * tenant-scoped read endpoint from an earlier track (C2/C3/C4/M6.5/
  * M6.6), not a new one.
  *
+ * Outlook Integration milestone (found during the CEO's own live testing
+ * of the page above): the reason a real Outlook mailbox with real unread
+ * mail still showed an empty Brief was never this card, or Reply
+ * Intelligence, or the Brief's own read logic - it was that every real
+ * Outlook connection only ever had send-only OAuth scopes, so
+ * mailbox_sync_worker correctly never had an eligible connection to sync
+ * from. See dashboard-capabilities-architecture-plan.md's own Section 9a
+ * for the full root-cause writeup (that root-cause section also covers a
+ * second, unrelated bug this same investigation surfaced: outbound send
+ * itself was failing with a permanent Graph 403 due to a missing
+ * Mail.ReadWrite scope). Fixed entirely in
+ * DeliveryConnections.tsx/connection_service.py - nothing in this file
+ * changed.
+ *
  * Glow retune (third Track B1 pass): real-browser feedback on the
  * two-layer system above called the ambient layer "too broad and
  * diffused... slightly hazy" and asked for the original single-layer

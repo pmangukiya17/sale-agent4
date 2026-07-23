@@ -16,7 +16,7 @@ complete_delivery_connection below.
 """
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -32,6 +32,7 @@ from app.delivery.connection_service import (
     verify_connection,
 )
 from app.delivery.credentials.registry import get_credential_store
+from app.delivery.providers.base import IncrementalSyncCapable, provider_supports_capability
 from app.delivery.providers.registry import PROVIDER_REGISTRY
 from app.models.company_profile import CompanyProfile
 from app.models.provider_connection import ProviderConnection
@@ -55,7 +56,18 @@ def list_connectable_providers(current_user: User = Depends(get_current_user)) -
     EmailConnectionProvider.is_configured) rather than offering a Connect
     button that would fail immediately on code exchange."""
     return [
-        ConnectableProviderRead(provider_key=provider_cls.key, send_scopes=provider_cls.send_scopes)
+        ConnectableProviderRead(
+            provider_key=provider_cls.key,
+            send_scopes=provider_cls.send_scopes,
+            # Outlook Integration milestone: empty for a provider that
+            # doesn't implement IncrementalSyncCapable at all (Gmail,
+            # today) - lets the frontend show an "Enable Mailbox Reading"
+            # action only where it could ever do anything, rather than
+            # hardcoding provider_key === "outlook" somewhere in the UI.
+            read_scopes=(
+                provider_cls.read_scopes if provider_supports_capability(provider_cls(), IncrementalSyncCapable) else []
+            ),
+        )
         for provider_cls in PROVIDER_REGISTRY.values()
         if provider_cls().is_configured()
     ]
@@ -175,12 +187,21 @@ def get_provider_connection(
 )
 def start_provider_reconnect(
     connection_id: uuid.UUID,
+    read_access: bool = Query(
+        False,
+        description=(
+            "Outlook Integration milestone: when true, additionally requests the provider's read_scopes "
+            "(mailbox sync) on top of the always-applied send_scopes top-up - see "
+            "connection_service.build_reconnect_authorize_url's own docstring. Defaults to false: a plain "
+            "Reconnect never silently grants mailbox-read access."
+        ),
+    ),
     profile: CompanyProfile = Depends(get_owned_company_profile),
     db: Session = Depends(get_db),
 ) -> ProviderConnectionAuthorizeUrlRead:
     _get_connection_or_404(db, profile.id, connection_id)
     try:
-        url = build_reconnect_authorize_url(db, connection_id)
+        url = build_reconnect_authorize_url(db, connection_id, include_read_scopes=read_access)
     except ConnectionError_ as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     return ProviderConnectionAuthorizeUrlRead(authorize_url=url)

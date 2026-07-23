@@ -115,7 +115,35 @@ class OutlookProvider(EmailConnectionProvider, EmailSendCapable, IncrementalSync
     # not implied by Mail.Send (unlike Gmail's users.getProfile, which
     # accepts several scopes including gmail.send - the two providers'
     # underlying APIs aren't symmetric here).
-    send_scopes = ["https://graph.microsoft.com/Mail.Send", "https://graph.microsoft.com/User.Read", "offline_access"]
+    #
+    # Mail.ReadWrite ADDED post-M6.3 (Outlook Integration milestone, found
+    # during CEO-reported live testing): M6.3 switched send() below from a
+    # single POST /me/sendMail call (needs only Mail.Send) to the
+    # create-draft-then-send pattern (POST /me/messages, then
+    # POST /me/messages/{id}/send) - see send()'s own docstring for why.
+    # That switch quietly introduced a NEW permission requirement this
+    # list was never updated for: Graph requires Mail.ReadWrite to create
+    # a draft via POST /me/messages (Mail.Send alone only covers the send
+    # action on a message already reachable another way). Every token
+    # issued before this fix has Mail.Send but not Mail.ReadWrite, so the
+    # draft-creation call - step 1 of 2 - was rejected with 403 before the
+    # send step ever ran, on every attempt, permanently (not a transient
+    # failure - see ProviderSendError(permanent=True) at the "Graph
+    # rejected the draft" branch below). This was root-caused from the
+    # code's own error string (which matched the CEO's reported message
+    # verbatim), not from live Graph access, which this sandbox does not
+    # have. Fixing this for an ALREADY-CONNECTED business requires that
+    # connection to reconnect (see connection_service.
+    # build_reconnect_authorize_url's own docstring for how Reconnect now
+    # always tops up to this class's CURRENT send_scopes, not just
+    # whatever was granted historically) - simply editing this list does
+    # nothing for a token already issued before the edit.
+    send_scopes = [
+        "https://graph.microsoft.com/Mail.Send",
+        "https://graph.microsoft.com/Mail.ReadWrite",
+        "https://graph.microsoft.com/User.Read",
+        "offline_access",
+    ]
     # M6.2: requested only via Reconnect, only when a user actually
     # enables mailbox sync for this connection - see
     # IncrementalSyncCapable's docstring. NOT requested upfront by

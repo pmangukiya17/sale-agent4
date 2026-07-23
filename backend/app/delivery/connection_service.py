@@ -26,7 +26,13 @@ from app.delivery.credentials.base import CredentialStore, CredentialStoreError
 from app.delivery.oauth_state import OAuthStateError
 from app.delivery.oauth_state import decode_oauth_state as _decode_oauth_state
 from app.delivery.oauth_state import encode_oauth_state as _encode_oauth_state
-from app.delivery.providers.base import EmailConnectionProvider, ProviderAuthError
+from app.delivery.providers.base import (
+    EmailConnectionProvider,
+    IncrementalSyncCapable,
+    ProviderAuthError,
+    provider_supports_capability,
+)
+from app.delivery.scope_utils import top_up_scopes
 from app.delivery.providers.registry import get_provider
 from app.models.enums import ProviderConnectionStatus
 from app.models.provider_connection import ProviderConnection
@@ -93,19 +99,65 @@ def build_authorize_url(*, company_profile_id: uuid.UUID, provider_key: str) -> 
     return provider.get_authorize_url(state, provider.send_scopes)
 
 
-def build_reconnect_authorize_url(db: Session, connection_id: uuid.UUID) -> str:
+def build_reconnect_authorize_url(
+    db: Session, connection_id: uuid.UUID, *, include_read_scopes: bool = False
+) -> str:
+    """Outlook Integration milestone (found during CEO-reported live
+    testing, alongside the Mail.ReadWrite send fix - see
+    outlook_provider.py's own docstring for the paired root cause).
+
+    Previously this function re-requested EXACTLY the scopes already on
+    `connection.scopes_granted` (falling back to `provider.send_scopes`
+    only for a connection with none recorded yet) - a literal replay of
+    history. That meant a product-side change to what a provider's
+    send_scopes list requires (e.g. adding Mail.ReadWrite once M6.3's
+    create-draft-then-send pattern needed it) would NEVER reach an
+    already-connected business, no matter how many times they clicked
+    Reconnect - the old code would just re-request the same, now-stale,
+    too-narrow scope list forever.
+
+    Fixed by always UNIONING `provider.send_scopes` (the provider class's
+    CURRENT baseline requirement, read fresh every call) with whatever is
+    already on the connection, deduplicated, order-preserving - so any
+    plain Reconnect now "tops up" a connection to at least today's
+    baseline automatically, without the caller needing to know that a
+    scope requirement changed. This is what actually lets an existing,
+    send-broken Outlook connection self-heal via the SAME Reconnect
+    button that already existed - no new route, no new UI action, for
+    this part.
+
+    `include_read_scopes` (new, optional, default False - preserves the
+    exact prior behavior for any caller that doesn't pass it) additionally
+    unions in `provider.read_scopes` - the Mail.Read-class scopes
+    IncrementalSyncCapable needs for mailbox sync. Deliberately a SEPARATE
+    opt-in flag, not folded into the baseline top-up above: mailbox
+    reading is a materially more sensitive grant than "can send/draft
+    mail on your behalf," and this project's own M6.2 design already
+    treats it as a real, explicit, user-driven decision (see
+    sync_worker.py's has_read_scope docstring) - baseline send-scope
+    repair must never silently smuggle in mailbox-read access as a side
+    effect. Raises ConnectionError_ if the caller asks for read scopes on
+    a provider that doesn't implement IncrementalSyncCapable at all
+    (Gmail, today) rather than silently ignoring the flag - the same
+    "fail loud on a caller error, not a provider limitation" discipline
+    build_authorize_url's own callers already rely on.
+    """
     connection = _get_connection_or_raise(db, connection_id)
     provider = get_provider(connection.provider_key)
+
+    if include_read_scopes and not provider_supports_capability(provider, IncrementalSyncCapable):
+        raise ConnectionError_(f"Provider '{connection.provider_key}' does not support mailbox reading yet.")
+
     state = encode_oauth_state(
         company_profile_id=connection.company_profile_id,
         provider_key=connection.provider_key,
         reconnect_connection_id=connection.id,
     )
-    # Re-request exactly the scopes already on record - a future M6
-    # Reconnect-for-more-scopes call passes a different, wider scope list
-    # here; this function doesn't hardcode send_scopes so that widening
-    # is a caller-side change, not a change to this function.
-    scopes = connection.scopes_granted or provider.send_scopes
+    scopes = top_up_scopes(
+        connection.scopes_granted,
+        provider.send_scopes,
+        additional=provider.read_scopes if include_read_scopes else None,
+    )
     return provider.get_authorize_url(state, scopes)
 
 
