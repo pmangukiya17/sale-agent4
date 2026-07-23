@@ -78,21 +78,48 @@ a future step, not part of this matrix).
 
 ## Group 3 — Reserved for Track B2 (out of scope for B1)
 
+`tests/test_track_b2_verification.py` + `verify_track_b2.sh` (added after
+Track B1's own hand-off) now give all three of these real automated
+coverage — direct route-function calls against a real DB, the same
+convention as every other `*_e2e.py` test in this suite — so "Automated
+verification available" moves from No to Yes for all three rows below.
+This does NOT flip `Status` to done: the suite still needs to actually
+run against real Postgres (no Docker/Postgres access in the authoring
+sandbox — see that test file's own docstring), so all three stay
+`Pending` until `verify_track_b2.sh` is actually executed.
+
 | # | Feature | Automated verification available | Manual verification required | Track | Status |
 |---|---|---|---|---|---|
-| 35 | ProspectContact delete/archive behavior — RESTRICT-protected hard delete, archive/unarchive routes, default-hide-archived list filter | No | Yes | B2 | Pending |
-| 36 | Multi-business isolation — legacy Company/Contact tenant-scoping re-check | No | Yes | B2 | Pending |
-| 37 | Authentication registration flow — admin gate, bootstrap exception fires exactly once on a fresh DB, second registration without admin token 403s | No | Yes | B2 | Pending |
+| 35 | ProspectContact delete/archive behavior — RESTRICT-protected hard delete, archive/unarchive routes, default-hide-archived list filter | Yes | No | B2 | Pending |
+| 36 | Multi-business isolation — legacy Company/Contact tenant-scoping re-check | Yes | No | B2 | Pending |
+| 37 | Authentication registration flow — admin gate, bootstrap exception fires exactly once on a fresh DB, second registration without admin token 403s | Yes (with one caveat — see below) | No | B2 | Pending |
+
+**Row 37 caveat, surfaced while writing the test:** the bootstrap-exception
+branch is realistically unreachable via the live API in any normally-booted
+deployment — `app.main.ensure_first_admin()` runs during FastAPI's startup
+lifespan and seeds a real admin before the server accepts its first
+request, so `is_bootstrap` is already permanently `False` by the time any
+client could call `POST /auth/register`. `TestAuthRegistrationBootstrapException`
+exercises the branch directly by calling `register()` itself, bypassing
+`ensure_first_admin()` — genuine, correct coverage of the code path, but
+not something `verify_track_b2.sh` running against an already-booted
+`docker compose up` container will ever observe as live behavior (those two
+tests are expected to self-`SKIP` there, with an explicit message — see
+the script's own header). This isn't a gap in the verification; it's a
+real characteristic of the interim design worth the CEO knowing about.
 
 ---
 
 ## Summary
 
 - **37 total verification areas.**
-- **17 automated** (Group 1, existing scripts) + **20 manual** (Groups 2
-  and 3 combined).
+- **20 automated** (Group 1's 17 existing scripts + Group 3's 3 rows, now
+  covered by `test_track_b2_verification.py`/`verify_track_b2.sh`) + **17
+  manual** (Group 2).
 - **34 areas in Track B1**, **3 areas in Track B2**.
-- **0 executed. All 37 rows are `Pending`.**
+- **0 executed. All 37 rows are `Pending`.** Writing automated coverage
+  is not the same as running it — every row still needs a real
+  Docker/Postgres/browser pass before this line changes.
 
 This matrix should be updated in place as each row executes — mark each
 `Status` as `Pass`, `Fail`, or `Skipped` (with a one-line reason) rather

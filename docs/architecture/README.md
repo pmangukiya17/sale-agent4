@@ -120,7 +120,16 @@ to prior conversation history, start here.
   which track it belongs to, current status). Status starts `Pending`
   for every row and should be updated in place as each area is actually
   executed against the real deployment — this is the single place to
-  check "is the Comprehensive Verification pass done yet."
+  check "is the Comprehensive Verification pass done yet." Group 3
+  (Track B2, rows 35–37) now has real automated coverage —
+  `backend/tests/test_track_b2_verification.py` (ProspectContact archive/
+  delete lifecycle, the legacy Company/Contact isolation gap re-check,
+  the `/auth/register` admin gate + bootstrap exception) and
+  `verify_track_b2.sh` at the repo root, following the exact conventions
+  every other `verify_*.sh` in Group 1 established. Written and read
+  against the real route/model code, but not executed — no Docker/
+  Postgres access in this sandbox — so Group 3's rows stay `Pending`
+  until someone runs the script for real.
 
 ## Conventions for documents in this directory
 
