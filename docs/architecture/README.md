@@ -130,6 +130,22 @@ to prior conversation history, start here.
   against the real route/model code, but not executed — no Docker/
   Postgres access in this sandbox — so Group 3's rows stay `Pending`
   until someone runs the script for real.
+- [`dashboard-capabilities-architecture-plan.md`](./dashboard-capabilities-architecture-plan.md)
+  — architecture review (not authorized for implementation) for the six
+  Command Center placeholders still showing "Capability not yet
+  implemented": Sales Pipeline, Pipeline Overview, Revenue Pipeline, AI
+  Recommendations, Mailbox Brief, Open Conversations. Confirms three of
+  the six (Open Conversations, AI Recommendations, Mailbox Brief) need
+  zero new database tables — they're aggregation/synthesis endpoints over
+  data M2/M3/M6 already built — while the other three all depend on one
+  new foundational domain (`Opportunity`/`OpportunityStageHistory`, a real
+  deal/monetary-value model that has never existed in this codebase).
+  Lays out purpose/architecture/schema/API/service/workers/AI
+  interactions/security/performance/scalability for each capability, a
+  dependency graph, and a five-track (`Track C1`–`C5`) milestone
+  breakdown with scope/files/migrations/testing/verification/rollback per
+  track. Also flags a stale docstring (`MailboxBrief.tsx` claims the
+  `conversations` router isn't registered; it has been since M6.5).
 
 ## Conventions for documents in this directory
 
