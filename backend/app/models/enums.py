@@ -566,3 +566,45 @@ class TaskStatus(str, enum.Enum):
     PENDING = "pending"
     COMPLETED = "completed"
     DISMISSED = "dismissed"
+
+
+# --- Track C3: Opportunity domain (dashboard-capabilities-architecture-
+# plan.md, Section 1) ---------------------------------------------------
+
+
+class OpportunityStage(str, enum.Enum):
+    """A deal-stage funnel - deliberately matching the CEO's own worked
+    vocabulary (Qualified Lead -> Meeting -> Sample -> Quotation ->
+    Negotiation -> Purchase Order -> Customer) rather than reusing
+    RelationshipStage or the legacy, dormant PipelineStage, both of which
+    are proven-wrong precedents for this exact job (RelationshipStage is
+    account-level sales history with no WON/LOST; PipelineStage is
+    tenant-unscoped and dormant). MAY be skipped - per the CEO's explicit
+    direction this platform does NOT enforce a linear progression through
+    these values; OpportunityStageHistory is the real record of what
+    actually happened, this enum is only the closed set of valid values a
+    stage can be."""
+
+    QUALIFIED_LEAD = "qualified_lead"
+    MEETING = "meeting"
+    SAMPLE = "sample"
+    QUOTATION = "quotation"
+    NEGOTIATION = "negotiation"
+    PURCHASE_ORDER = "purchase_order"
+    CLOSED_WON = "closed_won"
+    CLOSED_LOST = "closed_lost"
+
+
+class OpportunityForecastCategory(str, enum.Enum):
+    """AI-ready field (CEO's explicit direction) - a standard sales-
+    forecasting bucket, distinct from `stage` (where the deal literally
+    is) and from `win_probability` (a continuous 0-100 estimate). Genuinely
+    NULL on every Opportunity until a future AI/forecasting milestone
+    assigns one - this column exists now purely so that milestone needs
+    no migration, the same "additive, not a schema fight" bet this
+    domain's own AI-readiness fields all make."""
+
+    PIPELINE = "pipeline"
+    BEST_CASE = "best_case"
+    COMMIT = "commit"
+    CLOSED = "closed"

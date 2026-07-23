@@ -24,6 +24,7 @@ from app.api.routes import (
     intelligence_snapshots,
     knowledge_base,
     notifications,
+    opportunities,
     outreach_drafts,
     outreach_jobs,
     outreach_playbooks,
@@ -242,3 +243,7 @@ app.include_router(delivery_onboarding.router, prefix=API_PREFIX)
 app.include_router(conversations.router, prefix=API_PREFIX)
 # M6.6: CRM Automation - Task (Recommended Actions) read + complete/dismiss
 app.include_router(tasks.router, prefix=API_PREFIX)
+# Track C3 (dashboard-capabilities-architecture-plan.md): Opportunity
+# domain - the first real, monetary sales-deal record. See
+# app/opportunities/__init__.py for the package boundary.
+app.include_router(opportunities.router, prefix=API_PREFIX)

@@ -950,6 +950,80 @@ in the authoring sandbox) — Status stays `Pending` until the CEO runs
   — worth stating explicitly rather than assuming migrations are always
   freely reversible once real data exists.
 
+**As built (implemented, pending live verification):** matches this
+scope, with one deliberate, CEO-directed departure from this section's
+own speculative testing-strategy line above worth recording explicitly.
+At approval time the CEO settled the open design question this section
+had flagged ("reject skipping straight to CLOSED_WON... a real design
+decision" from Section 1.4) with a final, explicit direction: an
+Opportunity MAY skip stages, this platform does NOT enforce a linear
+workflow, and every transition is recorded in
+`OpportunityStageHistory` for downstream analytics to read - so the
+example above ("a stage regression or an invalid transition, e.g.
+CLOSED_WON -> QUALIFIED_LEAD, is rejected by the state machine") does
+NOT apply as implemented. `app/opportunities/state_machine.py`'s
+`plan_stage_transition` accepts every `(from_stage, to_stage)` pair,
+including re-opening a closed deal back to an earlier stage; the only
+transition it rejects is a same-stage no-op (nothing to actually
+record), raising `InvalidStageTransitionError`, translated to a 400 by
+`app/api/routes/opportunities.py`'s `advance-stage` endpoint.
+
+Two tables, migration `0025_opportunity_domain.py`: `opportunities` (all
+of Section 1.3's original columns, using `estimated_revenue`/
+`actual_revenue` as two separate `NUMERIC(14,2)` columns rather than one
+`amount`, and `win_probability` rather than `probability` - both
+renamed to match the CEO's own wording in the approval message) plus
+five additional AI-ready columns the CEO's approval added on top of
+Section 1.3's original sketch: `ai_confidence_score` (float, distinct
+from `win_probability` - "how confident is the AI in its own read" vs.
+"how likely is this deal to close," two different questions sharing a
+0-100 scale), `forecast_category` (new `opportunity_forecast_category`
+enum: `pipeline`/`best_case`/`commit`/`closed`), `owner_user_id` (the
+Opportunity owner), `ai_reasoning`, and `next_recommended_action` (both
+plain nullable text, same shape as `Task.suggested_action` - no AI
+engine writes either yet). Every one of these is genuinely `NULL` until
+a future AI milestone populates it - additive, not fabricated, the same
+bet `Task.assigned_user_id` already made. `opportunity_stage_history`
+matches Section 1.3 exactly.
+
+Eight routes exactly as listed in this section's own parenthetical
+(`create`, `list`, `get`, `update`, `advance-stage`, `delete`, `funnel`,
+`pipeline-value`) - `funnel`/`pipeline-value` are both static path
+segments registered BEFORE the dynamic `/opportunities/{opportunity_id}`
+route, the identical route-ordering hazard (and fix) Track C1's
+`/conversations/count` already established; `verify_track_c3.sh`'s own
+step 4 asserts this directly against the real running app.
+
+Delete: no other table yet references `opportunities` (Track C4 doesn't
+add one either - it only reads), so there is no DB-level RESTRICT FK to
+enforce in this initial slice. Implemented instead as an
+application-level guard matching this section's own "archive, not hard
+delete" intent: `delete_opportunity` allows a hard delete only when
+exactly one `OpportunityStageHistory` row exists (the automatic
+creation entry every `Opportunity` gets) - the moment any real stage
+transition has been recorded, hard delete is refused with a 400
+suggesting `CLOSED_LOST` as the functional "retire this deal" action,
+since this slice deliberately has no separate archive lifecycle of its
+own (Section 9's own non-goals).
+
+Backend: `tests/test_opportunity_state_machine.py` (pure, zero
+fixtures - every stage reachable from every other stage, same-stage
+no-op rejected, `closed_at` derivation for every stage) and
+`tests/test_opportunities_e2e.py` (real-DB: CRUD, tenant isolation
+across two businesses, stage skipping recorded correctly in history,
+funnel/pipeline-value aggregation correctness, the delete guard's two
+branches). Verification: `verify_track_c3.sh` at the repo root; Group 4
+row 40 in `comprehensive-verification-matrix.md`. `py_compile` clean for
+every new/changed file. Notably,
+`tests/test_opportunity_state_machine.py` has no database dependency at
+all (state_machine.py imports nothing beyond one plain enum) and was
+actually run to completion in the authoring sandbox - `python -m
+unittest tests.test_opportunity_state_machine -v`, 10/10 passing - the
+first Track C test suite this project has executed before hand-off
+rather than only `py_compile`-checked. `tests/test_opportunities_e2e.py`
+still requires a real Postgres connection (no Docker in this sandbox) -
+Status stays `Pending` until the CEO runs `verify_track_c3.sh` for real.
+
 ### Track C4 — Sales Pipeline, Pipeline Overview, Revenue Pipeline (three sub-tracks, all depend on Track C3)
 - **Scope (C4a — Sales Pipeline):** wire `SalesPipelineWidget.tsx` to
   Track C3's funnel/stage-count endpoint.

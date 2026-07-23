@@ -124,24 +124,34 @@ scripts.
 | # | Feature | Automated verification available | Manual verification required | Track | Status |
 |---|---|---|---|---|---|
 | 38 | Open Conversations KPI — count endpoint tenant-isolated, status-filtered, zero-conversations edge case (`verify_track_c1.sh`) | Yes | Yes (visual: real number + breathing glow on count > 0) | C1 | Pass |
-| 39 | AI Recommendations — cross-portfolio endpoint tenant-isolated, status filter, limit, empty-portfolio edge case (`verify_track_c2.sh`) | Yes | Yes (visual: real recommendation rows + breathing glow on recommendations > 0) | C2 | Pending |
+| 39 | AI Recommendations — cross-portfolio endpoint tenant-isolated, status filter, limit, empty-portfolio edge case (`verify_track_c2.sh`) | Yes | Yes (visual: real recommendation rows + breathing glow on recommendations > 0) | C2 | Pass |
+| 40 | Opportunity domain — migration applied, pure state-machine unit tests (stage skipping/no-op rejection), route ordering, CRUD/stage-transition/tenant-isolation/history-tracking/edge-case real-DB tests (`verify_track_c3.sh`) | Yes | No (no frontend surface in this track - see Track C4) | C3 | Pending |
 
 ---
 
 ## Summary
 
-- **39 total verification areas.**
-- **22 automated** (Group 1's 17 existing scripts + Group 3's 3 rows,
+- **40 total verification areas.**
+- **23 automated** (Group 1's 17 existing scripts + Group 3's 3 rows,
   covered by `test_track_b2_verification.py`/`verify_track_b2.sh`, +
   Group 4's row 38, covered by `test_open_conversations_count.py`/
   `verify_track_c1.sh`, + Group 4's row 39, covered by
-  `test_ai_recommendations_portfolio.py`/`verify_track_c2.sh`) + **19
-  manual** (Group 2's 17 + Group 4's 2 visual checks).
+  `test_ai_recommendations_portfolio.py`/`verify_track_c2.sh`, + Group 4's
+  row 40, covered by `test_opportunity_state_machine.py`/
+  `test_opportunities_e2e.py`/`verify_track_c3.sh`) + **19 manual**
+  (Group 2's 17 + Group 4's 2 visual checks - row 40 has no visual check,
+  since Track C3 has no frontend surface of its own).
 - **34 areas in Track B1**, **3 areas in Track B2**, **1 area in Track C1**,
-  **1 area in Track C2** (more Track C rows will be added as C3-C5 land).
-- **1 executed (row 38, Track C1, `Pass`, confirmed by the CEO against a
-  real Docker/Postgres/browser run). 38 rows remain `Pending`, including
-  row 39 (Track C2) pending the same real Docker/Postgres/browser run.**
+  **1 area in Track C2**, **1 area in Track C3** (more Track C rows will
+  be added as C4-C5 land).
+- **2 executed (row 38, Track C1, and row 39, Track C2, both `Pass`,
+  confirmed by the CEO against a real Docker/Postgres/browser run). 38
+  rows remain `Pending`, including row 40 (Track C3) pending the same
+  real Docker/Postgres/browser run - note `test_opportunity_state_machine.py`
+  was additionally confirmed to actually run and pass in the authoring
+  sandbox itself (no DB required - see that test file's own docstring),
+  the first Track C test suite this project has been able to execute
+  before hand-off, not just compile.**
 
 This matrix should be updated in place as each row executes — mark each
 `Status` as `Pass`, `Fail`, or `Skipped` (with a one-line reason) rather
