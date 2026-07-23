@@ -1,44 +1,94 @@
 import { Card, PlaceholderNotice } from "../design-system";
+import { useOpportunityFunnel } from "./useOpportunityFunnel";
 
 /**
- * Pipeline Overview funnel — Zone 3, Design Bible Section 8: "Discovered
- * → Researched → Outreach → Replied → Negotiation → Won, the top-of-
- * funnel conversion view, distinct from... the Sales Pipeline stage-box
- * widget in Zone 2."
+ * Pipeline Overview funnel — Zone 3, Design Bible Section 8. Track C4
+ * (dashboard-capabilities-architecture-plan.md, Section 3): wired to the
+ * real Opportunity domain - the same GET .../opportunities/funnel
+ * response Sales Pipeline reads (see useOpportunityFunnel.ts's own
+ * docstring), but this widget also renders `conversion_rate_from_previous`
+ * - the one field Sales Pipeline's compact stage-box view doesn't need,
+ * per the architecture doc's own Section 3.4 "one endpoint, two frontend
+ * granularities" call.
  *
- * M8.7 Phase C finding: this widget previously rendered real-looking bars
- * from `countByLegacyStage(companies)` - the SAME disused `Company.stage`
- * model SalesPipelineWidget's own docstring already rejected as a data
- * source for the dashboard's flagship pipeline slot ("Company.stage is a
- * different, disused model... its own page, Pipeline.tsx, says outright
- * 'Discovery, scoring, and outreach are not wired up yet' - presenting it
- * in the dashboard's flagship Sales Pipeline slot implied a working
- * opportunity pipeline that doesn't exist, even with an honest caption
- * attached"). That exact reasoning applies here identically - a funnel
- * chart is a more polished visualization, but it's still legacy
- * `Company.stage` data standing in for a real Discovered→Researched→
- * Outreach→Replied→Negotiation→Won conversion funnel that doesn't exist
- * in the backend yet (no Opportunity/Deal model with a stage or
- * conversion-rate field - confirmed by reading every model in
- * app/models/). Restoring this widget to the Command Center (Section 8
- * requires it be present) without also fixing this would reintroduce the
- * exact honesty problem the CEO already corrected once for
- * SalesPipelineWidget. Fixed the same way, not left as a fabricated
- * chart: an honest "not yet implemented" placeholder, distinctly labeled
- * from Sales Pipeline so the two slots are never confused for each other.
+ * Renders the sequential chain (Qualified Lead → Meeting → Sample →
+ * Quotation → Negotiation → Purchase Order → Won) with each stage's
+ * conversion percentage FROM the previous stage - see
+ * app.opportunities.service.compute_funnel's own docstring for exactly
+ * what this percentage does and does not mean (a current-distribution
+ * ratio, not a historical cohort conversion rate - stages may be
+ * skipped, per Track C3's own design decision, so this is an honest
+ * approximation, not a claim about "what fraction of deals that ever
+ * reached stage N reached stage N+1"). Lost is shown as a separate
+ * drop-off line beneath the chain, not a seventh sequential box - it's a
+ * terminal OUTCOME, not a stage every deal passes through on its way
+ * somewhere else.
  *
- * Track B1 UI refinement: `accent="teal"` ambient identity glow only - no
- * `active` state, same "don't imply live activity on an honest
- * placeholder" reasoning as SalesPipelineWidget.
+ * Track B1 UI refinement (superseded by this track for `active`, kept
+ * for `accent`): `accent="teal"` ambient identity glow. `active` now
+ * fires on real Opportunity activity, the same "never fabricate
+ * liveliness" rule already applied elsewhere on this dashboard.
  */
+const FUNNEL_SEQUENCE = [
+  "qualified_lead",
+  "meeting",
+  "sample",
+  "quotation",
+  "negotiation",
+  "purchase_order",
+  "closed_won",
+] as const;
+
+const STAGE_LABELS: Record<string, string> = {
+  qualified_lead: "Qualified Lead",
+  meeting: "Meeting",
+  sample: "Sample",
+  quotation: "Quotation",
+  negotiation: "Negotiation",
+  purchase_order: "Purchase Order",
+  closed_won: "Won",
+};
+
 export function PipelineFunnel() {
+  const { funnel, isLoading, error } = useOpportunityFunnel();
+  const byStage = Object.fromEntries(funnel.map((row) => [row.stage, row]));
+  const lostCount = byStage["closed_lost"]?.count ?? 0;
+  const totalCount = funnel.reduce((sum, row) => sum + row.count, 0);
+
   return (
-    <Card padding="compact" accent="teal" className="flex h-full flex-col gap-2">
+    <Card
+      padding="compact"
+      accent="teal"
+      active={!isLoading && !error && totalCount > 0}
+      className="flex h-full flex-col gap-2"
+    >
       <h3 className="text-xs font-semibold text-slate-100">Pipeline Overview</h3>
-      <PlaceholderNotice
-        kind="not-implemented"
-        reason="No Discovered→Researched→Outreach→Replied→Negotiation→Won conversion funnel exists in the backend yet."
-      />
+      {isLoading ? (
+        <p className="text-xs text-slate-500">Loading…</p>
+      ) : error ? (
+        <PlaceholderNotice kind="no-data" reason={error} />
+      ) : totalCount === 0 ? (
+        <PlaceholderNotice kind="no-data" reason="No opportunities yet - the conversion funnel is real, there's just nothing here." />
+      ) : (
+        <>
+          <ul className="space-y-1">
+            {FUNNEL_SEQUENCE.map((stage) => {
+              const row = byStage[stage];
+              const conversion = row?.conversion_rate_from_previous ?? null;
+              return (
+                <li key={stage} className="flex items-center justify-between rounded px-1.5 py-1 bg-surface-2/50">
+                  <span className="truncate text-xs text-slate-300">{STAGE_LABELS[stage]}</span>
+                  <span className="flex shrink-0 items-center gap-1.5">
+                    {conversion !== null && <span className="text-[10px] text-slate-500">{conversion}%</span>}
+                    <span className="text-xs font-semibold text-slate-100">{row?.count ?? 0}</span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-auto text-[11px] text-slate-500">{lostCount} Lost along the way</p>
+        </>
+      )}
     </Card>
   );
 }

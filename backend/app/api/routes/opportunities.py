@@ -16,8 +16,8 @@ from app.opportunities.state_machine import InvalidStageTransitionError
 from app.schemas.opportunity import (
     AdvanceStageRequest,
     OpportunityCreate,
+    OpportunityCurrencyPipelineValue,
     OpportunityFunnelStage,
-    OpportunityPipelineValue,
     OpportunityRead,
     OpportunityUpdate,
 )
@@ -111,12 +111,16 @@ def get_opportunity_funnel(
 
 @router.get(
     "/company-profiles/{company_profile_id}/opportunities/pipeline-value",
-    response_model=OpportunityPipelineValue,
+    response_model=list[OpportunityCurrencyPipelineValue],
 )
 def get_opportunity_pipeline_value(
     profile: CompanyProfile = Depends(get_owned_company_profile),
     db: Session = Depends(get_db),
-) -> dict:
+) -> list[dict]:
+    """Returns one row per distinct currency in use (Track C4 fix -
+    resolves Section 4.10's deferred currency-mixing decision) - see
+    compute_pipeline_value's own docstring. An empty list means this
+    business has no Opportunities at all yet."""
     return compute_pipeline_value(db, profile.id)
 
 

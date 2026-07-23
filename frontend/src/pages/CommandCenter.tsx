@@ -77,21 +77,21 @@ import { ActivityTimeline } from "../dashboard/ActivityTimeline";
  *    Priorities (yellow), AI Recommendations (cyan), Mailbox Brief
  *    (orange), Activity (slate), Top Countries (emerald).
  *  - Active/breathing (conditional): only where a real, already-existing
- *    signal exists - Needs Review/AI Tasks Running/Open Conversations
- *    (KPI strip; Open Conversations gained a real signal in Track C1 -
- *    see that note below), World Map (any country with activity today),
- *    Country Intelligence (selected country has prospects), AI Workforce
- *    (an agent is running), AI Pipeline (has prospects), Today's
- *    Priorities (has items needing review), AI Recommendations (has
- *    recommendations - real signal since Track C2, see note below).
- *    Deliberately NOT active on: Active Prospects/AI Confidence Score
- *    (no "event" distinct from "there is a number"), Revenue Pipeline
- *    (ambient-only - no backend signal exists yet to honestly drive
- *    `active` from; still pending Track C4), Sales Pipeline/Pipeline
- *    Overview/Mailbox Brief (honest "not implemented" placeholders -
- *    breathing would imply live activity that doesn't exist), Activity/
- *    Top Countries (ranked/historical snapshots, no single "happening
- *    right now" event).
+ *    signal exists - Needs Review/AI Tasks Running/Open Conversations/
+ *    Revenue Pipeline (KPI strip; Open Conversations gained a real
+ *    signal in Track C1, Revenue Pipeline in Track C4 - see those notes
+ *    below), World Map (any country with activity today), Country
+ *    Intelligence (selected country has prospects), AI Workforce (an
+ *    agent is running), AI Pipeline (has prospects), Sales Pipeline/
+ *    Pipeline Overview (at least one real Opportunity exists - real
+ *    signal since Track C4, see note below), Today's Priorities (has
+ *    items needing review), AI Recommendations (has recommendations -
+ *    real signal since Track C2, see note below). Deliberately NOT
+ *    active on: Active Prospects/AI Confidence Score (no "event"
+ *    distinct from "there is a number"), Mailbox Brief (honest "not
+ *    implemented" placeholder - breathing would imply live activity that
+ *    doesn't exist; pending Track C5), Activity/Top Countries (ranked/
+ *    historical snapshots, no single "happening right now" event).
  *
  * Track C1 (dashboard-capabilities-architecture-plan.md): Open
  * Conversations moved from an honest placeholder to real data - a new
@@ -111,6 +111,19 @@ import { ActivityTimeline } from "../dashboard/ActivityTimeline";
  * per-prospect endpoints were reused unchanged; only the cross-portfolio
  * aggregation was new, avoiding the N+1 fan-out the old placeholder's
  * docstring explicitly refused to do.
+ *
+ * Track C4 (dashboard-capabilities-architecture-plan.md): Sales
+ * Pipeline, Pipeline Overview, and Revenue Pipeline all moved from
+ * honest placeholders to real data - all three read the Opportunity
+ * domain Track C3 built (GET .../opportunities/funnel for the first two,
+ * GET .../opportunities/pipeline-value for Revenue Pipeline), no new
+ * persistence of their own. `active` fires on real Opportunity activity
+ * for all three - Sales Pipeline/Pipeline Overview on at least one
+ * Opportunity existing at all, Revenue Pipeline on the primary
+ * currency's open pipeline value being > 0. Revenue Pipeline's endpoint
+ * also resolves the architecture doc's own explicitly-deferred Section
+ * 4.10 currency-mixing decision - see
+ * useOpportunityPipelineValue.ts's own docstring for the fix.
  *
  * Glow retune (third Track B1 pass): real-browser feedback on the
  * two-layer system above called the ambient layer "too broad and

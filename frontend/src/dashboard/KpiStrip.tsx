@@ -4,6 +4,24 @@ import type { DashboardProspect } from "./useDashboardPortfolio";
 import { averageScore, countNeedsReview } from "./selectors";
 import { useAgentActivities } from "../ai-workforce/useAgentActivities";
 import { useOpenConversationsCount } from "./useOpenConversationsCount";
+import { useOpportunityPipelineValue } from "./useOpportunityPipelineValue";
+
+/**
+ * formatCurrencyValue — best-effort Intl.NumberFormat currency
+ * formatting for one pipeline-value row. `currency` is nullable (an
+ * Opportunity with no currency set yet) - Intl.NumberFormat can't format
+ * `style: "currency"` without a real ISO code, so that case falls back
+ * to a plain formatted number with no currency symbol, rather than
+ * guessing one.
+ */
+function formatCurrencyValue(value: number, currency: string | null): string {
+  if (!currency) return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: 0 }).format(value);
+  } catch {
+    return `${value.toLocaleString(undefined, { maximumFractionDigits: 0 })} ${currency}`;
+  }
+}
 
 /**
  * KpiStrip — Zone 1 Command Strip (Design Bible Section 8). Six cards:
@@ -37,17 +55,23 @@ import { useOpenConversationsCount } from "./useOpenConversationsCount";
  * fetching the full open-conversation list just to read its length - see
  * useOpenConversationsCount.ts's own docstring.
  *
+ * Track C4 (dashboard-capabilities-architecture-plan.md, Section 4):
+ * "Revenue Pipeline" moved from an honest placeholder to real data - the
+ * real Opportunity domain Track C3 built now backs it via
+ * GET .../opportunities/pipeline-value, one row per distinct currency in
+ * use (the Track C4 fix for the architecture doc's own Section 4.10
+ * currency-mixing decision - see useOpportunityPipelineValue.ts's own
+ * docstring). In the common single-currency case the card shows that one
+ * formatted total; a business with genuinely mixed currencies shows the
+ * largest currency's total with a "+N" note rather than ever blending
+ * them into one meaningless summed number.
+ *
  * Track B1 UI refinement - accent/active per card, one honesty note:
- * Needs Review, AI Tasks Running, and now Open Conversations all have
- * real signals to drive `active` from (needsReview/runningCount/count,
- * all computed below). Active Prospects and AI Confidence Score don't
- * have a "something is happening right now" event distinct from "there
- * is a number" - ambient only. Revenue Pipeline is the one remaining
- * honest placeholder - it gets an ambient identity color like every
- * other card, but `active` stays false since there is no real data to
- * make it true from (matching the same "never fabricate liveliness"
- * rule already applied to PipelineFunnel/SalesPipelineWidget/
- * AiRecommendations/MailboxBrief on the dashboard's bottom row).
+ * Needs Review, AI Tasks Running, Open Conversations, and now Revenue
+ * Pipeline all have real signals to drive `active` from (needsReview/
+ * runningCount/count/pipeline value, all computed below). Active
+ * Prospects and AI Confidence Score don't have a "something is happening
+ * right now" event distinct from "there is a number" - ambient only.
  */
 export function KpiStrip({ prospects, isLoading }: { prospects: DashboardProspect[]; isLoading: boolean }) {
   const avg = averageScore(prospects);
@@ -55,6 +79,21 @@ export function KpiStrip({ prospects, isLoading }: { prospects: DashboardProspec
   const { activities, isLoading: activitiesLoading } = useAgentActivities();
   const runningCount = activities.filter((activity) => activity.state === "running").length;
   const { count: openConversationsCount, isLoading: conversationsLoading, error: conversationsError } = useOpenConversationsCount();
+  const {
+    breakdown: pipelineValueBreakdown,
+    isLoading: pipelineValueLoading,
+    error: pipelineValueError,
+  } = useOpportunityPipelineValue();
+  const primaryPipelineRow = [...pipelineValueBreakdown].sort(
+    (a, b) => b.open_pipeline_value - a.open_pipeline_value
+  )[0];
+  const revenuePipelineValue = primaryPipelineRow
+    ? pipelineValueBreakdown.length === 1
+      ? formatCurrencyValue(primaryPipelineRow.open_pipeline_value, primaryPipelineRow.currency)
+      : `${formatCurrencyValue(primaryPipelineRow.open_pipeline_value, primaryPipelineRow.currency)} +${
+          pipelineValueBreakdown.length - 1
+        }`
+    : undefined;
 
   return (
     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
@@ -98,9 +137,17 @@ export function KpiStrip({ prospects, isLoading }: { prospects: DashboardProspec
       <KpiCard
         label="Revenue Pipeline"
         icon={TrendingUp}
-        placeholderKind="not-implemented"
-        placeholderReason="No deal-value field exists in the backend yet."
+        value={pipelineValueLoading ? "…" : revenuePipelineValue ?? "—"}
+        placeholderKind={!pipelineValueLoading && (pipelineValueError || !primaryPipelineRow) ? "no-data" : undefined}
+        placeholderReason={
+          !pipelineValueLoading && pipelineValueError
+            ? pipelineValueError
+            : !pipelineValueLoading && !primaryPipelineRow
+              ? "No opportunities yet - the Opportunity domain is real, there's just nothing here."
+              : undefined
+        }
         accent="gold"
+        active={!pipelineValueLoading && !pipelineValueError && Boolean(primaryPipelineRow) && primaryPipelineRow.open_pipeline_value > 0}
       />
     </div>
   );

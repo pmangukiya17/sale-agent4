@@ -1049,6 +1049,74 @@ Status stays `Pending` until the CEO runs `verify_track_c3.sh` for real.
   three sub-tracks' rollbacks are fully independent of each other, since
   none of the three writes to the backend or to each other.
 
+**As built (implemented, pending live verification):** matches this
+scope's intent (three widgets wired to Track C3's endpoints, zero new
+persistence, `Opportunity`/`OpportunityStageHistory` remain the only
+source of truth) with one deliberate, disclosed departure from "no
+backend files" above: this track's own C4c bullet requires "resolve the
+currency-mixing question (Section 4.10) before this sub-track is
+considered done" - Track C3 shipped `compute_pipeline_value` as one
+blind `SUM(estimated_revenue)` across every currency, which is exactly
+the correctness bug Section 4.10 warned against ("SUM(amount) across
+[mixed currencies] is meaningless without conversion"). Since Revenue
+Pipeline is the exact widget that renders this number to a human, this
+was the right and only sane place to fix it - shipping the KPI card
+first and patching the math "after ship" would have repeated the exact
+mistake Section 4.10 named. Two Track C3 service functions were revised
+(both are read-only aggregations - no schema/migration change, no write
+path touched, `Opportunity`/`OpportunityStageHistory` remain untouched
+as the sole source of truth, satisfying this track's own requirement 1):
+
+- `compute_pipeline_value` now returns one row per distinct currency
+  actually in use (`OpportunityCurrencyPipelineValue`: `currency`,
+  `open_pipeline_value`, `closed_won_value`), instead of one flat
+  cross-currency sum. A `None`/unspecified-currency bucket covers
+  Opportunities with no `currency` set. An empty list means the business
+  has no Opportunities at all yet - no fabricated zero-value row for a
+  currency nothing uses.
+- `compute_funnel` gained `conversion_rate_from_previous` per stage
+  (Section 3.5's own requirement, not yet built in Track C3) - a
+  CURRENT-distribution ratio (this stage's count / the previous stage's
+  count in a fixed `_FUNNEL_SEQUENCE`), explicitly documented as an
+  approximation, not a cohort-based historical conversion rate, since
+  stages may be skipped (Track C3's own design decision). `CLOSED_LOST`
+  is excluded from the sequential chain and always reports `None` here -
+  it is a drop-off outcome any open stage can reach, not a step every
+  deal passes through.
+
+`tests/test_opportunities_e2e.py`'s own `TestOpportunityFunnelAndPipelineValue`
+class (Track C3's original funnel/pipeline-value coverage) moved to a
+new, expanded `tests/test_pipeline_dashboard_metrics.py` - its old
+assertions were written against the now-superseded flat-sum/no-
+conversion-rate shape; the new file covers pipeline metrics
+(conversion-rate correctness, first-stage/zero-previous-stage `None`
+cases, `CLOSED_LOST` always `None`), revenue calculations (single-
+currency, mixed-currency never blended, no-currency-set bucket, open vs.
+closed-won kept separate), empty pipeline, tenant isolation, and edge
+cases (zero `estimated_revenue`, `CLOSED_LOST` contributing to neither
+figure) - the exact five categories the CEO's own C4 approval message
+required.
+
+Frontend: `useOpportunityFunnel.ts`/`useOpportunityPipelineValue.ts`
+(new, scoped hooks mirroring `useOpenConversationsCount.ts`'s shape) back
+`SalesPipelineWidget.tsx` (compact stage-box counts, Won/Lost as a
+footer summary rather than two more boxes), `PipelineFunnel.tsx` (the
+same funnel data plus each stage's conversion percentage), and
+`KpiStrip.tsx`'s Revenue Pipeline card (the primary/largest currency's
+formatted total, with a "+N" note for genuinely mixed-currency
+businesses rather than ever blending them). All three now fire `active`
+on real Opportunity activity, replacing their prior ambient-only
+placeholder state - see `CommandCenter.tsx`'s own updated glow-system
+docstring.
+
+Verification: `verify_track_c4.sh` at the repo root (re-runs Track C3's
+own suites to confirm the revised service functions didn't regress
+anything, then runs the new Track C4 metrics suite); Group 4 row 41 in
+`comprehensive-verification-matrix.md`. `tsc -b --force` and `py_compile`
+both clean. Not yet executed against a real Postgres/browser (no Docker
+in this sandbox) - Status stays `Pending` until the CEO runs
+`verify_track_c4.sh` for real.
+
 ### Track C5 — Mailbox Brief
 - **Scope:** `app/mailbox_brief/` package (`service.py`, prompt
   construction via `app/prompt_builder`), one new POST endpoint (plus

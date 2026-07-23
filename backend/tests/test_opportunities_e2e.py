@@ -27,8 +27,6 @@ from app.api.routes.opportunities import (
     create_opportunity_route,
     delete_opportunity,
     get_opportunity,
-    get_opportunity_funnel,
-    get_opportunity_pipeline_value,
     list_opportunities,
     update_opportunity,
 )
@@ -278,59 +276,14 @@ class TestOpportunityStageTransitions(OpportunityTestBase):
         )
 
 
-class TestOpportunityFunnelAndPipelineValue(OpportunityTestBase):
-    def test_funnel_counts_every_declared_stage_including_zero(self):
-        opp1 = self._create(self.profile_a, self.prospect_a)
-        self._create(self.profile_a, self.prospect_a)
-        advance_opportunity_stage(
-            opp1.id,
-            AdvanceStageRequest(to_stage=OpportunityStage.NEGOTIATION),
-            profile=self.profile_a,
-            current_user=self.user_a,
-            db=self.db,
-        )
-        funnel = get_opportunity_funnel(profile=self.profile_a, db=self.db)
-        by_stage = {row["stage"]: row["count"] for row in funnel}
-        self.assertEqual(len(funnel), len(OpportunityStage))  # every declared stage present
-        self.assertEqual(by_stage[OpportunityStage.QUALIFIED_LEAD.value], 1)
-        self.assertEqual(by_stage[OpportunityStage.NEGOTIATION.value], 1)
-        self.assertEqual(by_stage[OpportunityStage.CLOSED_WON.value], 0)
-
-    def test_funnel_is_isolated_per_business(self):
-        self._create(self.profile_a, self.prospect_a)
-        self._create(self.profile_b, self.prospect_b)
-        self._create(self.profile_b, self.prospect_b)
-        funnel_a = get_opportunity_funnel(profile=self.profile_a, db=self.db)
-        funnel_b = get_opportunity_funnel(profile=self.profile_b, db=self.db)
-        by_stage_a = {row["stage"]: row["count"] for row in funnel_a}
-        by_stage_b = {row["stage"]: row["count"] for row in funnel_b}
-        self.assertEqual(by_stage_a[OpportunityStage.QUALIFIED_LEAD.value], 1)
-        self.assertEqual(by_stage_b[OpportunityStage.QUALIFIED_LEAD.value], 2)
-
-    def test_pipeline_value_sums_open_estimated_revenue_and_separately_closed_won_actual_revenue(self):
-        opp1 = self._create(self.profile_a, self.prospect_a, estimated_revenue=1000.0)
-        opp2 = self._create(self.profile_a, self.prospect_a, estimated_revenue=2000.0)
-        advance_opportunity_stage(
-            opp2.id,
-            AdvanceStageRequest(to_stage=OpportunityStage.CLOSED_WON),
-            profile=self.profile_a,
-            current_user=self.user_a,
-            db=self.db,
-        )
-        update_opportunity(opp2.id, OpportunityUpdate(actual_revenue=1800.0), profile=self.profile_a, db=self.db)
-
-        result = get_opportunity_pipeline_value(profile=self.profile_a, db=self.db)
-        # opp1 is still open (QUALIFIED_LEAD) - its estimated_revenue counts
-        # toward open_pipeline_value; opp2 is CLOSED_WON, so its
-        # estimated_revenue is excluded from open_pipeline_value and its
-        # actual_revenue counts toward closed_won_value instead.
-        self.assertEqual(result["open_pipeline_value"], 1000.0)
-        self.assertEqual(result["closed_won_value"], 1800.0)
-
-    def test_pipeline_value_is_zero_for_a_business_with_no_opportunities(self):
-        result = get_opportunity_pipeline_value(profile=self.profile_b, db=self.db)
-        self.assertEqual(result["open_pipeline_value"], 0.0)
-        self.assertEqual(result["closed_won_value"], 0.0)
+# Funnel/pipeline-value coverage (TestOpportunityFunnelAndPipelineValue)
+# has moved to tests/test_pipeline_dashboard_metrics.py as of Track C4 -
+# both functions were revised there (conversion-rate math added to
+# compute_funnel, compute_pipeline_value switched to a per-currency
+# breakdown to resolve the architecture doc's own deferred Section 4.10
+# currency-mixing decision), so their dedicated coverage now lives
+# alongside the rest of Track C4's own test suite rather than staying
+# here against a since-changed response shape.
 
 
 class TestOpportunityDelete(OpportunityTestBase):

@@ -101,45 +101,126 @@ def advance_stage(
     return opportunity
 
 
+# Track C4 (dashboard-capabilities-architecture-plan.md, Sections 2-4):
+# the sequential conversion chain Pipeline Overview's funnel walks
+# stage-to-stage. CLOSED_LOST is deliberately excluded from this
+# sequence and reported separately (see compute_funnel's own docstring)
+# - it is a drop-off OUTCOME that can happen from any open stage, not a
+# step every deal sequentially passes through, so "conversion rate from
+# CLOSED_WON to CLOSED_LOST" (what including it in enum order would
+# produce) is not a meaningful number.
+_FUNNEL_SEQUENCE = (
+    OpportunityStage.QUALIFIED_LEAD,
+    OpportunityStage.MEETING,
+    OpportunityStage.SAMPLE,
+    OpportunityStage.QUOTATION,
+    OpportunityStage.NEGOTIATION,
+    OpportunityStage.PURCHASE_ORDER,
+    OpportunityStage.CLOSED_WON,
+)
+
+
 def compute_funnel(db: Session, company_profile_id: uuid.UUID) -> list[dict]:
     """Pipeline Overview's own aggregation: one GROUP BY over the CURRENT
-    stage distribution (COUNT(*) per stage), returned in the enum's
-    declared order (not creation order) so the funnel always renders
-    stage-by-stage, every stage present even at zero. Deliberately reads
-    Opportunity.stage (current state), not OpportunityStageHistory - "how
-    many deals are AT this stage right now" is a different question from
-    "how many transitions into this stage have ever happened," and
-    Pipeline Overview's funnel is the former. A future stage-duration/
-    velocity report is exactly where OpportunityStageHistory's
-    append-only record earns its keep - out of scope for this slice."""
+    stage distribution (COUNT(*) per stage), every declared stage present
+    even at zero. Deliberately reads Opportunity.stage (current state),
+    not OpportunityStageHistory - "how many deals are AT this stage right
+    now" is a different question from "how many transitions into this
+    stage have ever happened," and Pipeline Overview's funnel is the
+    former. A future stage-duration/velocity report is exactly where
+    OpportunityStageHistory's append-only record earns its keep - out of
+    scope for this slice.
+
+    Each row also carries `conversion_rate_from_previous` (Track C4,
+    Section 3.5's own "conversion-rate math lives here, not duplicated in
+    two frontend components" requirement) - a lightweight, CURRENT-
+    distribution-based approximation (this stage's count / the previous
+    stage's count in _FUNNEL_SEQUENCE), not a cohort/historical
+    conversion rate. Since stages MAY be skipped (Track C3's own design
+    decision), a deal sitting at PURCHASE_ORDER right now may never have
+    been counted at MEETING/SAMPLE/QUOTATION at all - this percentage
+    describes today's relative distribution across stages, not "what
+    fraction of deals that reached stage N ever reached stage N+1." A
+    real cohort-based conversion rate would need to read
+    OpportunityStageHistory instead - explicitly out of scope here, see
+    Section 1.12's own deferral of stage-duration/velocity reporting.
+    None for the first stage (no previous stage to divide by) and
+    whenever the previous stage's count is 0 (avoids a division by zero
+    masquerading as a real percentage). CLOSED_LOST is always None here -
+    it's reported as a separate drop-off figure, not part of the
+    sequential chain - see this module's own _FUNNEL_SEQUENCE comment."""
     stmt = (
         select(Opportunity.stage, func.count())
         .where(Opportunity.company_profile_id == company_profile_id)
         .group_by(Opportunity.stage)
     )
     counts = {stage: count for stage, count in db.execute(stmt).all()}
-    return [{"stage": stage.value, "count": counts.get(stage, 0)} for stage in OpportunityStage]
+
+    rows: list[dict] = []
+    previous_count: int | None = None
+    for stage in _FUNNEL_SEQUENCE:
+        count = counts.get(stage, 0)
+        conversion_rate = None
+        if previous_count is not None and previous_count > 0:
+            conversion_rate = round((count / previous_count) * 100, 1)
+        rows.append({"stage": stage.value, "count": count, "conversion_rate_from_previous": conversion_rate})
+        previous_count = count
+
+    rows.append(
+        {
+            "stage": OpportunityStage.CLOSED_LOST.value,
+            "count": counts.get(OpportunityStage.CLOSED_LOST, 0),
+            "conversion_rate_from_previous": None,
+        }
+    )
+    return rows
 
 
-def compute_pipeline_value(db: Session, company_profile_id: uuid.UUID) -> dict:
-    """Revenue Pipeline's own single-purpose read: SUM(estimated_revenue)
-    over every OPEN (non-closed) Opportunity, plus a separate
-    SUM(actual_revenue) over CLOSED_WON deals only - a distinct "won this
-    period" figure, never folded into the open-pipeline total. A
-    dedicated, cheap endpoint kept separate from compute_funnel's heavier
-    full breakdown, so the KPI strip's own perf budget never depends on
-    it."""
-    open_stmt = select(func.coalesce(func.sum(Opportunity.estimated_revenue), 0)).where(
-        Opportunity.company_profile_id == company_profile_id,
-        Opportunity.stage.notin_([OpportunityStage.CLOSED_WON, OpportunityStage.CLOSED_LOST]),
+def compute_pipeline_value(db: Session, company_profile_id: uuid.UUID) -> list[dict]:
+    """Revenue Pipeline's own read: SUM(estimated_revenue) over every OPEN
+    (non-closed) Opportunity, plus a separate SUM(actual_revenue) over
+    CLOSED_WON deals only - two distinct figures, never folded together.
+
+    Track C4 fix (resolves Section 4.10's explicitly-deferred decision,
+    now that Revenue Pipeline is the exact track that renders this number
+    to a human): grouped BY CURRENCY rather than one blind SUM across
+    every Opportunity regardless of `currency`. Section 4.10's own words:
+    "SUM(amount) across [mixed currencies] is meaningless without
+    conversion" - so this returns one row per distinct currency actually
+    in use (including a `None`/"unspecified" bucket for Opportunities with
+    no currency set) rather than ever silently blending them into one
+    number. In the common single-currency-business case this is exactly
+    one row - the KPI card renders that as its single headline number;
+    a business with genuinely mixed currencies gets an honest breakdown
+    instead of a nonsense total. Empty pipeline (no Opportunities at all)
+    returns an empty list - the widget's own "no pipeline data yet" case,
+    not a fabricated zero-value row for a currency nothing uses."""
+    open_stmt = (
+        select(Opportunity.currency, func.coalesce(func.sum(Opportunity.estimated_revenue), 0))
+        .where(
+            Opportunity.company_profile_id == company_profile_id,
+            Opportunity.stage.notin_([OpportunityStage.CLOSED_WON, OpportunityStage.CLOSED_LOST]),
+        )
+        .group_by(Opportunity.currency)
     )
-    won_stmt = select(func.coalesce(func.sum(Opportunity.actual_revenue), 0)).where(
-        Opportunity.company_profile_id == company_profile_id,
-        Opportunity.stage == OpportunityStage.CLOSED_WON,
+    won_stmt = (
+        select(Opportunity.currency, func.coalesce(func.sum(Opportunity.actual_revenue), 0))
+        .where(
+            Opportunity.company_profile_id == company_profile_id,
+            Opportunity.stage == OpportunityStage.CLOSED_WON,
+        )
+        .group_by(Opportunity.currency)
     )
-    open_pipeline_value = db.scalar(open_stmt)
-    closed_won_value = db.scalar(won_stmt)
-    return {
-        "open_pipeline_value": float(open_pipeline_value or 0),
-        "closed_won_value": float(closed_won_value or 0),
-    }
+    open_by_currency = dict(db.execute(open_stmt).all())
+    won_by_currency = dict(db.execute(won_stmt).all())
+
+    currencies = set(open_by_currency) | set(won_by_currency)
+    return [
+        {
+            "currency": currency,
+            "open_pipeline_value": float(open_by_currency.get(currency, 0) or 0),
+            "closed_won_value": float(won_by_currency.get(currency, 0) or 0),
+        }
+        # None (no currency set) sorts last, real currency codes sort alphabetically.
+        for currency in sorted(currencies, key=lambda c: (c is None, c))
+    ]

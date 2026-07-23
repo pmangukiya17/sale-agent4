@@ -92,21 +92,35 @@ class OpportunityStageHistoryRead(BaseModel):
 
 
 class OpportunityFunnelStage(BaseModel):
-    """One row of GET .../opportunities/funnel - Pipeline Overview's own
-    shape. `count` is how many Opportunities currently sit at `stage`
-    (see app.opportunities.service.compute_funnel's own docstring for why
-    this reads current state, not history)."""
+    """One row of GET .../opportunities/funnel - shared by Sales Pipeline
+    (stage-box counts only) and Pipeline Overview (also reads
+    conversion_rate_from_previous). `count` is how many Opportunities
+    currently sit at `stage` (see
+    app.opportunities.service.compute_funnel's own docstring for why this
+    reads current state, not history). `conversion_rate_from_previous` is
+    a current-distribution approximation (this stage's count / the
+    previous stage's count), None for the first stage and for
+    CLOSED_LOST (a drop-off outcome, not a sequential funnel step) - see
+    compute_funnel's own docstring for the full reasoning and its
+    documented limitation versus a true cohort-based conversion rate."""
 
     stage: OpportunityStage
     count: int
+    conversion_rate_from_previous: float | None = None
 
 
-class OpportunityPipelineValue(BaseModel):
-    """GET .../opportunities/pipeline-value - Revenue Pipeline's own KPI
-    shape. open_pipeline_value sums estimated_revenue across every
-    non-closed Opportunity; closed_won_value sums actual_revenue across
-    CLOSED_WON Opportunities only - two distinct figures, never
-    conflated."""
+class OpportunityCurrencyPipelineValue(BaseModel):
+    """One row of GET .../opportunities/pipeline-value - Revenue
+    Pipeline's own KPI shape, one row per distinct currency actually in
+    use (Track C4 fix - see compute_pipeline_value's own docstring for
+    why this is grouped by currency rather than one blind SUM; `currency`
+    is None for Opportunities with no currency set). open_pipeline_value
+    sums estimated_revenue across every non-closed Opportunity in that
+    currency; closed_won_value sums actual_revenue across CLOSED_WON
+    Opportunities in that currency only - two distinct figures, never
+    conflated. An empty response means no Opportunities exist at all for
+    this business yet."""
 
+    currency: str | None
     open_pipeline_value: float
     closed_won_value: float
