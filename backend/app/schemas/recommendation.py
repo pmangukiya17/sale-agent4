@@ -39,3 +39,31 @@ class RecommendationRead(BaseModel):
     evidence: list[RecommendationEvidenceRead] = []
     created_at: datetime
     updated_at: datetime
+
+
+class RecommendationProspectSummary(BaseModel):
+    """Track C2 (dashboard-capabilities-architecture-plan.md): the
+    minimal Prospect projection the cross-portfolio recommendations feed
+    needs - just enough to identify which prospect a recommendation is
+    about. Mirrors ConversationProspectSummary's own "never the full
+    ProspectRead shape, only what this one view actually renders"
+    discipline (app/schemas/conversation.py) rather than reusing that
+    schema directly across an unrelated domain, or inventing a shared
+    cross-cutting "prospect summary" type this codebase has never had."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+
+
+class RecommendationPortfolioRead(RecommendationRead):
+    """Same shape as RecommendationRead (the existing per-prospect view),
+    plus which prospect this recommendation is about - only meaningful
+    once recommendations are read across an entire portfolio rather than
+    from a single /prospects/{prospect_id}/recommendations URL that
+    already implies the prospect. Used exclusively by the new Track C2
+    cross-portfolio endpoint below; the existing per-prospect endpoints
+    keep using RecommendationRead unchanged."""
+
+    prospect: RecommendationProspectSummary

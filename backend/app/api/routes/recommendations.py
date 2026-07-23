@@ -10,7 +10,7 @@ from app.models.company_profile import CompanyProfile
 from app.models.enums import RecommendationStatus, RecommendationType
 from app.models.prospect import Prospect
 from app.models.recommendation import Recommendation
-from app.schemas.recommendation import RecommendationRead, RecommendationUpdate
+from app.schemas.recommendation import RecommendationPortfolioRead, RecommendationRead, RecommendationUpdate
 
 router = APIRouter()
 
@@ -20,6 +20,46 @@ def _get_prospect_or_404(db: Session, profile_id: uuid.UUID, prospect_id: uuid.U
     if prospect is None or prospect.company_profile_id != profile_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prospect not found")
     return prospect
+
+
+@router.get(
+    "/company-profiles/{company_profile_id}/recommendations",
+    response_model=list[RecommendationPortfolioRead],
+)
+def list_portfolio_recommendations(
+    status_filter: RecommendationStatus | None = Query(None, alias="status"),
+    recommendation_type: RecommendationType | None = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+    profile: CompanyProfile = Depends(get_owned_company_profile),
+    db: Session = Depends(get_db),
+) -> list[Recommendation]:
+    """Track C2 (dashboard-capabilities-architecture-plan.md): the AI
+    Recommendations dashboard widget needs recommendations across a
+    business's entire portfolio of prospects, not one prospect at a time -
+    this is the only genuinely new endpoint C2 adds. Everything else
+    (the Recommendation model, evidence, status transitions) already
+    existed from the per-prospect routes above and is reused unchanged.
+
+    Tenant isolation is enforced by joining through Prospect and filtering
+    on Prospect.company_profile_id, the same pattern every other
+    cross-portfolio endpoint in this codebase uses (e.g. the Discovery
+    portfolio views) - a recommendation can never leak across businesses
+    because it is only reachable via a prospect that itself belongs to
+    the caller's own profile.
+    """
+    stmt = (
+        select(Recommendation)
+        .join(Prospect, Recommendation.prospect_id == Prospect.id)
+        .where(Prospect.company_profile_id == profile.id)
+        .options(selectinload(Recommendation.evidence), selectinload(Recommendation.prospect))
+        .order_by(Recommendation.created_at.desc())
+        .limit(limit)
+    )
+    if status_filter is not None:
+        stmt = stmt.where(Recommendation.status == status_filter)
+    if recommendation_type is not None:
+        stmt = stmt.where(Recommendation.recommendation_type == recommendation_type)
+    return list(db.scalars(stmt).all())
 
 
 @router.get(

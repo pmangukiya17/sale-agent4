@@ -123,23 +123,25 @@ scripts.
 
 | # | Feature | Automated verification available | Manual verification required | Track | Status |
 |---|---|---|---|---|---|
-| 38 | Open Conversations KPI — count endpoint tenant-isolated, status-filtered, zero-conversations edge case (`verify_track_c1.sh`) | Yes | Yes (visual: real number + breathing glow on count > 0) | C1 | Pending |
+| 38 | Open Conversations KPI — count endpoint tenant-isolated, status-filtered, zero-conversations edge case (`verify_track_c1.sh`) | Yes | Yes (visual: real number + breathing glow on count > 0) | C1 | Pass |
+| 39 | AI Recommendations — cross-portfolio endpoint tenant-isolated, status filter, limit, empty-portfolio edge case (`verify_track_c2.sh`) | Yes | Yes (visual: real recommendation rows + breathing glow on recommendations > 0) | C2 | Pending |
 
 ---
 
 ## Summary
 
-- **38 total verification areas.**
-- **21 automated** (Group 1's 17 existing scripts + Group 3's 3 rows,
+- **39 total verification areas.**
+- **22 automated** (Group 1's 17 existing scripts + Group 3's 3 rows,
   covered by `test_track_b2_verification.py`/`verify_track_b2.sh`, +
   Group 4's row 38, covered by `test_open_conversations_count.py`/
-  `verify_track_c1.sh`) + **18 manual** (Group 2's 17 + Group 4's 1
-  visual check).
-- **34 areas in Track B1**, **3 areas in Track B2**, **1 area in Track C1**
-  (more Track C rows will be added as C2-C5 land).
-- **0 executed. All 38 rows are `Pending`.** Writing automated coverage
-  is not the same as running it — every row still needs a real
-  Docker/Postgres/browser pass before this line changes.
+  `verify_track_c1.sh`, + Group 4's row 39, covered by
+  `test_ai_recommendations_portfolio.py`/`verify_track_c2.sh`) + **19
+  manual** (Group 2's 17 + Group 4's 2 visual checks).
+- **34 areas in Track B1**, **3 areas in Track B2**, **1 area in Track C1**,
+  **1 area in Track C2** (more Track C rows will be added as C3-C5 land).
+- **1 executed (row 38, Track C1, `Pass`, confirmed by the CEO against a
+  real Docker/Postgres/browser run). 38 rows remain `Pending`, including
+  row 39 (Track C2) pending the same real Docker/Postgres/browser run.**
 
 This matrix should be updated in place as each row executes — mark each
 `Status` as `Pass`, `Fail`, or `Skipped` (with a one-line reason) rather

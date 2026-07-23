@@ -82,15 +82,16 @@ import { ActivityTimeline } from "../dashboard/ActivityTimeline";
  *    see that note below), World Map (any country with activity today),
  *    Country Intelligence (selected country has prospects), AI Workforce
  *    (an agent is running), AI Pipeline (has prospects), Today's
- *    Priorities (has items needing review). Deliberately NOT active on:
- *    Active Prospects/AI Confidence Score (no "event" distinct from
- *    "there is a number"), Revenue Pipeline (ambient-only - no backend
- *    signal exists yet to honestly drive `active` from; still pending
- *    Track C4), Sales Pipeline/Pipeline Overview/AI Recommendations/
- *    Mailbox Brief (honest "not implemented" placeholders - breathing
- *    would imply live activity that doesn't exist), Activity/Top
- *    Countries (ranked/historical snapshots, no single "happening right
- *    now" event).
+ *    Priorities (has items needing review), AI Recommendations (has
+ *    recommendations - real signal since Track C2, see note below).
+ *    Deliberately NOT active on: Active Prospects/AI Confidence Score
+ *    (no "event" distinct from "there is a number"), Revenue Pipeline
+ *    (ambient-only - no backend signal exists yet to honestly drive
+ *    `active` from; still pending Track C4), Sales Pipeline/Pipeline
+ *    Overview/Mailbox Brief (honest "not implemented" placeholders -
+ *    breathing would imply live activity that doesn't exist), Activity/
+ *    Top Countries (ranked/historical snapshots, no single "happening
+ *    right now" event).
  *
  * Track C1 (dashboard-capabilities-architecture-plan.md): Open
  * Conversations moved from an honest placeholder to real data - a new
@@ -100,6 +101,16 @@ import { ActivityTimeline } from "../dashboard/ActivityTimeline";
  * glow" behavior the CEO's original glow-system worked example named -
  * deferred at the time only because no backend signal existed yet, not
  * because the design was wrong.
+ *
+ * Track C2 (dashboard-capabilities-architecture-plan.md): AI
+ * Recommendations moved from an honest placeholder to real data - a new
+ * cross-portfolio GET .../recommendations endpoint
+ * (app/api/routes/recommendations.py's `list_portfolio_recommendations`)
+ * backs useRecommendationsPortfolio, and `active` now fires on
+ * `recommendations.length > 0`. The existing Recommendation model and
+ * per-prospect endpoints were reused unchanged; only the cross-portfolio
+ * aggregation was new, avoiding the N+1 fan-out the old placeholder's
+ * docstring explicitly refused to do.
  *
  * Glow retune (third Track B1 pass): real-browser feedback on the
  * two-layer system above called the ambient layer "too broad and
@@ -209,7 +220,7 @@ export default function CommandCenter() {
         <SalesPipelineWidget />
         <PipelineFunnel />
         <TodaysPriorities prospects={prospects} isLoading={prospectsLoading} limit={3} compact />
-        <AiRecommendations />
+        <AiRecommendations limit={4} compact />
         <MailboxBrief />
         <ActivityTimeline prospects={prospects} isLoading={prospectsLoading} limit={4} compact />
         <TopPerformingCountries prospects={prospects} isLoading={prospectsLoading} limit={3} compact />

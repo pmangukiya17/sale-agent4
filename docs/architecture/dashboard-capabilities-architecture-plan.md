@@ -874,6 +874,37 @@ Postgres/browser (no Docker in the authoring sandbox) — Status stays
   check, or a straightforward query-count assertion in the test).
 - **Rollback:** same low-risk shape as Track C1 — no migration involved.
 
+**As built (implemented, pending live verification):** matches this scope
+exactly. `GET /company-profiles/{id}/recommendations`
+(`list_portfolio_recommendations` in `app/api/routes/recommendations.py`)
+joins `Recommendation` to `Prospect` and filters on
+`Prospect.company_profile_id == profile.id` — a single query, not the N+1
+fan-out (one recommendations call per prospect) the original
+`AiRecommendations.tsx` placeholder had explicitly refused to introduce;
+`selectinload` eager-loads both `evidence` and `prospect` so the response
+never triggers a lazy-load per row either. Response shape is
+`RecommendationPortfolioRead` (`app/schemas/recommendation.py`) —
+`RecommendationRead` plus a new minimal `RecommendationProspectSummary`
+(`id`, `name` only) identifying which prospect each row belongs to;
+the existing per-prospect routes keep returning plain `RecommendationRead`
+unchanged. Supports the same `status`/`recommendation_type` filters as
+the per-prospect endpoint, plus a `limit` (default 20, max 100) matching
+the dashboard widget's own `limit` prop. `frontend/src/dashboard/
+useRecommendationsPortfolio.ts` is its own scoped hook (mirroring
+`useOpenConversationsCount.ts`'s shape) wired into `AiRecommendations.tsx`,
+which now takes the same `limit`/`compact` props as `TodaysPriorities.tsx`
+and fires `active` on `recommendations.length > 0` — the same "never
+fabricate liveliness" rule Track C1 applied to Open Conversations, now
+carried into a second card. Backend:
+`tests/test_ai_recommendations_portfolio.py` (tenant isolation across two
+businesses' prospects, status filter excluding dismissed rows, limit
+capping the result set, empty-portfolio edge case). Verification:
+`verify_track_c2.sh` at the repo root; Group 4 row 39 in
+`comprehensive-verification-matrix.md`. `tsc -b --force` and `py_compile`
+both clean. Not yet executed against a real Postgres/browser (no Docker
+in the authoring sandbox) — Status stays `Pending` until the CEO runs
+`verify_track_c2.sh` for real.
+
 ### Track C3 — Opportunity domain
 - **Scope:** the full Section 1 design — `Opportunity`,
   `OpportunityStageHistory`, `OpportunityStage` enum, migration,
