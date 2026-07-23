@@ -204,3 +204,54 @@ export function useProspectTasks(companyId: string | undefined, prospectId: stri
 
   return { tasks, isLoading, error, completeTask, dismissTask };
 }
+
+/**
+ * useCompanyTasks — Executive Daily Brief UX follow-up (Track C5, post-
+ * approval). Same read-only GET /company-profiles/{id}/tasks endpoint
+ * useProspectTasks already calls, just without a `prospect_id` filter -
+ * this is an EXISTING, already-shipped, already-tenant-scoped backend
+ * route (app/api/routes/tasks.py's `list_tasks`, which has always
+ * accepted an optional `prospect_id`, never required one); this hook
+ * adds no new backend surface, it only exercises a query-param
+ * combination the frontend never called before. Backs the Executive
+ * Daily Brief's "Follow-ups Due" section - every PENDING Recommended
+ * Action across the whole business, not just one prospect's - since a
+ * morning briefing is a portfolio-wide view by definition, the same
+ * reasoning useRecommendationsPortfolio.ts (Track C2) already gave for
+ * needing its own cross-portfolio fetch instead of one call per
+ * prospect.
+ */
+export function useCompanyTasks() {
+  const { activeCompanyId, isLoading: companiesLoading } = useCompanies();
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(() => {
+    if (!activeCompanyId) {
+      setTasks([]);
+      setIsLoading(false);
+      return;
+    }
+    setIsLoading(true);
+    setError(null);
+    apiClient
+      .get<Task[]>(`/company-profiles/${activeCompanyId}/tasks`, { params: { status: "pending" } })
+      .then((res) => setTasks(res.data))
+      .catch(() => setError("Could not load recommended actions."))
+      .finally(() => setIsLoading(false));
+  }, [activeCompanyId]);
+
+  useEffect(() => {
+    if (companiesLoading) return;
+    refresh();
+  }, [companiesLoading, refresh]);
+
+  return {
+    tasks,
+    isLoading: isLoading || companiesLoading,
+    error,
+    hasActiveCompany: Boolean(activeCompanyId),
+    refresh,
+  };
+}

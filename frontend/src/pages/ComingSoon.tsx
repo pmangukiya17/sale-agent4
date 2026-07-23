@@ -49,6 +49,14 @@ import { Card } from "../design-system";
  * note 9, which explicitly places it under M6, not M5, even after its
  * manual-only design was superseded by M6's persistent Conversation
  * model. No M6 sub-milestone has built it yet.
+ *
+ * Update (Track C5 + its Executive Daily Brief UX follow-up): Mailbox
+ * Brief now has real content too (see MailboxBriefPage.tsx) - App.tsx's
+ * `/mailbox-brief` route no longer uses this component. This file is
+ * kept, unused, rather than deleted: every IA node this component was
+ * ever built for now has real content, but the component itself remains
+ * the correct pattern to reach for the next time a nav item ships ahead
+ * of its content.
  */
 export function ComingSoon({ title, milestone }: { title: string; milestone: string }) {
   return (

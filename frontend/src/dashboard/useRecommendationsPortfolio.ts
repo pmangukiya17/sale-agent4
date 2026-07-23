@@ -25,8 +25,17 @@ export interface PortfolioRecommendation {
  * (own scoped hook, own `refresh`) for the same reason that hook gave:
  * a different entity with its own endpoint, not a fit for
  * useDashboardPortfolio's Prospect-shaped selectors.
+ *
+ * `status` (Executive Daily Brief UX follow-up, post-Track-C5 approval):
+ * an optional pass-through to the SAME `status` query param
+ * `list_portfolio_recommendations` has always accepted
+ * (`status_filter: RecommendationStatus | None = Query(None, alias=
+ * "status")`) - no backend change, just a param this hook never
+ * exercised before. Defaults to `undefined` (every status, unchanged
+ * behavior for the Command Center widget's existing callers) so this
+ * addition is purely additive.
  */
-export function useRecommendationsPortfolio(limit = 5) {
+export function useRecommendationsPortfolio(limit = 5, status?: "new" | "accepted" | "dismissed") {
   const { activeCompanyId, isLoading: companiesLoading } = useCompanies();
   const [recommendations, setRecommendations] = useState<PortfolioRecommendation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -41,11 +50,13 @@ export function useRecommendationsPortfolio(limit = 5) {
     setIsLoading(true);
     setError(null);
     apiClient
-      .get<PortfolioRecommendation[]>(`/company-profiles/${activeCompanyId}/recommendations`, { params: { limit } })
+      .get<PortfolioRecommendation[]>(`/company-profiles/${activeCompanyId}/recommendations`, {
+        params: { limit, ...(status ? { status } : {}) },
+      })
       .then((res) => setRecommendations(res.data))
       .catch(() => setError("Could not load recommendations."))
       .finally(() => setIsLoading(false));
-  }, [activeCompanyId, limit]);
+  }, [activeCompanyId, limit, status]);
 
   useEffect(() => {
     if (companiesLoading) return;

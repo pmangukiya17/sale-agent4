@@ -36,7 +36,7 @@ import AIWorkforce from "./pages/AIWorkforce";
 import Analytics from "./pages/Analytics";
 import Reports from "./pages/Reports";
 import Conversations from "./pages/Conversations";
-import { ComingSoon } from "./pages/ComingSoon";
+import MailboxBriefPage from "./pages/MailboxBriefPage";
 
 export default function App() {
   return (
@@ -378,12 +378,17 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      {/* Executive Daily Brief - UX follow-up requested right after the
+          CEO's Track C5 approval: real Mailbox Brief backend (Track C5),
+          redesigned dedicated page (see MailboxBriefPage.tsx's own
+          docstring for the full section-by-section data-reuse mapping).
+          The last ComingSoon placeholder route in the app is now real. */}
       <Route
         path="/mailbox-brief"
         element={
           <ProtectedRoute>
             <DashboardLayout>
-              <ComingSoon title="Mailbox Brief" milestone="M6 (Reply Intelligence & Conversation Management)" />
+              <MailboxBriefPage />
             </DashboardLayout>
           </ProtectedRoute>
         }

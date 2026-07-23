@@ -139,6 +139,19 @@ import { ActivityTimeline } from "../dashboard/ActivityTimeline";
  * project already had (see app/mailbox_brief/context.py) - no raw email
  * content is stored or read here.
  *
+ * Executive Daily Brief UX follow-up (frontend/UI-only, right after the
+ * CEO's Track C5 approval - no backend/schema change): this card stays
+ * exactly as described above - compact, ambient/active glow unchanged -
+ * but the dedicated `/mailbox-brief` route it links to (Sidebar nav) was
+ * redesigned from the M8.2-era `ComingSoon` placeholder into the full
+ * "Executive Daily Brief" experience: Urgent Replies, Follow-ups Due,
+ * Potential Buyers, Pipeline Snapshot, AI Recommendations, and this same
+ * generated Executive Summary, all on one page. See
+ * MailboxBriefPage.tsx's own docstring for the section-by-section data
+ * source mapping - every section reuses an already-existing, already-
+ * tenant-scoped read endpoint from an earlier track (C2/C3/C4/M6.5/
+ * M6.6), not a new one.
+ *
  * Glow retune (third Track B1 pass): real-browser feedback on the
  * two-layer system above called the ambient layer "too broad and
  * diffused... slightly hazy" and asked for the original single-layer
