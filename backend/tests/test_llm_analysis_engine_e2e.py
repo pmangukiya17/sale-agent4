@@ -15,6 +15,24 @@ LLMAnalysisEngine's own mapping/degradation logic (ORM -> primitives ->
 AnalysisOutcome), not re-proving AgentRuntime itself (already covered by
 test_research_analysis_agent_full_chain_e2e.py).
 
+Imports app.db.base before any app.models.* import, same as every other
+DB-backed test in this project (test_research_workflow_e2e.py,
+test_discovery_search_service_e2e.py, ...): app.db.base is the one
+module that imports every mapped model class, so every string-based
+relationship target (e.g. CompanyProfile.industries -> "Industry") is
+registered in SQLAlchemy's mapper registry BEFORE the first mapped class
+is ever instantiated in this process. SQLAlchemy configures every
+as-yet-unconfigured mapper the moment any one mapped class is first
+used - skipping this import (as this file originally did) means
+whichever model this file instantiates first becomes, by accident, the
+trigger for a project-wide mapper configuration pass that only "sees"
+the handful of model modules this file itself happened to import
+directly (CompanyProfile/Product/Prospect/RawDocument), not the full
+set - so a relationship target like "Industry" that no import in this
+file ever touches directly fails to resolve. This is a test-file-only
+fix (one import, correctly ordered) - no production code changes, no
+weakened assertions, no bypassing of mapper configuration.
+
 Run standalone (Docker/full environment only) with:
     python -m unittest tests.test_llm_analysis_engine_e2e
 """
@@ -23,6 +41,7 @@ import uuid
 from datetime import datetime, timezone
 from unittest.mock import patch
 
+from app.db import base as _base  # noqa: F401  (registers every model - see module docstring)
 from app.ai_agents.base import AgentExecutionResult, AgentOutcome, AgentOutput
 from app.models.company_profile import CompanyProfile
 from app.models.enums import AIAnalysisType

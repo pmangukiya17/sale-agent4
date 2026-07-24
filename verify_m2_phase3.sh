@@ -104,6 +104,19 @@ docker compose exec -T backend python smoke_test.py || python3 smoke_test.py
 echo
 echo "ALL AUTOMATED CHECKS COMPLETE"
 echo
+echo "Fix note (this revision): tests.test_llm_analysis_engine_e2e's own"
+echo "three tests originally failed with sqlalchemy.exc.InvalidRequestError"
+echo "('Industry' failed to locate a name) the first time step 3 actually"
+echo "ran in Docker. Root cause: that file instantiated Prospect/"
+echo "CompanyProfile/Product/RawDocument directly without first importing"
+echo "app.db.base - the one module that imports every mapped model class"
+echo "so string-based relationship targets (CompanyProfile.industries ->"
+echo "'Industry') are registered before SQLAlchemy auto-configures mappers"
+echo "on first use. Every other DB-backed test in this project already"
+echo "does 'from app.db import base as _base' for exactly this reason;"
+echo "this file and test_analysis_engine_registry_e2e.py now do too - a"
+echo "test-file-only fix, no production code changed, no test weakened."
+echo
 echo "Manual verification checklist (this is the only way to prove the LLM"
 echo "engine for real - no real Anthropic API key/network in the authoring"
 echo "sandbox):"

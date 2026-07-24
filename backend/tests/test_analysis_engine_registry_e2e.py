@@ -7,11 +7,21 @@ SQLAlchemy ORM models - both confirmed absent here, no PyPI/network
 access to install them. py_compile-checked clean here; run for real in
 Docker.
 
+Imports app.db.base before any model-touching import, same as every
+other DB-backed test in this project - both engine classes returned by
+get_analysis_engine() ultimately reach ResearchContext/RawDocument
+(SQLAlchemy-mapped), and CompanyProfile's own "Industry" relationship
+target (a string, resolved lazily) only resolves if app.models.industry
+has actually been imported somewhere in this process before the first
+mapper is configured. See test_llm_analysis_engine_e2e.py's own
+docstring for the full root-cause explanation.
+
 Run standalone (Docker/full environment only) with:
     python -m unittest tests.test_analysis_engine_registry_e2e
 """
 import unittest
 
+from app.db import base as _base  # noqa: F401  (registers every model - see module docstring)
 from app.core.config import settings
 from app.research.analysis.deterministic_stub import DeterministicAnalysisEngine
 from app.research.analysis.llm_engine import LLMAnalysisEngine
