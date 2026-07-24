@@ -4,6 +4,7 @@ import { apiClient } from "../api/client";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Card, Badge, Button, Input, Select, PlaceholderNotice } from "../design-system";
 import type { BadgeTone } from "../design-system";
+import { providerLabel } from "../discovery/useDiscoveryExecution";
 
 type ProspectStatus =
   | "new" | "duplicate_review" | "scored" | "qualified" | "unqualified"
@@ -28,6 +29,13 @@ interface ProspectContact {
   confidence: number | null;
 }
 
+// M2 Phase 2 UX follow-up - only the field this page actually renders
+// (a provider badge). ProspectSourceRead itself carries more (source_url,
+// discovered_at, provider_confidence, raw_result_id) - not needed here.
+interface ProspectSource {
+  provider_key: string;
+}
+
 interface Prospect {
   id: string;
   name: string;
@@ -43,6 +51,12 @@ interface Prospect {
   duplicate_confidence: number | null;
   rejection_reason: string | null;
   contacts: ProspectContact[];
+  // Already returned by GET .../prospects (ProspectRead.sources) - this
+  // type simply stopped dropping it. One badge per DISTINCT provider_key
+  // below is the visible proof that a prospect re-sighted by more than
+  // one provider (M2 Phase 2's cross-provider dedup) really did collapse
+  // into one row, not two.
+  sources: ProspectSource[];
 }
 
 interface TimelineEvent {
@@ -286,6 +300,10 @@ export default function Prospects() {
 
         {prospects.map((prospect) => {
           const isOpen = expandedId === prospect.id;
+          // Distinct provider_keys only - a prospect re-seen twice by the
+          // SAME provider (e.g. two manual_csv rows before dedup) should
+          // still show one badge per provider, not one per sighting.
+          const providerKeys = Array.from(new Set((prospect.sources ?? []).map((s) => s.provider_key)));
           return (
             <Card key={prospect.id}>
               <button className="flex w-full items-start justify-between text-left" onClick={() => toggleExpand(prospect)}>
@@ -293,6 +311,9 @@ export default function Prospects() {
                   <div className="mb-1 flex items-center gap-2">
                     <h3 className="font-semibold text-slate-100">{prospect.name}</h3>
                     <Badge tone={STATUS_TONES[prospect.status]}>{STATUS_LABELS[prospect.status]}</Badge>
+                    {providerKeys.map((key) => (
+                      <Badge key={key} tone="neutral">{providerLabel(key)}</Badge>
+                    ))}
                     {prospect.potential_duplicate_of_prospect_id && (
                       <Badge tone="warning">
                         possible duplicate ({Math.round((prospect.duplicate_confidence ?? 0) * 100)}%)

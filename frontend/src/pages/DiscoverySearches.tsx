@@ -4,7 +4,7 @@ import { apiClient } from "../api/client";
 import { FormSection, Field, inputClass } from "../components/FormSection";
 import { Toggle } from "../components/Toggle";
 import { Breadcrumbs } from "../components/Breadcrumbs";
-import { Card, Button, Input, Select, PlaceholderNotice } from "../design-system";
+import { Card, Badge, Button, Input, Select, PlaceholderNotice } from "../design-system";
 
 type SearchDepth = "quick" | "standard" | "deep";
 type SearchFrequency = "manual" | "daily" | "weekly";
@@ -57,7 +57,24 @@ const emptyCandidateRow = (): CandidateBuyerRow => ({
   description: "",
 });
 
-const AVAILABLE_PROVIDERS = [{ key: "manual_csv", label: "Manual / CSV Import" }];
+// M2 Phase 2 UX follow-up: real, registry-backed providers (previously
+// this was a hardcoded array with only manual_csv in it - brave_search
+// was invisible in the UI even though the backend has supported it
+// since Phase 2). Fetched from GET /discovery-providers - see
+// app/api/routes/discovery_providers.py.
+interface DiscoveryProvider {
+  key: string;
+  name: string;
+  enabled: boolean;
+  capabilities: Record<string, unknown>;
+}
+
+// Roadmap providers with no code behind them yet - deliberately a
+// static, frontend-only list (not a backend concept - see
+// docs/architecture/m2-phase2-ux-implementation-plan.md's own reasoning
+// for why inventing a "planned provider" registry entry for
+// not-yet-built code would be over-building for a roadmap teaser).
+const COMING_SOON_PROVIDERS = ["OpenCorporates", "Europages", "TradeIndia", "Alibaba", "Kompass"];
 
 interface SearchForm {
   name: string;
@@ -95,6 +112,7 @@ export default function DiscoverySearches() {
   const [searches, setSearches] = useState<DiscoverySearch[]>([]);
   const [templates, setTemplates] = useState<SearchTemplate[]>([]);
   const [icps, setIcps] = useState<IcpOption[]>([]);
+  const [providers, setProviders] = useState<DiscoveryProvider[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<SearchForm>(EMPTY_FORM);
@@ -108,11 +126,17 @@ export default function DiscoverySearches() {
       apiClient.get(`/company-profiles/${companyId}/discovery-searches`),
       apiClient.get(`/company-profiles/${companyId}/search-templates`),
       apiClient.get(`/company-profiles/${companyId}/icp-criteria`),
-    ]).then(([searchRes, templateRes, icpRes]) => {
+      // Not company-profile-scoped (provider availability is a
+      // platform-wide fact, not tenant data - see the route's own
+      // docstring) - fetched here anyway for simplicity, alongside
+      // everything else this page loads once.
+      apiClient.get(`/discovery-providers`),
+    ]).then(([searchRes, templateRes, icpRes, providersRes]) => {
       const loadedSearches: DiscoverySearch[] = searchRes.data;
       setSearches(loadedSearches);
       setTemplates(templateRes.data);
       setIcps(icpRes.data);
+      setProviders(providersRes.data);
       // Seed the candidate-buyer table from whatever was already saved on
       // each search's query_spec.rows, without clobbering rows the user is
       // actively editing in this session (only seed searches not seen yet).
@@ -302,12 +326,26 @@ export default function DiscoverySearches() {
                 <option value="standard">Standard</option>
                 <option value="deep">Deep</option>
               </Select>
+              {/* Priority 3 (M2 Phase 2 UX follow-up): Search Depth is
+                  stored and does not yet change how a search actually
+                  runs - an informational caption, not a disabled control,
+                  since picking any value here is harmless (unlike Search
+                  Frequency's "Daily", it implies no ongoing commitment
+                  the system fails to honor). See
+                  docs/architecture/m2-phase2-ux-implementation-plan.md
+                  for the full reasoning. */}
+              <p className="mt-1 text-xs text-slate-500">Not yet used to vary search scope — informational only for now.</p>
             </Field>
             <Field label="Search frequency">
               <Select value={form.search_frequency} onChange={(e) => update("search_frequency", e.target.value as SearchFrequency)}>
                 <option value="manual">Manual</option>
-                <option value="daily">Daily (not yet automated)</option>
-                <option value="weekly">Weekly (not yet automated)</option>
+                {/* Priority 1 (M2 Phase 2 UX follow-up): disabled, not
+                    removed - kept visible so the roadmap direction (real
+                    scheduled automation, a future milestone) stays
+                    honestly signaled, but not selectable, so no one can
+                    pick a setting that silently does nothing. */}
+                <option value="daily" disabled>Daily — Available in a future automation milestone</option>
+                <option value="weekly" disabled>Weekly — Available in a future automation milestone</option>
               </Select>
             </Field>
             <Field label="Active">
@@ -315,10 +353,14 @@ export default function DiscoverySearches() {
             </Field>
             <Field label="Providers" full>
               <div className="flex flex-wrap gap-3">
-                {AVAILABLE_PROVIDERS.map((p) => (
-                  <label key={p.key} className="flex items-center gap-2 text-sm text-slate-300">
+                {providers.map((p) => (
+                  <label
+                    key={p.key}
+                    className={`flex items-center gap-2 text-sm ${p.enabled ? "text-slate-300" : "text-slate-500"}`}
+                  >
                     <input
                       type="checkbox"
+                      disabled={!p.enabled}
                       checked={form.provider_keys.includes(p.key)}
                       onChange={() =>
                         update(
@@ -328,9 +370,23 @@ export default function DiscoverySearches() {
                             : [...form.provider_keys, p.key]
                         )
                       }
-                      className="h-4 w-4 rounded border-border-hairline-strong bg-surface-1 accent-accent-primary"
+                      className="h-4 w-4 rounded border-border-hairline-strong bg-surface-1 accent-accent-primary disabled:cursor-not-allowed disabled:opacity-50"
                     />
-                    {p.label}
+                    {p.name}
+                    <Badge tone={p.enabled ? "success" : "neutral"}>{p.enabled ? "Ready" : "Not configured"}</Badge>
+                  </label>
+                ))}
+                {/* Priority 2 (M2 Phase 2 UX follow-up): static roadmap
+                    entries, visually distinct from a real-but-unconfigured
+                    provider above ("Coming soon" means the code doesn't
+                    exist yet; "Not configured" means it exists and just
+                    needs setup - two different states, two different
+                    badges). */}
+                {COMING_SOON_PROVIDERS.map((name) => (
+                  <label key={name} className="flex items-center gap-2 text-sm text-slate-500">
+                    <input type="checkbox" disabled className="h-4 w-4 rounded border-border-hairline-strong bg-surface-1 opacity-50" />
+                    {name}
+                    <Badge tone="neutral">Coming soon</Badge>
                   </label>
                 ))}
               </div>

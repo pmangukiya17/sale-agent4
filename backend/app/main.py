@@ -16,6 +16,7 @@ from app.api.routes import (
     delivery_onboarding,
     delivery_queue_items,
     discovery_jobs,
+    discovery_providers,
     discovery_runs,
     discovery_searches,
     events,
@@ -211,6 +212,10 @@ app.include_router(search_templates.router, prefix=API_PREFIX)
 app.include_router(discovery_searches.router, prefix=API_PREFIX)
 app.include_router(discovery_jobs.router, prefix=API_PREFIX)
 app.include_router(discovery_runs.router, prefix=API_PREFIX)
+# M2 Phase 2 UX follow-up: read-only provider visibility, not nested
+# under /company-profiles/{id}/... - see discovery_providers.py's own
+# docstring for why (mirrors reference_data.router's own shape).
+app.include_router(discovery_providers.router, prefix=API_PREFIX)
 app.include_router(prospects.router, prefix=API_PREFIX)
 app.include_router(prospect_contacts.router, prefix=API_PREFIX)
 app.include_router(prospect_timeline.router, prefix=API_PREFIX)

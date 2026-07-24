@@ -71,11 +71,20 @@ const STREAM_REFRESH_DEBOUNCE_MS = 500;
 
 const TERMINAL_JOB_STATUSES = new Set(["completed", "partially_completed", "failed", "cancelled"]);
 
-function providerLabel(providerKey: string): string {
-  // Deliberately no hardcoded provider name map beyond light cosmetics -
-  // an unrecognized future provider_key still renders (title-cased,
-  // underscores as spaces) rather than being silently dropped, per
-  // Principle 5 ("dynamic providers... render them dynamically").
+// Exported (M2 Phase 2 UX follow-up) - Prospects.tsx and
+// DiscoveryJobs.tsx both need the exact same "unrecognized provider_key
+// still renders sensibly" fallback for their own provider badges,
+// rather than each maintaining a second copy of this title-casing
+// logic. Deliberately no hardcoded provider name map beyond light
+// cosmetics - an unrecognized future provider_key still renders
+// (title-cased, underscores as spaces) rather than being silently
+// dropped, per Principle 5 ("dynamic providers... render them
+// dynamically"). Callers that have a REAL display name available (e.g.
+// from GET /discovery-providers' own `name` field) should prefer that
+// over this fallback - this exists specifically for the case where only
+// a bare provider_key is on hand (a Prospect's `sources`, a
+// DiscoveryJobProviderRun with no accompanying provider list fetched).
+export function providerLabel(providerKey: string): string {
   return providerKey
     .split("_")
     .map((part) => (part.length > 0 ? part[0].toUpperCase() + part.slice(1) : part))

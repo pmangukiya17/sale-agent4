@@ -4,6 +4,7 @@ import { apiClient } from "../api/client";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Card, Badge, PlaceholderNotice } from "../design-system";
 import type { BadgeTone } from "../design-system";
+import { providerLabel } from "../discovery/useDiscoveryExecution";
 
 interface DiscoveryJobProviderRun {
   provider_key: string;
@@ -98,8 +99,19 @@ export default function DiscoveryJobs() {
           return (
             <Card key={job.id}>
               <button className="flex w-full items-center justify-between text-left" onClick={() => setExpandedId(isOpen ? null : job.id)}>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <Badge tone={STATUS_TONES[job.status] ?? "neutral"}>{job.status}</Badge>
+                  {/* M2 Phase 2 UX follow-up: at-a-glance which providers
+                      actually ran and how each one finished - colored by
+                      that PROVIDER's own run status, reusing the same
+                      STATUS_TONES vocabulary as the job's overall status
+                      above since the values overlap exactly
+                      (completed/failed/cancelled). The detailed per-provider
+                      text (duration/cost/tokens) stays below, unchanged, for
+                      anyone who wants it - these badges are for scanning. */}
+                  {job.provider_runs.map((pr, i) => (
+                    <Badge key={i} tone={STATUS_TONES[pr.status] ?? "neutral"}>{providerLabel(pr.provider_key)}</Badge>
+                  ))}
                   <span className="text-sm text-slate-200">
                     {job.started_at ? new Date(job.started_at).toLocaleString() : "—"}
                   </span>

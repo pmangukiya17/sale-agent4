@@ -21,6 +21,14 @@ from app.discovery.providers.base import (
 class ManualCSVProvider(DiscoveryProvider):
     key = "manual_csv"
 
+    def provider_name(self) -> str:
+        # Overrides the base class default (which would just be
+        # `self.key` = "manual_csv") so the Provider Visibility UX work
+        # (M2 Phase 2 follow-up) has one real display name to show,
+        # matching the label the frontend has hardcoded since M1 rather
+        # than maintaining a second, parallel label map.
+        return "Manual / CSV Import"
+
     def search(self, query_spec: dict[str, Any], context: DiscoveryContext) -> ProviderSearchOutcome:
         rows = query_spec.get("rows")
         if not isinstance(rows, list):

@@ -83,6 +83,17 @@ def get_provider(provider_key: str) -> "DiscoveryProvider":
     return provider_cls()
 
 
+def list_registered_provider_keys() -> list[str]:
+    """The one intentional, public way for a caller OUTSIDE
+    app/discovery/ to learn what's registered here - added for
+    app.discovery.provider_service.DiscoveryProviderService, which the
+    API layer depends on instead of importing this module directly (see
+    that module's own docstring for why). _PROVIDER_IMPORT_PATHS itself
+    stays private - internal wiring detail, not something a caller
+    should iterate directly."""
+    return list(_PROVIDER_IMPORT_PATHS)
+
+
 def is_search_provider(provider_key: str) -> bool:
     """True if this provider_key must be routed through
     app.discovery.search_service.SearchService rather than called
