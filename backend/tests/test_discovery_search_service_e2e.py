@@ -124,6 +124,23 @@ class SearchServiceE2ETestBase(unittest.TestCase):
         self.db.query(Prospect).filter(Prospect.company_profile_id == self.company_profile.id).delete(synchronize_session=False)
         self.db.commit()
 
+        # Bug fix (reported after Docker verification): DiscoverySearch
+        # itself was never deleted here, so the SearchTemplate/ICPCriteria
+        # delete below violated discovery_searches_search_template_id_fkey
+        # (RESTRICT, not CASCADE - this project's own standing FK
+        # convention) whenever a DiscoverySearch row still referenced
+        # them. DiscoveryJob/DiscoveryRun (which reference DiscoverySearch
+        # via discovery_search_id) and Prospect (via discovery_search_id)
+        # are both already deleted above, so it's now safe to delete
+        # DiscoverySearch itself before its own parents
+        # (SearchTemplate/ICPCriteria) - the exact same order
+        # tests/test_discovery_job_cancellation.py's own tearDown already
+        # uses correctly.
+        self.db.query(DiscoverySearch).filter(DiscoverySearch.company_profile_id == self.company_profile.id).delete(
+            synchronize_session=False
+        )
+        self.db.commit()
+
         self.db.query(Product).filter(Product.company_profile_id == self.company_profile.id).delete(synchronize_session=False)
         self.db.query(ICPCriteria).filter(ICPCriteria.company_profile_id == self.company_profile.id).delete(
             synchronize_session=False
