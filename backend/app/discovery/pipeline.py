@@ -51,6 +51,25 @@ relies on). Whatever has already been committed (Prospects created,
 DiscoveryProviderResults recorded, counts) is never rolled back or
 discarded - a cancelled job is a genuinely partially-completed one, not
 a wiped one.
+
+M2 Phase 2: query-driven ("search-type") providers - BraveSearchProvider
+today - are never called directly here. Per
+docs/architecture/m2-discovery-provider-strategy.md Section 11.1
+(CEO-approved), this function still loops over search.provider_keys
+exactly as before, but for a provider_key classified as "search-type"
+(app.discovery.providers.registry.is_search_provider()) it builds a
+QueryPlan (app.discovery.query_planner.build_query_plan(), fed by
+_build_query_plan_input() below) and calls
+app.discovery.search_service.discover() instead of
+get_provider(provider_key).search(query_spec, context) directly - the
+one and only change to this loop's own "obtain outcome" step. Every
+cancellation checkpoint, every commit, every downstream
+normalization/validation/dedup/scoring line is completely unchanged:
+both paths still produce the same ProviderSearchOutcome shape this
+function already knew how to process before this phase existed.
+manual_csv (row-driven, not query-driven) is unaffected - it still goes
+through get_provider(provider_key).search(query_spec, context) exactly
+as it always has.
 """
 from datetime import datetime, timezone
 
@@ -62,8 +81,10 @@ from app.discovery.dedup import find_duplicate
 from app.discovery.identifier_lookup import find_duplicate_by_identifier
 from app.discovery.normalization import IndustryRef, normalize_candidate
 from app.discovery.providers.base import ProviderError
-from app.discovery.providers.registry import get_provider
+from app.discovery.providers.registry import get_provider, is_search_provider
+from app.discovery.query_planner import QueryPlanInput, build_query_plan
 from app.discovery.scoring import score_prospect
+from app.discovery.search_service import discover as search_service_discover
 from app.discovery.validation import validate_candidate
 from app.models.company_profile import CompanyProfile
 from app.models.discovery_job import DiscoveryJob
@@ -167,6 +188,30 @@ def _load_known_industries(db: Session) -> list[IndustryRef]:
     themselves - see normalization.py's own docstring for why."""
     rows = db.scalars(select(Industry).where(Industry.is_active.is_(True))).all()
     return [IndustryRef(id=str(row.id), name=row.name) for row in rows]
+
+
+def _build_query_plan_input(context: DiscoveryContext) -> QueryPlanInput:
+    """M2 Phase 2: reads context.products/context.icp's own ORM
+    relationships (BuyerType/Industry/Country/Language rows, each a real
+    lazy-loaded relationship needing this function's own active Session)
+    and flattens them into plain strings - the exact same "touch the ORM
+    here, hand pure primitives to the pure function" split
+    _load_known_industries() above already established for
+    app.discovery.normalization.resolve_industry(). Kept here, not inside
+    app.discovery.query_planner itself, specifically so that module stays
+    genuinely zero-ORM-dependency - see its own docstring for why that
+    property matters to this project."""
+    product_names = [p.name for p in context.products if p.name]
+    product_keywords = [kw for p in context.products for kw in (p.keywords or []) if kw]
+    icp = context.icp
+    return QueryPlanInput(
+        product_names=product_names,
+        product_keywords=product_keywords,
+        buyer_types=[bt.name for bt in icp.target_buyer_types if bt.name],
+        industries=[i.name for i in icp.target_industries if i.name],
+        countries=[c.name for c in icp.target_markets if c.name],
+        languages=[lang.code for lang in icp.languages if lang.code],
+    )
 
 
 def _backfill_identifier_fields(prospect: Prospect, normalized) -> list[str]:
@@ -297,7 +342,21 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
 
         started_at = _now()
         try:
-            provider = get_provider(provider_key)
+            if is_search_provider(provider_key):
+                # M2 Phase 2: query-driven provider - routed through the
+                # Search Service, never called directly. See this
+                # module's own docstring and
+                # app.discovery.search_service's docstring.
+                # search_service.discover() resolves the real provider
+                # internally and raises KeyError for an unknown
+                # provider_key, exactly like get_provider() below does
+                # for a direct provider - the except KeyError branch
+                # underneath handles both paths identically.
+                query_plan = build_query_plan(_build_query_plan_input(context))
+                outcome = search_service_discover(provider_key, query_plan, context)
+            else:
+                provider = get_provider(provider_key)
+                outcome = provider.search(query_spec, context)
         except KeyError as exc:
             any_failure = True
             error_messages.append(str(exc))
@@ -316,9 +375,6 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
             _publish_job_progress(db, job, search.company_profile_id)
             db.commit()
             continue
-
-        try:
-            outcome = provider.search(query_spec, context)
         except ProviderError as exc:
             any_failure = True
             error_messages.append(f"{provider_key}: {exc}")

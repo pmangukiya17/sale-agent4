@@ -207,6 +207,31 @@ class Settings(BaseSettings):
     # frontend mints a fresh ticket first rather than reusing a stale one.
     REALTIME_STREAM_TICKET_EXPIRE_SECONDS: int = 300
 
+    # --- M2 Phase 2: External Research Provider Framework ------------------
+    # No default for the key itself, deliberately - same "unset until
+    # configured, lazy-checked at first real use" precedent as
+    # CREDENTIAL_ENCRYPTION_KEY/ANTHROPIC_API_KEY above. BraveSearchProvider.
+    # health() checks this (and BRAVE_SEARCH_ENABLED below) before ever
+    # attempting a real call - see app/discovery/providers/brave_search.py.
+    BRAVE_SEARCH_API_KEY: str | None = None
+    # A separate, explicit kill switch from "is a key present" - lets an
+    # operator disable Brave Search without unsetting/losing the key (e.g.
+    # a temporary pause during a billing dispute or an incident), and lets
+    # the Provider Registry's iter_enabled_providers() answer "enabled or
+    # not" without conflating "configured" and "turned on" into one flag.
+    BRAVE_SEARCH_ENABLED: bool = True
+    BRAVE_SEARCH_BASE_URL: str = "https://api.search.brave.com/res/v1/web/search"
+    BRAVE_SEARCH_TIMEOUT_SECONDS: float = 10.0
+    # Attempts PER QUERY VARIATION before BraveSearchProvider.search() gives
+    # up and raises ProviderError for that one variation - independent of,
+    # and one layer below, app.discovery.search_service.SearchService's own
+    # per-variation graceful degradation (one variation exhausting its
+    # retries doesn't fail every other variation for this provider - see
+    # that module's own docstring). Mirrors the same
+    # "attempts-per-provider-before-giving-up" shape as
+    # AI_GATEWAY_MAX_ATTEMPTS_PER_PROVIDER, applied to a different layer.
+    BRAVE_SEARCH_MAX_RETRIES: int = 2
+
     @property
     def sqlalchemy_database_uri(self) -> str:
         if self.DATABASE_URL:
