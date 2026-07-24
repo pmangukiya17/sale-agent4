@@ -19,6 +19,17 @@ DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE instead - but this function's own
 signature and every one of its existing synchronous callers (tests,
 scripts) continue to work completely unchanged; incremental commits are an
 internal implementation detail, not a contract change.
+
+M2 Phase 1b: dedup is now three-tier. Tier 1 (government identifier
+exact match - app.discovery.identifier_lookup.find_duplicate_by_identifier())
+is checked first, before the existing find_duplicate() call (tiers 2/3:
+website exact match, then fuzzy name+country). A tier-1 match is treated
+exactly like today's definite-website-match branch (re-sighting, not a
+new Prospect); either way, any newly-supplied vat_number/
+registration_number/email is opportunistically backfilled onto the
+matched Prospect if it didn't already have a value for that field (see
+_backfill_identifier_fields() below) - conflicting values are never
+silently overwritten, only logged.
 """
 from datetime import datetime, timezone
 
@@ -27,6 +38,7 @@ from sqlalchemy.orm import Session
 
 from app.discovery.context import DiscoveryContext
 from app.discovery.dedup import find_duplicate
+from app.discovery.identifier_lookup import find_duplicate_by_identifier
 from app.discovery.normalization import IndustryRef, normalize_candidate
 from app.discovery.providers.base import ProviderError
 from app.discovery.providers.registry import get_provider
@@ -126,6 +138,29 @@ def _load_known_industries(db: Session) -> list[IndustryRef]:
     themselves - see normalization.py's own docstring for why."""
     rows = db.scalars(select(Industry).where(Industry.is_active.is_(True))).all()
     return [IndustryRef(id=str(row.id), name=row.name) for row in rows]
+
+
+def _backfill_identifier_fields(prospect: Prospect, normalized) -> list[str]:
+    """M2 Phase 1b: on any re-sighting (whether matched via tier 1
+    identifier, tier 2 website, or flagged as a tier 3 potential
+    duplicate), opportunistically fills in a vat_number/registration_number/
+    email the existing Prospect didn't already have. Never overwrites an
+    existing, different value - two occurrences disagreeing on an
+    identifier is a data-quality signal worth recording (see the return
+    value, logged by the caller as a timeline event), not something this
+    function silently resolves one way or the other. Returns the list of
+    conflict descriptions found (empty if none)."""
+    conflicts: list[str] = []
+    for field_name in ("vat_number", "registration_number", "email"):
+        new_value = getattr(normalized, field_name)
+        if not new_value:
+            continue
+        existing_value = getattr(prospect, field_name)
+        if existing_value is None:
+            setattr(prospect, field_name, new_value)
+        elif existing_value != new_value:
+            conflicts.append(f"{field_name}: existing='{existing_value}' new='{new_value}' (kept existing)")
+    return conflicts
 
 
 def _score_and_apply(db: Session, prospect: Prospect, icp: ICPCriteria, products: list[Product]) -> None:
@@ -278,9 +313,15 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
                 company_size_range=raw.company_size_range,
                 description=raw.description,
                 known_industries=known_industries,
+                # M2 Phase 1b
+                vat_number=raw.vat_number,
+                registration_number=raw.registration_number,
+                email=raw.email,
             )
             validation_result = validate_candidate(
-                name=normalized.name, website=normalized.website, country=normalized.country
+                name=normalized.name, website=normalized.website, country=normalized.country,
+                # M2 Phase 1b
+                vat_number=normalized.vat_number, registration_number=normalized.registration_number,
             )
 
             provider_result = DiscoveryProviderResult(
@@ -314,52 +355,81 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
                 })
                 continue
 
-            match = find_duplicate(
-                existing_prospects, name=normalized.name, website=normalized.website, country=normalized.country
-            )
+            # M2 Phase 1b - tier 1: exact match on a government
+            # identifier, the strongest signal, checked before website/
+            # fuzzy matching. See app/discovery/identifier_lookup.py and
+            # this module's own docstring.
+            identifier_prospect = None
+            if normalized.vat_number or normalized.registration_number:
+                identifier_prospect = find_duplicate_by_identifier(
+                    db, search.company_profile_id,
+                    vat_number=normalized.vat_number,
+                    registration_number=normalized.registration_number,
+                )
 
-            if match and match.is_definite:
-                prospect = match.prospect
+            if identifier_prospect is not None:
+                prospect = identifier_prospect
                 prospect.last_seen_at = fetched_at
                 matched_count += 1
+                conflicts = _backfill_identifier_fields(prospect, normalized)
                 db.add(ProspectTimelineEvent(
                     prospect_id=prospect.id, event_type="reseen_by_provider", actor="system",
-                    payload={"provider_key": provider_key, "discovery_job_id": str(job.id)},
+                    payload={
+                        "provider_key": provider_key, "discovery_job_id": str(job.id), "matched_via": "identifier",
+                        **({"identifier_conflicts": conflicts} if conflicts else {}),
+                    },
                 ))
             else:
-                prospect = Prospect(
-                    company_profile_id=search.company_profile_id,
-                    discovery_search_id=search.id,
-                    name=normalized.name,
-                    website=normalized.website,
-                    country=normalized.country,
-                    industry_id=normalized.industry_id,
-                    industry_raw=normalized.industry_raw,
-                    company_size_range=normalized.company_size_range,
-                    description=normalized.description,
-                    status=ProspectStatus.NEW,
-                    first_discovered_at=fetched_at,
-                    last_seen_at=fetched_at,
-                    timezone=None,
+                match = find_duplicate(
+                    existing_prospects, name=normalized.name, website=normalized.website, country=normalized.country
                 )
-                if match:  # potential (non-definite) match - flag, don't merge
-                    prospect.status = ProspectStatus.DUPLICATE_REVIEW
-                    prospect.potential_duplicate_of_prospect_id = match.prospect.id
-                    prospect.duplicate_confidence = match.confidence
-                    duplicate_flag_count += 1
-                db.add(prospect)
-                db.flush()
-                existing_prospects.append(prospect)
-                created_count += 1
-                db.add(ProspectTimelineEvent(
-                    prospect_id=prospect.id, event_type="discovered", actor="system",
-                    payload={"provider_key": provider_key, "discovery_job_id": str(job.id)},
-                ))
-                if match:
+
+                if match and match.is_definite:
+                    prospect = match.prospect
+                    prospect.last_seen_at = fetched_at
+                    matched_count += 1
+                    _backfill_identifier_fields(prospect, normalized)
                     db.add(ProspectTimelineEvent(
-                        prospect_id=prospect.id, event_type="flagged_potential_duplicate", actor="system",
-                        payload={"potential_duplicate_of_prospect_id": str(match.prospect.id), "confidence": match.confidence},
+                        prospect_id=prospect.id, event_type="reseen_by_provider", actor="system",
+                        payload={"provider_key": provider_key, "discovery_job_id": str(job.id), "matched_via": "website"},
                     ))
+                else:
+                    prospect = Prospect(
+                        company_profile_id=search.company_profile_id,
+                        discovery_search_id=search.id,
+                        name=normalized.name,
+                        website=normalized.website,
+                        country=normalized.country,
+                        industry_id=normalized.industry_id,
+                        industry_raw=normalized.industry_raw,
+                        company_size_range=normalized.company_size_range,
+                        description=normalized.description,
+                        vat_number=normalized.vat_number,
+                        registration_number=normalized.registration_number,
+                        email=normalized.email,
+                        status=ProspectStatus.NEW,
+                        first_discovered_at=fetched_at,
+                        last_seen_at=fetched_at,
+                        timezone=None,
+                    )
+                    if match:  # potential (non-definite) match - flag, don't merge
+                        prospect.status = ProspectStatus.DUPLICATE_REVIEW
+                        prospect.potential_duplicate_of_prospect_id = match.prospect.id
+                        prospect.duplicate_confidence = match.confidence
+                        duplicate_flag_count += 1
+                    db.add(prospect)
+                    db.flush()
+                    existing_prospects.append(prospect)
+                    created_count += 1
+                    db.add(ProspectTimelineEvent(
+                        prospect_id=prospect.id, event_type="discovered", actor="system",
+                        payload={"provider_key": provider_key, "discovery_job_id": str(job.id)},
+                    ))
+                    if match:
+                        db.add(ProspectTimelineEvent(
+                            prospect_id=prospect.id, event_type="flagged_potential_duplicate", actor="system",
+                            payload={"potential_duplicate_of_prospect_id": str(match.prospect.id), "confidence": match.confidence},
+                        ))
 
             db.add(ProspectSource(
                 prospect_id=prospect.id,

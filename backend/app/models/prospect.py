@@ -48,6 +48,20 @@ class Prospect(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # against without it.
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # M2 Phase 1b: government identifiers - the strongest dedup signal,
+    # checked before website/domain. Two separate columns (not one
+    # combined "identifier" field) so more identifier types (Company
+    # Number, EIN, ...) can be added later the same way, without
+    # redesigning app/discovery/identifier_lookup.py. Both indexed - the
+    # lookup is a direct equality query, not a fuzzy one.
+    vat_number: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    registration_number: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    # Company-level contact email, distinct from ProspectContact.email (a
+    # specific person). Not indexed, not a dedup signal - see
+    # docs/architecture/m2-phase1b-dedup-scoring-architecture.md's
+    # explicit recommendation against using it as one.
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     status: Mapped[ProspectStatus] = mapped_column(
         Enum(
             ProspectStatus,

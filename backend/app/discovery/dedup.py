@@ -15,6 +15,21 @@ app/discovery/normalization.py reuse normalize_website()/
 normalize_company_name() from here without dragging the ORM into a
 module that's otherwise designed to be independently unit-testable
 (same reasoning as app/delivery/scope_utils.py).
+
+M2 Phase 1b note: dedup is now a THREE-tier system overall, but this
+module still only ever implements tiers 2 and 3 - website/domain exact
+match (tier 2, see find_duplicate() below) and fuzzy name+country
+similarity (tier 3, the two thresholds below). Tier 1 - exact match on
+VAT number or Registration Number, the strongest signal - lives in the
+new app/discovery/identifier_lookup.py, deliberately NOT here: that
+tier needs a real, indexed database query (find the one existing
+Prospect row with this exact vat_number/registration_number across
+potentially many thousands of prospects for a company_profile_id), and
+folding that query into this module would drag a real sqlalchemy
+Session/select import back into the top of this file - exactly what the
+Phase 1a TYPE_CHECKING change above was done to avoid. pipeline.py calls
+identifier_lookup.find_duplicate_by_identifier() FIRST and only falls
+back to this module's find_duplicate() if that returns no match.
 """
 from __future__ import annotations
 

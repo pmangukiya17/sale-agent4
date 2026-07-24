@@ -42,3 +42,14 @@ icp_criteria_languages = Table(
     Column("icp_criteria_id", UUID(as_uuid=True), ForeignKey("icp_criteria.id", ondelete="CASCADE"), primary_key=True),
     Column("language_id", UUID(as_uuid=True), ForeignKey("languages.id", ondelete="CASCADE"), primary_key=True),
 )
+
+# M2 Phase 1b: backs ICPCriteria.target_industries - the scoring engine's
+# new industry_match factor (app/discovery/scoring.py) and the API's
+# target_industry_ids field. Same shape as every other ICPCriteria
+# junction table above.
+icp_criteria_target_industries = Table(
+    "icp_criteria_target_industries",
+    Base.metadata,
+    Column("icp_criteria_id", UUID(as_uuid=True), ForeignKey("icp_criteria.id", ondelete="CASCADE"), primary_key=True),
+    Column("industry_id", UUID(as_uuid=True), ForeignKey("industries.id", ondelete="CASCADE"), primary_key=True),
+)

@@ -30,9 +30,18 @@ top-level import of the Prospect model was moved behind
 `TYPE_CHECKING` as part of this same change specifically so that reuse
 would not drag sqlalchemy into this module's import chain - see
 dedup.py's own docstring/comment for that change.)
+
+M2 Phase 1b: added normalize_vat_number()/normalize_registration_number()
+and threaded vat_number/registration_number/email through
+NormalizedCandidate and normalize_candidate(). These two identifiers
+feed app.discovery.identifier_lookup.find_duplicate_by_identifier() (a
+separate, DB-touching module - see that module's own docstring for why
+it isn't here) as tier 1 of the now three-tier dedup system; this
+module only ever cleans the string, it never queries anything.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from app.discovery.dedup import normalize_company_name, normalize_website
@@ -83,6 +92,10 @@ class NormalizedCandidate:
     industry_match_method: str | None
     company_size_range: str | None
     description: str | None
+    # M2 Phase 1b - see this module's own docstring.
+    vat_number: str | None
+    registration_number: str | None
+    email: str | None
 
     def as_payload(self) -> dict:
         """The shape written to DiscoveryProviderResult.normalized_payload."""
@@ -95,6 +108,9 @@ class NormalizedCandidate:
             "industry_match_method": self.industry_match_method,
             "company_size_range": self.company_size_range,
             "description": self.description,
+            "vat_number": self.vat_number,
+            "registration_number": self.registration_number,
+            "email": self.email,
         }
 
 
@@ -110,6 +126,39 @@ def normalize_country(country: str | None) -> str | None:
         return None
     alias = _COUNTRY_ALIASES.get(cleaned.lower())
     return alias or cleaned
+
+
+def _normalize_identifier(value: str | None) -> str | None:
+    """Shared cleanup for both government identifier types: uppercase,
+    strip surrounding whitespace, and drop internal spaces/dashes/dots -
+    the punctuation providers/humans use as visual separators
+    ("DE 123 456 789", "DE-123-456-789") but that isn't part of the
+    identifier's actual value. This maximizes recall for the exact-match
+    lookup in app.discovery.identifier_lookup, at the cost of being
+    unable to distinguish two identifiers that differ ONLY in separator
+    placement - an acceptable trade-off since no real identifier scheme
+    assigns different meaning to two values that differ only that way."""
+    if not value or not value.strip():
+        return None
+    cleaned = re.sub(r"[\s\-.]+", "", value.strip().upper())
+    return cleaned or None
+
+
+def normalize_vat_number(value: str | None) -> str | None:
+    """Kept as its own named function (rather than callers using
+    _normalize_identifier directly) so VAT-specific formatting rules can
+    be added later - e.g. per-country VAT prefix validation - without
+    touching registration_number's normalization. See this module's own
+    docstring / the architecture doc's "government identifiers" section
+    for why the two are modeled as separate identifier types."""
+    return _normalize_identifier(value)
+
+
+def normalize_registration_number(value: str | None) -> str | None:
+    """See normalize_vat_number()'s docstring - identical logic today,
+    kept as a separate function for the same future-extensibility
+    reason."""
+    return _normalize_identifier(value)
 
 
 def resolve_industry(
@@ -169,13 +218,20 @@ def normalize_candidate(
     company_size_range: str | None,
     description: str | None,
     known_industries: list[IndustryRef] | None = None,
+    vat_number: str | None = None,
+    registration_number: str | None = None,
+    email: str | None = None,
 ) -> NormalizedCandidate:
     """The single entry point every provider's raw result passes through
     before Validation/Deduplication. Takes discrete fields (matching this
     package's existing convention in dedup.find_duplicate) rather than a
     RawProviderResult object, so this module never needs to import
     app.discovery.providers.base and stays independent of the provider
-    layer entirely."""
+    layer entirely.
+
+    vat_number/registration_number/email are optional (default None) so
+    every existing caller keeps working unchanged - only
+    app/discovery/pipeline.py's M2 Phase 1b wiring passes them."""
     industry_id, match_method = resolve_industry(industry_raw, known_industries or [])
     return NormalizedCandidate(
         name=" ".join(name.strip().split()) if name else name,
@@ -186,4 +242,7 @@ def normalize_candidate(
         industry_match_method=match_method,
         company_size_range=company_size_range.strip() if company_size_range else company_size_range,
         description=description,
+        vat_number=normalize_vat_number(vat_number),
+        registration_number=normalize_registration_number(registration_number),
+        email=email.strip() if email else None,
     )

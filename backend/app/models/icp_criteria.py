@@ -9,6 +9,7 @@ from app.models.associations import (
     icp_criteria_excluded_countries,
     icp_criteria_languages,
     icp_criteria_target_buyer_types,
+    icp_criteria_target_industries,
     icp_criteria_target_markets,
 )
 from app.models.enums import SearchDepth, SearchFrequency
@@ -70,3 +71,19 @@ class ICPCriteria(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     target_markets: Mapped[list["Country"]] = relationship(secondary=icp_criteria_target_markets)
     excluded_countries: Mapped[list["Country"]] = relationship(secondary=icp_criteria_excluded_countries)
     languages: Mapped[list["Language"]] = relationship(secondary=icp_criteria_languages)
+    # M2 Phase 1b: feeds scoring.py's new industry_match factor.
+    target_industries: Mapped[list["Industry"]] = relationship(secondary=icp_criteria_target_industries)
+
+    @property
+    def scoring_weights(self) -> dict[str, float]:
+        """Read-only, derived - never a mapped column. Merges this ICP's
+        custom per-factor weights (stored in the existing `rules` JSONB
+        escape hatch, under the "scoring_weights" key) over the platform
+        defaults, so API consumers always see a complete five-key dict,
+        never a partial one. Single source of truth for the merge logic
+        is app.discovery.scoring.resolve_weights() - imported locally
+        here (not at module level) to avoid a circular import, since
+        scoring.py itself imports ICPCriteria at module level."""
+        from app.discovery.scoring import resolve_weights
+
+        return resolve_weights(self)

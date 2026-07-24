@@ -26,6 +26,14 @@ inspection rather than the candidate just quietly vanishing.
 Zero-dependency by design - no sqlalchemy import anywhere in this
 module - same reasoning as normalization.py and
 app/delivery/scope_utils.py.
+
+M2 Phase 1b: added check_identifier_format(), a deliberately shallow
+structural sanity check on vat_number/registration_number - not a full
+per-country regex validator (out of scope; every real VAT/registration
+scheme has its own format). It exists only to keep an obviously-garbage
+value (empty after stripping, or containing no alphanumeric characters
+at all) from ever reaching tier 1 of dedup at confidence 1.0 - see
+app/discovery/identifier_lookup.py.
 """
 from __future__ import annotations
 
@@ -168,6 +176,23 @@ def check_website_reachable(
     return ValidationCheck("website_reachable", passed=False, detail=f"'{website}' did not respond to a reachability check.")
 
 
+def check_identifier_format(vat_number: str | None, registration_number: str | None) -> ValidationCheck:
+    """See this module's own docstring - shallow sanity check only.
+    Values are expected to already be normalize_vat_number()/
+    normalize_registration_number()-cleaned (uppercased, separators
+    stripped) by the time they reach here; this only rejects a value
+    with literally no alphanumeric content."""
+    for label, value in (("vat_number", vat_number), ("registration_number", registration_number)):
+        if value is None:
+            continue
+        if not any(ch.isalnum() for ch in value):
+            return ValidationCheck(
+                "identifier_format", passed=False,
+                detail=f"{label} '{value}' contains no alphanumeric characters - not a plausible identifier.",
+            )
+    return ValidationCheck("identifier_format", passed=True)
+
+
 def validate_candidate(
     *,
     name: str | None,
@@ -175,16 +200,23 @@ def validate_candidate(
     country: str | None,
     known_countries: set[str] | None = None,
     reachability_checker: Callable[[str], bool] | None = None,
+    vat_number: str | None = None,
+    registration_number: str | None = None,
 ) -> ValidationResult:
     """The single entry point every NormalizedCandidate passes through
     before Deduplication. Duplicate-confidence is deliberately absent
     from this check list - that is app.discovery.dedup's job, not this
-    module's (see this module's own docstring)."""
+    module's (see this module's own docstring).
+
+    vat_number/registration_number are optional (default None) so every
+    existing caller keeps working unchanged - only pipeline.py's M2
+    Phase 1b wiring passes them (already-normalized values)."""
     checks = [
         check_required_fields(name, website, country),
         check_name_quality(name),
         check_domain_syntax(website),
         check_country_known(country, known_countries),
         check_website_reachable(website, reachability_checker=reachability_checker),
+        check_identifier_format(vat_number, registration_number),
     ]
     return ValidationResult(passed=all(c.passed for c in checks), checks=checks)

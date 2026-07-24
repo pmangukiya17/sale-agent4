@@ -76,7 +76,7 @@ from app.models.workflow_step_invocation import WorkflowStepInvocation
 # real bootstrap app.main's own lifespan() calls on every boot.
 import app.workflow_actions  # noqa: F401  (registers DISCOVERY_EXECUTION_ACTION_KEY for real)
 from app.api.routes.discovery_searches import run_search
-from app.discovery.pipeline import DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE
+from app.discovery.pipeline import DISCOVERY_SEARCH_RUN_REQUESTED_EVENT_TYPE, run_discovery_search
 from app.workflow_bootstrap import activate_builtin_workflows
 from app.workflow_engine import event_dispatcher_worker, step_runner_worker
 
@@ -294,6 +294,70 @@ class TestDiscoveryWorkflowEndToEnd(unittest.TestCase):
             .count()
         )
         self.assertEqual(published, 0, "a search with no providers must never publish a run-requested event")
+
+    # --- M2 Phase 1b: tier-1 government identifier dedup --------------------
+    def test_two_rows_sharing_a_vat_number_dedupe_via_identifier_not_website(self):
+        """Two manual_csv rows in the SAME job, same VAT number, no
+        website in common and different-enough names that tier 2/3
+        (website/fuzzy name) would NOT have caught this - proves tier 1
+        (app.discovery.identifier_lookup.find_duplicate_by_identifier)
+        is what makes this a re-sighting rather than two separate
+        Prospects. Calls the pipeline function directly (rather than
+        through the full route->event->dispatcher->step_runner chain
+        the class's other tests exercise) since the workflow-engine
+        wiring itself isn't what this test is verifying - see
+        test_run_with_no_providers_enabled_never_publishes_trigger_event
+        above for the same "call one layer down" precedent within this
+        file."""
+        self.search.query_spec = {
+            "rows": [
+                {"name": "Acme Textiles", "country": "United States", "vat_number": "DE 123 456 789"},
+                {"name": "Completely Different Trading Co", "country": "United States", "vat_number": "de123456789"},
+            ]
+        }
+        self.db.commit()
+
+        job = run_discovery_search(self.db, self.search, self.user)
+
+        self.assertEqual(job.prospect_created_count, 1)
+        self.assertEqual(job.prospect_matched_count, 1)
+
+        prospect = self.db.scalars(select(Prospect).where(Prospect.discovery_search_id == self.search.id)).one()
+        self.assertEqual(prospect.name, "Acme Textiles", "first-seen row's name wins; second is a re-sighting")
+        self.assertEqual(prospect.vat_number, "DE123456789")
+
+        reseen_events = (
+            self.db.query(ProspectTimelineEvent)
+            .filter(ProspectTimelineEvent.prospect_id == prospect.id, ProspectTimelineEvent.event_type == "reseen_by_provider")
+            .all()
+        )
+        self.assertEqual(len(reseen_events), 1)
+        self.assertEqual(reseen_events[0].payload.get("matched_via"), "identifier")
+
+    def test_identifier_match_backfills_missing_registration_number(self):
+        """First run supplies only a VAT number; a second run's row
+        shares that VAT number and additionally supplies a registration
+        number the existing Prospect doesn't have yet - proves
+        _backfill_identifier_fields() fills it in on the re-sighting
+        rather than leaving it null forever."""
+        self.search.query_spec = {"rows": [{"name": "Acme Textiles", "country": "United States", "vat_number": "DE123456789"}]}
+        self.db.commit()
+        run_discovery_search(self.db, self.search, self.user)
+
+        self.search.query_spec = {
+            "rows": [{
+                "name": "Acme Textiles", "country": "United States",
+                "vat_number": "DE123456789", "registration_number": "HRB99999",
+            }]
+        }
+        self.db.commit()
+        job2 = run_discovery_search(self.db, self.search, self.user)
+
+        self.assertEqual(job2.prospect_created_count, 0)
+        self.assertEqual(job2.prospect_matched_count, 1)
+
+        prospect = self.db.scalars(select(Prospect).where(Prospect.discovery_search_id == self.search.id)).one()
+        self.assertEqual(prospect.registration_number, "HRB99999")
 
 
 if __name__ == "__main__":

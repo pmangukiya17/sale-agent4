@@ -59,6 +59,10 @@ class ManualCSVProvider(DiscoveryProvider):
                     provider_confidence=1.0,
                     contacts=contacts,
                     raw_payload=row,
+                    # M2 Phase 1b - see RawProviderResult's own docstring.
+                    vat_number=row.get("vat_number"),
+                    registration_number=row.get("registration_number"),
+                    email=row.get("email"),
                 )
             )
 

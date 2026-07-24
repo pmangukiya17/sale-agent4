@@ -1,5 +1,6 @@
 """
-tests.test_discovery_validation - M2 Phase 1a.
+tests.test_discovery_validation - M2 Phase 1a (+ Phase 1b's
+check_identifier_format addition).
 
 Pure logic, zero fixtures, zero database - app/discovery/validation.py
 imports nothing beyond the stdlib, so this whole suite runs to
@@ -11,6 +12,7 @@ import unittest
 from app.discovery.validation import (
     check_country_known,
     check_domain_syntax,
+    check_identifier_format,
     check_name_quality,
     check_required_fields,
     check_website_reachable,
@@ -101,11 +103,36 @@ class TestCheckWebsiteReachable(unittest.TestCase):
         self.assertTrue(result.passed)  # a broken checker must never fail a discovery job
 
 
+class TestCheckIdentifierFormat(unittest.TestCase):
+    """M2 Phase 1b."""
+
+    def test_both_none_passes(self):
+        self.assertTrue(check_identifier_format(None, None).passed)
+
+    def test_plausible_values_pass(self):
+        result = check_identifier_format("DE123456789", "HRB12345")
+        self.assertTrue(result.passed)
+
+    def test_only_one_supplied_passes(self):
+        self.assertTrue(check_identifier_format("DE123456789", None).passed)
+        self.assertTrue(check_identifier_format(None, "HRB12345").passed)
+
+    def test_no_alnum_content_fails(self):
+        result = check_identifier_format("---", None)
+        self.assertFalse(result.passed)
+        self.assertIn("vat_number", result.detail)
+
+    def test_registration_number_no_alnum_fails(self):
+        result = check_identifier_format(None, "...")
+        self.assertFalse(result.passed)
+        self.assertIn("registration_number", result.detail)
+
+
 class TestValidateCandidate(unittest.TestCase):
     def test_well_formed_candidate_passes_overall(self):
         result = validate_candidate(name="Acme Textiles GmbH", website="acme-textiles.com", country="Germany")
         self.assertTrue(result.passed)
-        self.assertEqual(len(result.checks), 5)
+        self.assertEqual(len(result.checks), 6)
 
     def test_bad_candidate_fails_overall_with_reasons(self):
         result = validate_candidate(name="Home", website="not a domain", country=None)
@@ -128,7 +155,22 @@ class TestValidateCandidate(unittest.TestCase):
         payload = result.as_payload()
         self.assertIn("passed", payload)
         self.assertIn("checks", payload)
-        self.assertEqual(len(payload["checks"]), 5)
+        self.assertEqual(len(payload["checks"]), 6)
+
+    def test_garbage_identifier_fails_candidate_overall(self):
+        # M2 Phase 1b: an obviously-garbage identifier must not let a
+        # candidate through to tier-1 dedup at confidence 1.0.
+        result = validate_candidate(
+            name="Acme", website="acme.com", country="Germany", vat_number="---", registration_number=None
+        )
+        self.assertFalse(result.passed)
+
+    def test_valid_identifiers_do_not_affect_overall_pass(self):
+        result = validate_candidate(
+            name="Acme", website="acme.com", country="Germany",
+            vat_number="DE123456789", registration_number="HRB12345",
+        )
+        self.assertTrue(result.passed)
 
 
 if __name__ == "__main__":

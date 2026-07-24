@@ -45,6 +45,16 @@ class RawProviderResult:
     # any per-provider default - a provider can vary this per result.
     provider_confidence: float | None = None
     contacts: list[RawContactResult] = field(default_factory=list)
+    # M2 Phase 1b: government identifiers, fed through
+    # app.discovery.normalization.normalize_candidate() and then tier 1
+    # of dedup (app.discovery.identifier_lookup). All optional -
+    # ManualCSVProvider is the only provider that populates them today;
+    # a real search-derived provider (M2 Phase 2+) may rarely surface
+    # either. email is a company-level contact email, not a dedup
+    # signal (see Prospect.email's own docstring).
+    vat_number: str | None = None
+    registration_number: str | None = None
+    email: str | None = None
 
 
 @dataclass
