@@ -232,6 +232,18 @@ class Settings(BaseSettings):
     # AI_GATEWAY_MAX_ATTEMPTS_PER_PROVIDER, applied to a different layer.
     BRAVE_SEARCH_MAX_RETRIES: int = 2
 
+    # --- M2 Phase 3: Research Intelligence Engine ---------------------------
+    # Selects the active AIAnalysisEngine implementation via
+    # app/research/analysis/registry.py - exact same shape/reasoning as
+    # REPLY_CLASSIFIER_BACKEND above: "deterministic" (the only backend
+    # before this phase, keyword/regex-based, no provider API calls) stays
+    # the default so enabling the new "llm" backend (the first production
+    # caller of app.ai_gateway/app.ai_agents) is an explicit, reversible
+    # config change, never a hard cutover bundled with this phase's own
+    # commit. Adding a future analysis backend is a new class + one
+    # registry entry + changing this value, never a pipeline.py change.
+    RESEARCH_ANALYSIS_ENGINE_BACKEND: str = "deterministic"
+
     @property
     def sqlalchemy_database_uri(self) -> str:
         if self.DATABASE_URL:

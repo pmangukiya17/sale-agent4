@@ -63,7 +63,7 @@ from app.models.signal import Signal
 from app.models.signal_evidence import SignalEvidence
 from app.models.user import User
 from app.research.analysis.base import AnalysisOutcome
-from app.research.analysis.deterministic_stub import DeterministicAnalysisEngine
+from app.research.analysis.registry import get_analysis_engine
 from app.research.context import ResearchContext
 from app.research.providers.base import ProviderError
 from app.research.providers.registry import get_provider
@@ -252,8 +252,13 @@ def run_research_request(
 
     db.flush()  # need every RawDocument.id before AI analysis references them
 
-    # --- AI Analysis pass: deterministic stub only, per explicit M2 rule --
-    engine = DeterministicAnalysisEngine()
+    # --- AI Analysis pass: engine selected by settings.RESEARCH_ANALYSIS_ENGINE_BACKEND
+    # (M2 Phase 3) - "deterministic" (keyword/regex, no provider calls) by
+    # default, "llm" opt-in (app.research.analysis.llm_engine.LLMAnalysisEngine,
+    # the first production caller of the AI Gateway/Agent stack). See
+    # app/research/analysis/registry.py's own docstring - this call site
+    # is unchanged in shape from the single-engine version it replaces.
+    engine = get_analysis_engine()
     analysis_outcomes: list[AnalysisOutcome] = engine.analyze(context, raw_documents)
 
     analyses_by_type: dict = {}

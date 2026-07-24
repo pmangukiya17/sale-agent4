@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiClient } from "../api/client";
 import { useInterval } from "../hooks/useInterval";
 import { useEventStream } from "../realtime/useEventStream";
+import type { BadgeTone } from "../design-system";
 import type { WorkflowExecutionMetric, WorkflowExecutionViewProps, WorkflowStage } from "../components/WorkflowExecutionView";
 
 /**
@@ -51,6 +52,51 @@ const POLL_INTERVAL_MS = 3_000;
 const STREAM_REFRESH_DEBOUNCE_MS = 500;
 const TERMINAL_JOB_STATUSES = new Set(["completed", "partially_completed", "failed", "cancelled"]);
 
+// Exported (M2 Phase 3 observability follow-up) - ProspectResearch.tsx
+// and ResearchJobs.tsx both need to render "which engine actually
+// produced this analysis" from the stored AIAnalysis.model_used value
+// (never from current settings.RESEARCH_ANALYSIS_ENGINE_BACKEND config -
+// a historical analysis stays labeled with whatever engine really wrote
+// it, even after the config is later changed). This is read-only
+// observability, not a control - there is no way to change the engine
+// from here.
+//
+// ENGINE_LABELS is a static, known-value lookup - deliberately not a
+// clever regex/parser over arbitrary model id strings, matching this
+// project's existing "registry/lookup table over inference" convention
+// (e.g. app.discovery.providers.registry's own PROVIDER keys). Adding a
+// friendlier label for a newly-observed model_used is a one-line data
+// change here, never a logic change. Any model_used NOT in this table
+// (i.e. any real provider/model string, since only the deterministic
+// stub's marker is known in advance) falls through to a light cosmetic
+// cleanup pass - title-cased, hyphens as spaces, trailing date-like
+// numeric suffix dropped - so a real model id like
+// "claude-sonnet-4-5-20250929" still renders as something readable
+// ("Claude Sonnet 4 5") without ever hiding or misrepresenting the
+// underlying stored value.
+const ENGINE_LABELS: Record<string, string> = {
+  "deterministic-keyword-stub": "Deterministic Engine",
+};
+
+export function engineLabel(modelUsed: string | null | undefined): string {
+  if (!modelUsed) return "Unknown engine";
+  if (ENGINE_LABELS[modelUsed]) return ENGINE_LABELS[modelUsed];
+  return modelUsed
+    .replace(/-\d{6,}$/, "")
+    .split("-")
+    .map((part) => (part.length > 0 ? part[0].toUpperCase() + part.slice(1) : part))
+    .join(" ");
+}
+
+// Visually distinguishes "a real AI model produced this" (the "ai" tone,
+// already reserved in the design system for exactly this purpose) from
+// "the rule-based deterministic fallback produced this" (neutral) - pure
+// observability, matches nothing about which engine is actually
+// configured to run next.
+export function engineBadgeTone(modelUsed: string | null | undefined): BadgeTone {
+  return modelUsed && modelUsed !== "deterministic-keyword-stub" ? "ai" : "neutral";
+}
+
 function providerLabel(providerKey: string): string {
   return providerKey
     .split("_")
@@ -99,6 +145,22 @@ function buildCompletionSummary(job: ResearchJob | null): string | null {
   if (!job || !TERMINAL_JOB_STATUSES.has(job.status)) return null;
   if (job.status === "failed") {
     return `Research failed. ${job.error_message ?? ""}`.trim();
+  }
+  if (job.raw_document_count === 0) {
+    // Zero documents is expected, not an error, whenever this run had
+    // nothing to analyze - Research today has only one document source
+    // (manual_document, i.e. pasted/uploaded text); there is no
+    // automatic web-scraping provider yet. Spelling this out here
+    // (rather than just "0 document(s) analyzed") is what actually
+    // explains why no signals/recommendations came out of a completed
+    // run, regardless of which analysis engine (deterministic or LLM)
+    // was configured to run - an LLM has nothing to analyze either if no
+    // documents were supplied.
+    return (
+      "Completed — no research documents were available to analyze, so no signals or recommendations " +
+      "were generated this run. Paste research text (website copy, a news article, a catalog extract) " +
+      "before running, or connect a research provider once one becomes available."
+    );
   }
   const qualifier = job.status === "partially_completed" ? "Partially completed" : "Completed";
   return `${qualifier} — ${job.raw_document_count} document(s) analyzed, ${job.signal_count} signal(s) found, ${job.recommendation_count} recommendation(s) generated.`;

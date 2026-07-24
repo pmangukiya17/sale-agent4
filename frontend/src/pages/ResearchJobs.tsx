@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { apiClient } from "../api/client";
 import { Card, Badge, PlaceholderNotice } from "../design-system";
 import type { BadgeTone } from "../design-system";
+import { engineBadgeTone, engineLabel } from "../research/useResearchExecution";
 
 interface ResearchJobProviderRun {
   provider_key: string;
@@ -123,6 +124,17 @@ export default function ResearchJobs() {
               <button className="flex w-full items-center justify-between text-left" onClick={() => setExpandedId(isOpen ? null : job.id)}>
                 <div className="flex items-center gap-2">
                   <Badge tone={STATUS_TONES[job.status] ?? "neutral"}>{job.status}</Badge>
+                  {/* M2 Phase 3 observability follow-up: which engine
+                      produced this job's own AI analyses - read-only,
+                      from the stored model_used already returned by this
+                      route (job.analyses[].model_used), never from
+                      current config, so a past job's badge stays
+                      accurate even after the engine setting changes
+                      later. All analyses from one job share the same
+                      model_used today (one engine runs per job). */}
+                  {job.analyses.length > 0 && (
+                    <Badge tone={engineBadgeTone(job.analyses[0].model_used)}>{engineLabel(job.analyses[0].model_used)}</Badge>
+                  )}
                   <span className="text-sm text-slate-200">
                     {job.started_at ? new Date(job.started_at).toLocaleString() : "—"}
                   </span>
@@ -148,7 +160,7 @@ export default function ResearchJobs() {
                     ))}
                   </div>
 
-                  {job.sources.length > 0 && (
+                  {job.sources.length > 0 ? (
                     <div>
                       <p className="mb-1 font-medium text-slate-200">Evidence (raw documents)</p>
                       <div className="space-y-2">
@@ -161,6 +173,21 @@ export default function ResearchJobs() {
                           </div>
                         ))}
                       </div>
+                    </div>
+                  ) : (
+                    // M2 Phase 3 UX follow-up: explain WHY there's nothing
+                    // here instead of silently showing nothing. Research
+                    // today has exactly one document source
+                    // (manual_document, i.e. pasted/uploaded text) - no
+                    // automatic web-scraping provider exists yet, so this
+                    // is expected whenever a run wasn't given any text to
+                    // analyze, regardless of which analysis engine ran.
+                    <div>
+                      <p className="mb-1 font-medium text-slate-200">Evidence (raw documents)</p>
+                      <p className="text-xs text-slate-500">
+                        No research documents were available for this run. Paste research text on the prospect's
+                        Research page before running, or connect a research provider once one becomes available.
+                      </p>
                     </div>
                   )}
 

@@ -5,6 +5,7 @@ import { inputClass } from "../components/FormSection";
 import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Card, Badge, Button, Select } from "../design-system";
 import type { BadgeTone } from "../design-system";
+import { engineBadgeTone, engineLabel } from "../research/useResearchExecution";
 
 interface ResearchTemplate {
   id: string;
@@ -43,6 +44,7 @@ interface Recommendation {
 interface IntelligenceSnapshot {
   id: string;
   version: number;
+  research_job_id: string | null;
   business_model: string | null;
   certifications: string[] | null;
   manufacturing_or_trading: string | null;
@@ -52,6 +54,15 @@ interface IntelligenceSnapshot {
   procurement_structure: string | null;
   purchasing_process: string | null;
   signals_summary: string | null;
+}
+
+// Minimal shape - only what the engine badge needs (M2 Phase 3
+// observability follow-up). Deliberately not the full ResearchJob shape
+// ResearchJobs.tsx uses; this page only ever needs to know which engine
+// produced the CURRENT snapshot's underlying analyses.
+interface ResearchJobEngineInfo {
+  id: string;
+  analyses: { model_used: string }[];
 }
 
 interface ResearchReport {
@@ -81,6 +92,7 @@ export default function ProspectResearch() {
   const [templates, setTemplates] = useState<ResearchTemplate[]>([]);
   const [requests, setRequests] = useState<ResearchRequest[]>([]);
   const [snapshot, setSnapshot] = useState<IntelligenceSnapshot | null>(null);
+  const [researchJobs, setResearchJobs] = useState<ResearchJobEngineInfo[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [reports, setReports] = useState<ResearchReport[]>([]);
@@ -99,7 +111,14 @@ export default function ProspectResearch() {
       apiClient.get(`${base}/signals`),
       apiClient.get(`${base}/recommendations`),
       apiClient.get(`${base}/research-reports`),
-    ]).then(([templatesRes, requestsRes, snapshotRes, signalsRes, recommendationsRes, reportsRes]) => {
+      // M2 Phase 3 observability follow-up: which engine (deterministic
+      // vs. a real model) actually produced the current snapshot's
+      // analyses - read-only, sourced from each job's own stored
+      // AIAnalysis.model_used, never from live config. Reuses the
+      // existing GET /research-jobs?prospect_id= route (already used by
+      // ResearchJobs.tsx) rather than adding a new endpoint.
+      apiClient.get(`/company-profiles/${companyId}/research-jobs`, { params: { prospect_id: prospectId } }),
+    ]).then(([templatesRes, requestsRes, snapshotRes, signalsRes, recommendationsRes, reportsRes, researchJobsRes]) => {
       setTemplates(templatesRes.data);
       if (!selectedTemplateId && templatesRes.data.length > 0) setSelectedTemplateId(templatesRes.data[0].id);
       setRequests(requestsRes.data);
@@ -107,6 +126,7 @@ export default function ProspectResearch() {
       setSignals(signalsRes.data);
       setRecommendations(recommendationsRes.data);
       setReports(reportsRes.data);
+      setResearchJobs(researchJobsRes.data);
       setIsLoading(false);
     });
   };
@@ -167,6 +187,16 @@ export default function ProspectResearch() {
 
   if (isLoading) return <p className="text-sm text-slate-500">Loading…</p>;
 
+  // The engine that produced the currently-displayed snapshot - looked
+  // up by the snapshot's own research_job_id, then the first analysis
+  // row with a model_used (all AIAnalysis rows from one research run
+  // share the same model_used today, whichever engine ran). Undefined
+  // (renders "Unknown engine") only if the snapshot's originating job
+  // can no longer be found or has no analyses at all.
+  const currentSnapshotModelUsed = snapshot
+    ? researchJobs.find((j) => j.id === snapshot.research_job_id)?.analyses.find((a) => a.model_used)?.model_used
+    : undefined;
+
   return (
     <div>
       <Breadcrumbs
@@ -220,7 +250,16 @@ export default function ProspectResearch() {
 
       {snapshot && (
         <Card className="mb-6">
-          <p className="mb-2 text-sm font-medium text-slate-200">Intelligence Snapshot (v{snapshot.version})</p>
+          <div className="mb-2 flex items-center gap-2">
+            <p className="text-sm font-medium text-slate-200">Intelligence Snapshot (v{snapshot.version})</p>
+            {/* M2 Phase 3 observability follow-up: which engine produced
+                THIS snapshot's analyses - read-only, from the stored
+                model_used on the research job's own AIAnalysis rows, not
+                from current config, so a historical snapshot always
+                shows accurately even after the engine setting changes
+                later. */}
+            <Badge tone={engineBadgeTone(currentSnapshotModelUsed)}>{engineLabel(currentSnapshotModelUsed)}</Badge>
+          </div>
           <div className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
             <div>
               <p className="text-xs font-medium text-slate-500">Business model</p>
