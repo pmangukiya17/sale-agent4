@@ -97,3 +97,44 @@ class BudgetExceededError(GatewayError):
 
     retryable = False
     fallback_eligible = False
+
+
+class PremiumApprovalRequiredError(GatewayError):
+    """M9 (AI Provider Hierarchy). Raised by AIGateway.complete() when the
+    local/free tier chain is exhausted (every candidate unconfigured or
+    failed), a premium-tier provider exists in the routing decision, and
+    settings.AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL is True, and the request
+    was not already marked premium_approved=True. This is NOT a failure in
+    the ordinary sense - it's the Gateway's "STOP, ask the user" decision
+    point (see the AI Provider Hierarchy spec's own AI REQUEST FLOW) -
+    still modeled as a GatewayError subclass so it flows through the exact
+    same normalized-error plumbing every caller already handles, but
+    neither retryable nor fallback_eligible (there is nothing further to
+    try automatically; a human decision is required).
+
+    Carries the data a caller needs to render the approval prompt without
+    re-deriving it: `estimated_cost_usd` (see
+    accounting.estimate_pre_call_cost_usd - a heuristic, pre-call estimate,
+    since real token counts don't exist until after a call),
+    `reasons` (from app.ai_gateway.confidence.assess_complexity), and
+    `candidate_provider_key` (which premium provider would be attempted if
+    approved). See app.ai_agents.runtime.AgentRuntime.run_with_metadata()
+    for the one place this is caught specifically (narrower than the
+    generic GatewayError catch) so this structured data isn't lost."""
+
+    retryable = False
+    fallback_eligible = False
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider_key: str | None = None,
+        candidate_provider_key: str,
+        estimated_cost_usd: float | None = None,
+        reasons: list[str] | None = None,
+    ):
+        super().__init__(message, provider_key=provider_key)
+        self.candidate_provider_key = candidate_provider_key
+        self.estimated_cost_usd = estimated_cost_usd
+        self.reasons = reasons or []

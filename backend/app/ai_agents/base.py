@@ -76,10 +76,19 @@ class AgentInput:
     future Workflow Action would pass through its own ActionInput.context
     here unread, exactly the same opacity discipline ActionInput.context
     itself already applies one layer down. Only the Agent's own
-    build_context() implementation gives this dict meaning."""
+    build_context() implementation gives this dict meaning.
+
+    `premium_approved` (M9, AI Provider Hierarchy) is DELIBERATELY here,
+    not inside `context` - it's a provider/approval concern, the one
+    thing an Agent's build_context() must never see or touch (see
+    Agent.build_context()'s own docstring). AgentRuntime.run_with_metadata()
+    is the only reader - it copies this onto the GatewayRequest it builds,
+    after PromptBuilder.build() has already run, exactly like it already
+    keeps model/temperature/etc. out of an Agent's reach."""
 
     context: dict
     idempotency_key: str | None = None
+    premium_approved: bool = False
 
 
 @dataclass(frozen=True)
@@ -94,6 +103,19 @@ class AgentOutput:
 
 
 @dataclass(frozen=True)
+class PremiumApprovalContext:
+    """M9 (AI Provider Hierarchy) addition. Populated on AgentExecutionResult
+    only when AIGateway.complete() raised PremiumApprovalRequiredError - see
+    that error's own docstring and app.ai_gateway.client's module docstring
+    for the full "STOP, ask user" flow this surfaces. Carries exactly what
+    a caller needs to render the approval prompt without re-deriving it."""
+
+    candidate_provider_key: str
+    estimated_cost_usd: float | None
+    reasons: list[str]
+
+
+@dataclass(frozen=True)
 class AgentExecutionResult:
     """M7.3 addition. Wraps AgentOutput with observability metadata
     AgentRuntime already has in hand internally but M7.2's run() -
@@ -105,12 +127,24 @@ class AgentExecutionResult:
     the small, opaque, caller-facing shape it was in M7.2.
     provider_key/model/usage are None only when the call failed before
     a real GatewayResponse was ever produced (the whole provider chain
-    exhausted - see AIGateway.complete()'s own docstring)."""
+    exhausted - see AIGateway.complete()'s own docstring).
+
+    `premium_approval` (M9) is populated ONLY when the Gateway call
+    stopped specifically because a premium provider needs explicit user
+    approval - a distinct, non-error outcome from an ordinary FAILURE
+    (`output.status` is still AgentOutcome.FAILURE in this case, since
+    M7.2's AgentOutcome vocabulary has no dedicated "awaiting approval"
+    member - see that enum's own docstring for why PENDING was
+    deliberately never added; this field is the additive, backward-
+    compatible way to distinguish the two without widening AgentOutcome
+    itself). Callers that care (e.g. LLMAnalysisEngine) check this field
+    before treating a FAILURE as a genuine, terminal failure."""
 
     output: AgentOutput
     provider_key: str | None = None
     model: str | None = None
     usage: TokenUsage | None = None
+    premium_approval: PremiumApprovalContext | None = None
 
 
 class Agent(ABC):

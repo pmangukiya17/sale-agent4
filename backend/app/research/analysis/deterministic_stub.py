@@ -64,7 +64,14 @@ def _find_matches(keyword: str, texts: list[str]) -> list[int]:
 
 
 class DeterministicAnalysisEngine(AIAnalysisEngine):
-    def analyze(self, context: ResearchContext, raw_documents: list[RawDocument]) -> list[AnalysisOutcome]:
+    def analyze(
+        self, context: ResearchContext, raw_documents: list[RawDocument], *, premium_approved: bool = False
+    ) -> list[AnalysisOutcome]:
+        # M9 (AI Provider Hierarchy): premium_approved is accepted (for
+        # signature compatibility with the abstract base) and intentionally
+        # ignored - this engine never calls the AI Gateway, so there is no
+        # provider tier to approve.
+        del premium_approved
         texts = _lower_texts(raw_documents)
         all_indices = list(range(len(raw_documents)))
 

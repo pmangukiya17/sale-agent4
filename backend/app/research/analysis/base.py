@@ -53,10 +53,18 @@ class AIAnalysisEngine(ABC):
     """Abstract base every concrete AI analysis engine implements."""
 
     @abstractmethod
-    def analyze(self, context: ResearchContext, raw_documents: list[RawDocument]) -> list[AnalysisOutcome]:
+    def analyze(
+        self, context: ResearchContext, raw_documents: list[RawDocument], *, premium_approved: bool = False
+    ) -> list[AnalysisOutcome]:
         """Analyze the given raw documents for one prospect and return zero
         or more AnalysisOutcome objects (at most one per AIAnalysisType).
         Must not raise for "nothing found" - return outcomes with empty/
         null fields and low confidence instead; only raise for a genuine
-        engine failure."""
+        engine failure.
+
+        `premium_approved` (M9, AI Provider Hierarchy) - default False so
+        every existing/future engine implementation keeps working
+        unmodified if it has no notion of provider tiers at all (e.g.
+        DeterministicAnalysisEngine simply accepts and ignores it - it
+        never calls the AI Gateway in the first place)."""
         raise NotImplementedError

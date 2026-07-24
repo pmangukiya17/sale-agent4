@@ -87,6 +87,15 @@ class GatewayRequest:
     stream: bool = False
     budget_usd: float | None = None
     idempotency_key: str | None = None
+    # M9 (AI Provider Hierarchy). Defaults False, preserving every
+    # existing caller's behavior exactly - only meaningful once
+    # ProviderRouter's tier-aware routing (router.py) produces a
+    # RoutingDecision with a non-empty `premium` list AND
+    # settings.AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL is True. True means "the
+    # user has already explicitly approved a premium-tier call for this
+    # specific request" - see errors.PremiumApprovalRequiredError's own
+    # docstring for the full flow this participates in.
+    premium_approved: bool = False
 
 
 @dataclass(frozen=True)

@@ -244,6 +244,54 @@ class Settings(BaseSettings):
     # registry entry + changing this value, never a pipeline.py change.
     RESEARCH_ANALYSIS_ENGINE_BACKEND: str = "deterministic"
 
+    # --- M9: AI Provider Hierarchy (Local -> Free -> Premium) ---------------
+    # See docs/architecture/ai-provider-hierarchy-v3-plan.md for the full
+    # design. AI_MODE selects which tiers app.ai_gateway.router.ProviderRouter
+    # auto-attempts vs. gates behind explicit approval - a GLOBAL setting for
+    # now (see that doc's Section 3.3 for why per-workspace persistence is
+    # explicitly deferred, not forgotten). One of:
+    #   "local_only"         - local provider(s) only, never escalate.
+    #   "hybrid_recommended" - local, then free, then STOP and ask before
+    #                          premium (the default).
+    #   "automatic_premium"  - local, then free, then premium, all
+    #                          auto-attempted - the explicit admin opt-out of
+    #                          the "ask before premium" rule (spec's own Mode
+    #                          3, see the design doc's Section 3.2 for how the
+    #                          apparent NEVER-vs-Mode-3 contradiction resolves).
+    #   "premium_only"       - premium tier only, skip local/free entirely.
+    AI_MODE: str = "hybrid_recommended"
+
+    # Whether AIGateway.complete() actually enforces the stop-and-ask gate
+    # (raising PremiumApprovalRequiredError) when the local/free chain is
+    # exhausted and only a premium provider remains. True from the moment
+    # this ships (M9) alongside the Research page's own approval dialog -
+    # see app/api/routes/research_requests.py's ai-preflight endpoint and
+    # ProspectResearch.tsx's PremiumApprovalDialog. Kept as its own flag
+    # (independent of AI_MODE) so it can be turned off for a deployment that
+    # deliberately wants "automatic_premium"-like behavior on hybrid mode's
+    # tier ordering without ever seeing the approval prompt.
+    AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL: bool = True
+
+    # Local inference - deliberately NOT a bespoke Ollama SDK integration.
+    # Ollama, vLLM, LM Studio, and text-generation-webui all implement the
+    # OpenAI chat-completions wire format, so LocalOllamaProviderClient
+    # (app/ai_gateway/providers/local_client.py) is a thin subclass of
+    # OpenAICompatibleProviderClient pointed at this base_url - no new
+    # third-party dependency. Unset by default - is_configured() requires
+    # LOCAL_MODEL_BASE_URL, same "unset until configured" precedent as every
+    # other provider setting above. Most local servers need no API key.
+    LOCAL_MODEL_BASE_URL: str | None = None
+    LOCAL_MODEL_API_KEY: str | None = None
+    LOCAL_MODEL_DEFAULT_MODEL: str | None = None
+
+    # Groq - also an OpenAI-compatible endpoint (see GroqProviderClient).
+    # BASE_URL has a real default since it's Groq's own fixed, documented
+    # endpoint, not something an operator needs to choose - unlike
+    # LOCAL_MODEL_BASE_URL, which genuinely varies per deployment.
+    GROQ_API_KEY: str | None = None
+    GROQ_DEFAULT_MODEL: str | None = None
+    GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
+
     @property
     def sqlalchemy_database_uri(self) -> str:
         if self.DATABASE_URL:

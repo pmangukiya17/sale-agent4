@@ -42,6 +42,30 @@ def estimate_cost_usd(*, provider_key: str, model: str, prompt_tokens: int, comp
     return round((prompt_tokens / 1000) * prompt_price_per_1k + (completion_tokens / 1000) * completion_price_per_1k, 6)
 
 
+def estimate_pre_call_cost_usd(
+    *, provider_key: str, model: str, prompt_char_length: int, expected_completion_tokens: int = 1024
+) -> float | None:
+    """M9 (AI Provider Hierarchy). A rough, BEFORE-the-call cost estimate,
+    for the premium-approval prompt ("Estimated API cost: ~$0.xx") - unlike
+    estimate_cost_usd() above, which needs real token counts that only
+    exist after a call completes. Uses a standard, approximate
+    chars-per-token heuristic (~4 characters/token for English prose) -
+    disclosed as approximate, not exact, since the real tokenizer isn't
+    invoked here. `expected_completion_tokens` defaults to a conservative
+    round number when the caller has no better estimate (e.g. from
+    ExecutionPolicy.max_tokens); pass that through when it's known.
+    Returns None under the same "unpriced model" convention as
+    estimate_cost_usd() - an approval prompt with no cost estimate is
+    valid (it just can't show a dollar figure), never an error."""
+    estimated_prompt_tokens = max(1, prompt_char_length // 4)
+    return estimate_cost_usd(
+        provider_key=provider_key,
+        model=model,
+        prompt_tokens=estimated_prompt_tokens,
+        completion_tokens=expected_completion_tokens,
+    )
+
+
 def build_usage(*, provider_key: str, model: str, prompt_tokens: int, completion_tokens: int) -> TokenUsage:
     """The one place a ProviderClient should construct its TokenUsage -
     keeps the estimate_cost_usd() call from being duplicated three times

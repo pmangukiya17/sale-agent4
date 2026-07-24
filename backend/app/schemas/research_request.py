@@ -48,6 +48,30 @@ class ResearchRequestRunBody(BaseModel):
     """
     source_types: list[str] | None = None
     documents: list[dict[str, Any]] | None = None
+    # M9 (AI Provider Hierarchy). Default False preserves exact prior
+    # behavior for every existing caller. The frontend sets this True only
+    # after the user has explicitly clicked "Yes" on the premium-approval
+    # dialog shown from GET .../ai-preflight - see
+    # app/research/pipeline.py's own docstring for how this is extracted
+    # from run_input and threaded down to the AI Gateway, never persisted
+    # on ResearchRequest itself (same "per-run, not reusable" intent as
+    # every other field on this body).
+    premium_approved: bool = False
+
+
+class AIPreflightResult(BaseModel):
+    """M9 (AI Provider Hierarchy). Response shape for GET
+    .../research-requests/{request_id}/ai-preflight - lets the frontend
+    show the premium-approval dialog BEFORE the user submits a run, rather
+    than discovering mid-run that approval is needed (see
+    app/research/ai_preflight.py's own docstring for why a pre-flight
+    check, not a mid-workflow pause, is this phase's deliberate scope)."""
+
+    applicable: bool  # False if RESEARCH_ANALYSIS_ENGINE_BACKEND != "llm" - no AI call will happen at all.
+    approval_required: bool
+    candidate_provider_key: str | None = None
+    estimated_cost_usd: float | None = None
+    reasons: list[str] = []
 
 
 class ResearchRequestRunQueued(BaseModel):

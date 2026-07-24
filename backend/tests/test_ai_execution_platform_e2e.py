@@ -347,9 +347,23 @@ class TestAgentRuntimeFullChain(unittest.TestCase):
         register_agent("test.no_policy_agent", _EchoAgent())
         self.addCleanup(lambda: AGENT_REGISTRY.pop("test.no_policy_agent", None))
 
+        # M9 (AI Provider Hierarchy): ROUTING_POLICY is now an empty-by-
+        # default TEST-ONLY override seam (see router.py's own docstring) -
+        # `original_default` is expected to be None here, not a pre-M9
+        # pre-populated "default" entry. Cleanup restores that exact prior
+        # state (pop if there wasn't one, not a conditional no-op) so this
+        # test never leaks a "default" override into whichever test runs
+        # next in the same process.
         original_default = ROUTING_POLICY.get("default")
         ROUTING_POLICY["default"] = RoutingDecision(primary="fake_ok")
-        self.addCleanup(lambda: ROUTING_POLICY.__setitem__("default", original_default) if original_default else None)
+
+        def _restore_default():
+            if original_default is not None:
+                ROUTING_POLICY["default"] = original_default
+            else:
+                ROUTING_POLICY.pop("default", None)
+
+        self.addCleanup(_restore_default)
 
         gateway = _make_gateway({"fake_ok": _OkProviderClient()})
         output = AgentRuntime.run("test.no_policy_agent", AgentInput(context={"question": "x"}), gateway=gateway)

@@ -139,9 +139,20 @@ def run_research_request(
     triggered_by_user: User,
     run_input: dict | None = None,
 ) -> ResearchJob:
+    # M9 (AI Provider Hierarchy): premium_approved is a per-run AI-approval
+    # decision, not document-source configuration - extracted here, before
+    # merging the rest of run_input into source_spec, so it never leaks
+    # into a research provider's own fetch() config dict. See
+    # app/api/routes/research_requests.py's ai-preflight endpoint for
+    # where a human actually makes this decision, and
+    # ResearchRequestRunBody.premium_approved for how it arrives here via
+    # the workflow event payload's run_input.
+    premium_approved = bool((run_input or {}).get("premium_approved", False))
+    run_input_for_sources = {k: v for k, v in (run_input or {}).items() if k != "premium_approved"} or None
+
     prospect = db.get(Prospect, request.prospect_id)
     context = _build_context(db, prospect)
-    source_spec = _merged_source_spec(request, run_input)
+    source_spec = _merged_source_spec(request, run_input_for_sources)
     provider_keys = source_spec.get("source_types") or ["manual_document"]
 
     job = ResearchJob(
@@ -259,7 +270,7 @@ def run_research_request(
     # app/research/analysis/registry.py's own docstring - this call site
     # is unchanged in shape from the single-engine version it replaces.
     engine = get_analysis_engine()
-    analysis_outcomes: list[AnalysisOutcome] = engine.analyze(context, raw_documents)
+    analysis_outcomes: list[AnalysisOutcome] = engine.analyze(context, raw_documents, premium_approved=premium_approved)
 
     analyses_by_type: dict = {}
     for outcome in analysis_outcomes:

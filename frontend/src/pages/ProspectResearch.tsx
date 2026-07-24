@@ -6,6 +6,20 @@ import { Breadcrumbs } from "../components/Breadcrumbs";
 import { Card, Badge, Button, Select } from "../design-system";
 import type { BadgeTone } from "../design-system";
 import { engineBadgeTone, engineLabel } from "../research/useResearchExecution";
+import { PremiumApprovalDialog } from "../research/PremiumApprovalDialog";
+
+// M9 (AI Provider Hierarchy). Shape of POST .../ai-preflight's response
+// (app.schemas.research_request.AIPreflightResult) - checked BEFORE
+// submitting a run so the premium-approval dialog can be shown at
+// submission time rather than discovered mid-run (see
+// app/research/ai_preflight.py's own docstring).
+interface AIPreflightResult {
+  applicable: boolean;
+  approval_required: boolean;
+  candidate_provider_key: string | null;
+  estimated_cost_usd: number | null;
+  reasons: string[];
+}
 
 interface ResearchTemplate {
   id: string;
@@ -101,6 +115,15 @@ export default function ProspectResearch() {
   const [pastedText, setPastedText] = useState("");
   const [runningRequestId, setRunningRequestId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  // M9 (AI Provider Hierarchy) - non-null while the premium-approval
+  // dialog is open, holding what's needed to either proceed
+  // (premium_approved: true) or run without AI escalation on decline.
+  const [pendingApproval, setPendingApproval] = useState<{
+    requestId: string;
+    documents: { document_type: string; extracted_text: string }[];
+    preflight: AIPreflightResult;
+  } | null>(null);
+  const [isSubmittingApproval, setIsSubmittingApproval] = useState(false);
 
   const loadAll = () => {
     setIsLoading(true);
@@ -144,24 +167,84 @@ export default function ProspectResearch() {
     }
   };
 
+  const submitRun = async (
+    requestId: string,
+    documents: { document_type: string; extracted_text: string }[],
+    premiumApproved: boolean
+  ) => {
+    // M8.13: /run no longer returns a finished ResearchJob synchronously -
+    // it publishes a trigger event and responds "queued" (see
+    // app/api/routes/research_requests.py's own docstring). Navigate to
+    // the Live Workflow Progress screen, which finds and watches the
+    // resulting job as the Workflow Engine actually produces it.
+    await apiClient.post(`${base}/research-requests/${requestId}/run`, {
+      documents,
+      // M9 (AI Provider Hierarchy) - only meaningful when the ai-preflight
+      // check found local/free unavailable and a premium provider needs
+      // approval; harmless (ignored) otherwise - see
+      // ResearchRequestRunBody.premium_approved's own docstring.
+      premium_approved: premiumApproved,
+    });
+    setPastedText("");
+    navigate(`/businesses/${companyId}/prospects/${prospectId}/research/${requestId}/run`);
+  };
+
   const runRequest = async (requestId: string) => {
     setActionError(null);
     setRunningRequestId(requestId);
+    const documents = pastedText.trim()
+      ? [{ document_type: "pasted_text", extracted_text: pastedText.trim() }]
+      : [];
     try {
-      // M8.13: /run no longer returns a finished ResearchJob synchronously
-      // - it publishes a trigger event and responds "queued" (see
-      // app/api/routes/research_requests.py's own docstring). Navigate to
-      // the Live Workflow Progress screen, which finds and watches the
-      // resulting job as the Workflow Engine actually produces it.
-      const documents = pastedText.trim()
-        ? [{ document_type: "pasted_text", extracted_text: pastedText.trim() }]
-        : [];
-      await apiClient.post(`${base}/research-requests/${requestId}/run`, { documents });
-      setPastedText("");
-      navigate(`/businesses/${companyId}/prospects/${prospectId}/research/${requestId}/run`);
+      // M9 (AI Provider Hierarchy): check BEFORE submitting whether this
+      // run would need premium-provider approval, so the Yes/No dialog
+      // can be shown at submission time - see
+      // app/research/ai_preflight.py's own docstring for why this is a
+      // pre-flight check, not a mid-run interrupt.
+      const preflightRes = await apiClient.post<AIPreflightResult>(
+        `${base}/research-requests/${requestId}/ai-preflight`,
+        { documents }
+      );
+      if (preflightRes.data.applicable && preflightRes.data.approval_required) {
+        setPendingApproval({ requestId, documents, preflight: preflightRes.data });
+        setRunningRequestId(null);
+        return;
+      }
+      await submitRun(requestId, documents, false);
     } catch {
       setActionError("This research run could not be started.");
       setRunningRequestId(null);
+    }
+  };
+
+  const approvePremiumAndRun = async () => {
+    if (!pendingApproval) return;
+    setIsSubmittingApproval(true);
+    try {
+      await submitRun(pendingApproval.requestId, pendingApproval.documents, true);
+      setPendingApproval(null);
+    } catch {
+      setActionError("This research run could not be started.");
+    } finally {
+      setIsSubmittingApproval(false);
+    }
+  };
+
+  const declinePremiumAndRun = async () => {
+    if (!pendingApproval) return;
+    setIsSubmittingApproval(true);
+    try {
+      // Runs anyway, without AI escalation - LLMAnalysisEngine will
+      // degrade to its existing "AI analysis failed"-shaped outcome
+      // (reasoning explains premium approval was needed and declined),
+      // never a silent premium call. See llm_engine.py's
+      // _premium_approval_outcomes().
+      await submitRun(pendingApproval.requestId, pendingApproval.documents, false);
+      setPendingApproval(null);
+    } catch {
+      setActionError("This research run could not be started.");
+    } finally {
+      setIsSubmittingApproval(false);
     }
   };
 
@@ -360,6 +443,16 @@ export default function ProspectResearch() {
           ))}
         </div>
       </div>
+
+      <PremiumApprovalDialog
+        open={pendingApproval != null}
+        candidateProviderKey={pendingApproval?.preflight.candidate_provider_key ?? null}
+        estimatedCostUsd={pendingApproval?.preflight.estimated_cost_usd ?? null}
+        reasons={pendingApproval?.preflight.reasons ?? []}
+        isSubmitting={isSubmittingApproval}
+        onApprove={approvePremiumAndRun}
+        onDecline={declinePremiumAndRun}
+      />
     </div>
   );
 }

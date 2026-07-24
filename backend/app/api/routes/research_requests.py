@@ -11,8 +11,10 @@ from app.models.prospect import Prospect
 from app.models.research_request import ResearchRequest
 from app.models.research_template import ResearchTemplate
 from app.models.user import User
+from app.research.ai_preflight import compute_ai_preflight
 from app.research.pipeline import RESEARCH_REQUEST_RUN_REQUESTED_EVENT_TYPE
 from app.schemas.research_request import (
+    AIPreflightResult,
     ResearchRequestCreate,
     ResearchRequestRead,
     ResearchRequestRunBody,
@@ -98,6 +100,33 @@ def get_research_request(
     db: Session = Depends(get_db),
 ) -> ResearchRequest:
     return _get_request_or_404(db, profile.id, prospect_id, request_id)
+
+
+@router.post(
+    "/company-profiles/{company_profile_id}/prospects/{prospect_id}/research-requests/{request_id}/ai-preflight",
+    response_model=AIPreflightResult,
+)
+def ai_preflight_research_request(
+    prospect_id: uuid.UUID,
+    request_id: uuid.UUID,
+    run_in: ResearchRequestRunBody | None = None,
+    profile: CompanyProfile = Depends(get_owned_company_profile),
+    db: Session = Depends(get_db),
+) -> AIPreflightResult:
+    """
+    M9 (AI Provider Hierarchy). Called by the Research page BEFORE
+    submitting a run, so the premium-approval Yes/No dialog (if needed)
+    can be shown at submission time - see app/research/ai_preflight.py's
+    own docstring for why this is a pre-flight check rather than a
+    mid-workflow pause. Read-only - makes no real AI Gateway call itself,
+    only checks is_configured() on each candidate provider (no network
+    call - see app.ai_gateway.providers.base.ProviderClient's own
+    docstring) and estimates cost/complexity heuristically.
+    """
+    _get_request_or_404(db, profile.id, prospect_id, request_id)
+    documents = (run_in.documents if run_in else None) or []
+    prompt_char_length = sum(len(doc.get("extracted_text") or "") for doc in documents)
+    return compute_ai_preflight(prompt_char_length=prompt_char_length, document_count=len(documents))
 
 
 @router.post(

@@ -42,11 +42,13 @@ M7.3 additions, both backward-compatible with every M7.2 caller/test:
     an AgentOutput, so every M7.2 caller and test keeps working
     unmodified.
 """
-from app.ai_agents.base import Agent, AgentExecutionResult, AgentInput, AgentOutcome, AgentOutput
+import dataclasses
+
+from app.ai_agents.base import Agent, AgentExecutionResult, AgentInput, AgentOutcome, AgentOutput, PremiumApprovalContext
 from app.ai_agents.execution_policy import resolve_execution_policy
 from app.ai_agents.registry import get_agent
 from app.ai_gateway.client import AIGateway
-from app.ai_gateway.errors import GatewayError
+from app.ai_gateway.errors import GatewayError, PremiumApprovalRequiredError
 from app.core.config import settings
 from app.prompt_builder.builder import PromptBuilder
 
@@ -74,9 +76,36 @@ class AgentRuntime:
             attempt += 1
             context = agent.build_context(input_data)
             request = PromptBuilder.build(context, policy)
+            if input_data.premium_approved:
+                # M9 (AI Provider Hierarchy) - copied here, AFTER
+                # PromptBuilder.build() has already produced the request
+                # from context+policy alone, never from anything the
+                # Agent itself constructed. GatewayRequest is a frozen
+                # dataclass (request.py) - dataclasses.replace() is the
+                # standard way to set one field on an immutable instance.
+                request = dataclasses.replace(request, premium_approved=True)
 
             try:
                 response = gateway.complete(request)
+            except PremiumApprovalRequiredError as exc:
+                # M9 (AI Provider Hierarchy). Caught NARROWER than, and
+                # before, the generic GatewayError clause below - this is
+                # not an ordinary failure, it's the Gateway's "STOP, ask
+                # the user" decision point (see errors.py's own
+                # docstring). Reported as FAILURE (AgentOutcome has no
+                # dedicated "awaiting approval" member - see base.py's own
+                # docstring for why PENDING was deliberately never added),
+                # but with premium_approval populated so a caller that
+                # knows to check it (e.g. LLMAnalysisEngine) can react
+                # differently from a genuine terminal failure.
+                return AgentExecutionResult(
+                    output=AgentOutput(status=AgentOutcome.FAILURE, error=str(exc)),
+                    premium_approval=PremiumApprovalContext(
+                        candidate_provider_key=exc.candidate_provider_key,
+                        estimated_cost_usd=exc.estimated_cost_usd,
+                        reasons=exc.reasons,
+                    ),
+                )
             except GatewayError as exc:
                 return AgentExecutionResult(output=AgentOutput(status=AgentOutcome.FAILURE, error=str(exc)))
 
