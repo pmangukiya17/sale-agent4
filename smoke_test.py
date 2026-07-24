@@ -26,7 +26,15 @@ M1.1 checks (Company Profile & Discovery Configuration):
 M1 checks (Buyer Discovery Engine):
     13. Search Templates reachable    (GET /api/v1/company-profiles/{id}/search-templates — system defaults seeded in 0003)
     14. Discovery Search creation     (POST /api/v1/company-profiles/{id}/discovery-searches, pinned to the ICP from step 11)
-    15. Discovery Search run succeeds (POST .../discovery-searches/{id}/run using the manual_csv provider, synchronous)
+    15. Discovery Search run succeeds (POST .../discovery-searches/{id}/run — ASYNCHRONOUS since M8.8: returns 202/
+                                        "queued", no DiscoveryJob yet. This step polls
+                                        GET .../discovery-jobs?discovery_search_id={id} - the same independent-worker
+                                        poll-and-wait pattern the M5 section below uses for the `worker` container,
+                                        applied here to the Workflow Engine's Event Dispatcher + Step Runner - until
+                                        a job appears and reaches a terminal status. Fixed post-M2-Phase-1a: this
+                                        step previously still asserted the pre-M8.8 synchronous contract (HTTP 201
+                                        with an inline job result), which had been silently wrong since M8.8 shipped
+                                        and only surfaced when the full smoke test was run again after Phase 1a.)
     16. Prospects list succeeds       (GET /api/v1/company-profiles/{id}/prospects — the run's prospect is present)
     17. Prospect approve succeeds     (POST .../prospects/{id}/approve)
 
@@ -127,10 +135,16 @@ ENV_FILE = Path(__file__).resolve().parent / ".env"
 POLL_ATTEMPTS = 10
 POLL_DELAY_SECONDS = 2
 
-# M5 steps 41/44 wait for the independent `worker` container's own poll
-# loop (DELIVERY_WORKER_POLL_INTERVAL_SECONDS, 15s by default) to notice
-# and dispatch a queue item - a materially longer, coarser-grained wait
-# than the steps above, which are only waiting for HTTP/DB readiness.
+# Shared by two independent-worker wait patterns, both materially longer/
+# coarser-grained than the HTTP/DB-readiness polling above:
+#   - M1 step 15 waits for the Workflow Engine's Event Dispatcher +
+#     Step Runner workers (their own poll intervals,
+#     WORKFLOW_EVENT_DISPATCHER_POLL_INTERVAL_SECONDS/
+#     WORKFLOW_STEP_RUNNER_POLL_INTERVAL_SECONDS) to turn a queued
+#     discovery_search.run_requested event into a completed DiscoveryJob.
+#   - M5 steps 41/44 wait for the independent `worker` container's own
+#     poll loop (DELIVERY_WORKER_POLL_INTERVAL_SECONDS, 15s by default)
+#     to notice and dispatch a queue item.
 WORKER_POLL_ATTEMPTS = 25
 WORKER_POLL_DELAY_SECONDS = 3
 
@@ -547,19 +561,57 @@ def check_run_discovery_search() -> str:
     if status != 200:
         raise RuntimeError(f"unexpected status {status} updating search query_spec: {raw[:200]!r}")
 
+    # M8.8: /run is asynchronous - it only validates the search and
+    # publishes a trigger event, returning 202/"queued" with no
+    # DiscoveryJob yet (see DiscoverySearchRunQueued's own docstring in
+    # app/schemas/discovery_search.py). Real execution happens whenever
+    # the Event Dispatcher and Step Runner workers next poll. This used
+    # to assert the pre-M8.8 synchronous contract (HTTP 201 with an
+    # inline job result) - fixed here, not in the API or the workers.
     status, raw = http_request(
         "POST",
         f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/discovery-searches/{search_id}/run",
         headers={"Authorization": f"Bearer {token}"},
     )
-    if status != 201:
+    if status != 202:
         raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
-    payload = json.loads(raw)
-    if payload.get("status") not in ("completed", "partially_completed"):
-        raise RuntimeError(f"unexpected job status: {payload}")
-    if payload.get("prospect_created_count", 0) < 1:
-        raise RuntimeError(f"expected at least 1 new prospect, got: {payload}")
-    return f"job {payload.get('id')} status={payload.get('status')} created {payload.get('prospect_created_count')} prospect(s)"
+    queued_payload = json.loads(raw)
+    if queued_payload.get("status") != "queued":
+        raise RuntimeError(f"expected status='queued' from the async /run response, got: {queued_payload}")
+
+    # Poll for the resulting DiscoveryJob to appear and reach a terminal
+    # status - same poll-and-wait pattern as the M5 worker checks below
+    # (WORKER_POLL_ATTEMPTS/WORKER_POLL_DELAY_SECONDS), applied here to
+    # the Workflow Engine's own two independent workers instead of the
+    # Delivery `worker` container.
+    def attempt():
+        status, raw = http_request(
+            "GET",
+            f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/discovery-jobs?discovery_search_id={search_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if status != 200:
+            raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+        jobs = json.loads(raw)
+        if not jobs:
+            raise RuntimeError(
+                "no DiscoveryJob yet - Event Dispatcher/Step Runner haven't picked up the run request yet"
+            )
+        job = jobs[0]  # list_discovery_jobs orders by created_at desc
+        if job.get("status") not in ("completed", "partially_completed", "failed", "cancelled"):
+            raise RuntimeError(f"DiscoveryJob {job.get('id')} still status={job.get('status')!r}")
+        return job
+
+    job = poll(attempt, attempts=WORKER_POLL_ATTEMPTS, delay=WORKER_POLL_DELAY_SECONDS)
+    if job.get("status") not in ("completed", "partially_completed"):
+        raise RuntimeError(f"unexpected terminal job status: {job}")
+    if job.get("prospect_created_count", 0) < 1:
+        raise RuntimeError(f"expected at least 1 new prospect, got: {job}")
+    _state["discovery_job_id"] = job.get("id")
+    return (
+        f"job {job.get('id')} status={job.get('status')} created "
+        f"{job.get('prospect_created_count')} prospect(s) (queued -> polled to completion)"
+    )
 
 
 def check_list_prospects() -> str:
