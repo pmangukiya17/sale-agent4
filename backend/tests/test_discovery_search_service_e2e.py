@@ -62,6 +62,7 @@ from app.models.prospect_source import ProspectSource
 from app.models.prospect_timeline_event import ProspectTimelineEvent
 from app.models.search_template import SearchTemplate
 from app.models.user import User
+from tests.event_backbone_cleanup import delete_events_and_dependents
 
 
 class SearchServiceE2ETestBase(unittest.TestCase):
@@ -149,6 +150,15 @@ class SearchServiceE2ETestBase(unittest.TestCase):
             synchronize_session=False
         )
         self.db.commit()
+
+        # run_discovery_search() publishes real progress Events via
+        # app.workflow_engine.events.publish_event() on every call - see
+        # tests/event_backbone_cleanup.py's own docstring for why this
+        # must run as the LAST cleanup step, right before
+        # CompanyProfile/User, to stay robust against this project's
+        # real, always-on event_dispatcher_worker/step_runner_worker/
+        # notification worker containers.
+        delete_events_and_dependents(self.db, company_profile_id=self.company_profile.id)
 
         self.db.query(CompanyProfile).filter(CompanyProfile.id == self.company_profile.id).delete()
         self.db.query(User).filter(User.id == self.user.id).delete()

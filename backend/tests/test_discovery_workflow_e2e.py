@@ -60,6 +60,7 @@ from app.models.enums import (
 )
 from app.models.event_consumption import EventConsumption
 from app.models.icp_criteria import ICPCriteria
+from tests.event_backbone_cleanup import delete_events_and_dependents
 from app.models.prospect import Prospect
 from app.models.prospect_contact import ProspectContact
 from app.models.prospect_source import ProspectSource
@@ -195,39 +196,18 @@ class TestDiscoveryWorkflowEndToEnd(unittest.TestCase):
         )
         self.db.commit()
 
-        # Bug fix (reported after Docker verification):
-        # event_consumptions.event_id -> events.id is RESTRICT (this
-        # project's own standing FK convention), so no Event row below
-        # may still be referenced by an EventConsumption row at the
-        # moment this delete runs. The EventConsumption delete earlier in
-        # this method (scoped to event_ids OR instance_ids, right after
-        # WorkflowStepInvocation) is not sufficient on its own: unlike
-        # every other table this teardown cleans up, `events` is read by
-        # REAL, always-on background worker containers in this project's
-        # docker-compose stack (event_dispatcher_worker/step_runner_worker
-        # - see app/main.py's own lifespan docstring: the realtime poller
-        # is "the ONE background capability that runs inside the FastAPI
-        # process... every other background capability is its own
-        # docker-compose worker service"), which continuously poll and
-        # consume events independently of this test's own explicit
-        # run_one_tick() calls. A live worker can insert a fresh
-        # EventConsumption row for one of this test's own Events at any
-        # point between the earlier delete (several statements/commits
-        # ago) and this one. Re-running the same delete, scoped by
-        # event_id alone, immediately before the Event delete closes that
-        # window as tightly as a sequential teardown can - the same "child
-        # rows must be gone at the moment of the parent delete" guarantee
-        # every other RESTRICT-protected table in this method already
-        # relies on, just re-asserted right at the point it actually
-        # matters for a table real background workers can still be
-        # writing to.
-        self.db.query(EventConsumption).filter(EventConsumption.event_id.in_(event_ids)).delete(
-            synchronize_session=False
-        )
-        self.db.commit()
-
-        self.db.query(Event).filter(Event.company_profile_id == self.company_profile.id).delete(synchronize_session=False)
-        self.db.commit()
+        # Generalized fix (superseding two earlier per-table patches -
+        # EventConsumption alone, then discovering Notification/
+        # NotificationDispatch too): delete EVERY row with a live FK to
+        # events.id (the complete set - EventConsumption, Notification,
+        # NotificationDispatch - see event_backbone_cleanup.py's own
+        # docstring for the full dependency graph and why this must be
+        # the LAST thing before touching CompanyProfile/User to stay
+        # robust against this project's real, always-on
+        # event_dispatcher_worker/step_runner_worker/notification worker
+        # containers, which consume `events` independently of this
+        # test's own explicit run_one_tick() calls.
+        delete_events_and_dependents(self.db, company_profile_id=self.company_profile.id)
 
         self.db.query(CompanyProfile).filter(CompanyProfile.id == self.company_profile.id).delete()
         self.db.query(User).filter(User.id == self.user.id).delete()
