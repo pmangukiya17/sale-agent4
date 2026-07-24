@@ -4,12 +4,27 @@ ambiguous band. No new Postgres extension (e.g. pg_trgm) required -
 comparisons run in Python against prospects already scoped to one
 company_profile_id, which is a small enough set for this to be fine at
 M1's scale.
+
+M2 Phase 1a note: the Prospect import below was moved behind
+`TYPE_CHECKING` (with `from __future__ import annotations` making every
+annotation in this module a lazily-evaluated string) so this module has
+zero runtime dependency on sqlalchemy. Prospect was only ever used here
+as a type hint, never at runtime - dataclasses don't enforce field
+types - so this is a behavior-neutral change. It's what lets
+app/discovery/normalization.py reuse normalize_website()/
+normalize_company_name() from here without dragging the ORM into a
+module that's otherwise designed to be independently unit-testable
+(same reasoning as app/delivery/scope_utils.py).
 """
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
+from typing import TYPE_CHECKING
 
-from app.models.prospect import Prospect
+if TYPE_CHECKING:
+    from app.models.prospect import Prospect
 
 # Above this, treat as the same real-world company - update, don't insert.
 DEFINITE_MATCH_THRESHOLD = 0.85

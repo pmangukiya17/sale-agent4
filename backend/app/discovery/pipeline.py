@@ -27,9 +27,11 @@ from sqlalchemy.orm import Session
 
 from app.discovery.context import DiscoveryContext
 from app.discovery.dedup import find_duplicate
+from app.discovery.normalization import IndustryRef, normalize_candidate
 from app.discovery.providers.base import ProviderError
 from app.discovery.providers.registry import get_provider
 from app.discovery.scoring import score_prospect
+from app.discovery.validation import validate_candidate
 from app.models.company_profile import CompanyProfile
 from app.models.discovery_job import DiscoveryJob
 from app.models.discovery_job_provider_run import DiscoveryJobProviderRun
@@ -38,6 +40,7 @@ from app.models.discovery_run import DiscoveryRun
 from app.models.discovery_search import DiscoverySearch
 from app.models.enums import DiscoveryJobStatus, ProductStatus, ProspectStatus
 from app.models.icp_criteria import ICPCriteria
+from app.models.industry import Industry
 from app.models.knowledge_base import KnowledgeBase
 from app.models.product import Product
 from app.models.prospect import Prospect
@@ -114,6 +117,17 @@ def _merged_query_spec(search: DiscoverySearch) -> dict:
     return {**template_spec, **(search.query_spec or {})}
 
 
+def _load_known_industries(db: Session) -> list[IndustryRef]:
+    """M2 Phase 1a: feeds app.discovery.normalization.resolve_industry(),
+    which is what starts populating Prospect.industry_id - a column that
+    has existed since M1 but that nothing ever set. Loaded once per job
+    (not once per candidate) and handed to the pure, zero-dependency
+    normalization function as plain (id, name) pairs, never the ORM rows
+    themselves - see normalization.py's own docstring for why."""
+    rows = db.scalars(select(Industry).where(Industry.is_active.is_(True))).all()
+    return [IndustryRef(id=str(row.id), name=row.name) for row in rows]
+
+
 def _score_and_apply(db: Session, prospect: Prospect, icp: ICPCriteria, products: list[Product]) -> None:
     if ProspectStatus(prospect.status) in _REVIEWED_TERMINAL_STATUSES:
         return
@@ -180,6 +194,7 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
         db.scalars(select(Prospect).where(Prospect.company_profile_id == search.company_profile_id)).all()
     )
     touched_prospects: dict = {}  # id -> Prospect, for the scoring pass at the end
+    known_industries = _load_known_industries(db)  # M2 Phase 1a - see normalization.py
 
     providers_used: list[str] = []
     any_failure = False
@@ -187,6 +202,7 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
     created_count = 0
     matched_count = 0
     duplicate_flag_count = 0
+    validation_failed_count = 0  # M2 Phase 1a
     error_messages: list[str] = []
     job_log: list[dict] = []
 
@@ -247,22 +263,60 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
 
         for raw in outcome.results:
             fetched_at = _now()
+
+            # M2 Phase 1a: Normalization and Validation now run on every
+            # raw candidate, from every provider, before dedup ever sees
+            # it - see app/discovery/normalization.py and
+            # app/discovery/validation.py, and
+            # docs/architecture/m2-discovery-provider-strategy.md
+            # Sections 4-5 for the full design.
+            normalized = normalize_candidate(
+                name=raw.name,
+                website=raw.website,
+                country=raw.country,
+                industry_raw=raw.industry_raw,
+                company_size_range=raw.company_size_range,
+                description=raw.description,
+                known_industries=known_industries,
+            )
+            validation_result = validate_candidate(
+                name=normalized.name, website=normalized.website, country=normalized.country
+            )
+
             provider_result = DiscoveryProviderResult(
                 discovery_job_id=job.id,
                 provider_key=provider_key,
                 raw_payload=raw.raw_payload,
                 fetched_at=fetched_at,
-                normalized_payload={
-                    "name": raw.name, "website": raw.website, "country": raw.country,
-                    "industry_raw": raw.industry_raw, "company_size_range": raw.company_size_range,
-                    "description": raw.description,
-                },
-                dedup_key=raw.website or raw.name,
+                # No schema change: normalized_payload already existed on
+                # this model since M1, just never had a real normalization
+                # function behind it until now. The "validation" key is
+                # additive within the same existing JSONB column, not a
+                # new column.
+                normalized_payload={**normalized.as_payload(), "validation": validation_result.as_payload()},
+                dedup_key=normalized.website or normalized.name,
             )
             db.add(provider_result)
-            db.flush()  # need provider_result.id for the ProspectSource FK
+            db.flush()  # need provider_result.id for a possible ProspectSource FK below
 
-            match = find_duplicate(existing_prospects, name=raw.name, website=raw.website, country=raw.country)
+            if not validation_result.passed:
+                # Recorded (the DiscoveryProviderResult row above already
+                # captures raw + normalized + why it failed), but no
+                # Prospect is created or updated from it - "we found this
+                # but it didn't pass validation, here's why" stays
+                # distinct from "we never found this" and from dedup's
+                # own, separate concept of a duplicate match.
+                validation_failed_count += 1
+                job_log.append({
+                    "provider_key": provider_key, "event": "candidate_failed_validation",
+                    "name": normalized.name, "discovery_provider_result_id": str(provider_result.id),
+                    "reasons": [c.detail for c in validation_result.checks if not c.passed],
+                })
+                continue
+
+            match = find_duplicate(
+                existing_prospects, name=normalized.name, website=normalized.website, country=normalized.country
+            )
 
             if match and match.is_definite:
                 prospect = match.prospect
@@ -276,12 +330,13 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
                 prospect = Prospect(
                     company_profile_id=search.company_profile_id,
                     discovery_search_id=search.id,
-                    name=raw.name,
-                    website=raw.website,
-                    country=raw.country,
-                    industry_raw=raw.industry_raw,
-                    company_size_range=raw.company_size_range,
-                    description=raw.description,
+                    name=normalized.name,
+                    website=normalized.website,
+                    country=normalized.country,
+                    industry_id=normalized.industry_id,
+                    industry_raw=normalized.industry_raw,
+                    company_size_range=normalized.company_size_range,
+                    description=normalized.description,
                     status=ProspectStatus.NEW,
                     first_discovered_at=fetched_at,
                     last_seen_at=fetched_at,
@@ -345,6 +400,12 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
 
     qualified_count = sum(1 for p in touched_prospects.values() if p.status == ProspectStatus.QUALIFIED)
     rejected_count = sum(1 for p in touched_prospects.values() if p.status == ProspectStatus.UNQUALIFIED)
+
+    # M2 Phase 1a: no new DiscoveryJob column for this - job.log is
+    # already a free-form JSONB list, so a validation summary entry fits
+    # inside the existing schema rather than requiring a migration.
+    if validation_failed_count:
+        job_log.append({"event": "validation_summary", "validation_failed_count": validation_failed_count})
 
     job.providers_used = providers_used
     job.raw_result_count = raw_result_count

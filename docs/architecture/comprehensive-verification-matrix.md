@@ -129,13 +129,14 @@ scripts.
 | 41 | Sales Pipeline / Pipeline Overview / Revenue Pipeline — funnel conversion-rate math, per-currency revenue breakdown, empty-pipeline edge case, tenant isolation (`verify_track_c4.sh`) | Yes | Yes (visual: stage boxes, conversion %s, and KPI value all real; breathing glow on real Opportunity activity) | C4 | Pass |
 | 42 | Mailbox Brief — persisted-brief generation/retrieval (GET never generates, POST `.../generate` is the only write path), regeneration creates a new row (frozen-snapshot proof against later workspace changes), tenant isolation, empty-workspace and edge-case real-DB tests (`verify_track_c5.sh`) | Yes | Yes (visual: real generated summary + recommendations render, Regenerate creates a new brief, breathing glow on a brief existing) | C5 | Pending |
 | 43 | Outlook Integration — Graph 403 send fix (Mail.ReadWrite added to send_scopes), reconnect scope top-up (existing connections self-heal to the current baseline instead of replaying stale history), Mail.Read opt-in stays separate from send repair, pure scope-union unit tests + DB-backed reconnect tests, full pipeline (Outlook → EmailMessage → Thread Builder → Conversation → Reply Intelligence → Executive Daily Brief) and reply-threads-into-existing-conversation, tenant isolation (`verify_outlook_integration.sh`) | Yes | Yes (send succeeds end to end, reconnect badges flip from real scopes_granted data, Executive Daily Brief shows real inbox activity) | Outlook Integration | Pending |
+| 44 | M2 Phase 1a — Discovery Normalization + Validation pipeline stages (`app/discovery/normalization.py`, `app/discovery/validation.py`), industry resolution now populates `Prospect.industry_id` for the first time, `DiscoveryProviderResult.normalized_payload` gets a real producer (no schema change), invalid candidates recorded but never turned into Prospects, pure zero-dependency unit tests for normalization/validation/dedup + existing DB-backed e2e regression (`verify_m2_phase1a.sh`) | Yes | No (backend-only pipeline stage, no new frontend surface this sub-phase) | M2 Phase 1 | Pending |
 
 ---
 
 ## Summary
 
-- **43 total verification areas.**
-- **26 automated** (Group 1's 17 existing scripts + Group 3's 3 rows,
+- **44 total verification areas.**
+- **27 automated** (Group 1's 17 existing scripts + Group 3's 3 rows,
   covered by `test_track_b2_verification.py`/`verify_track_b2.sh`, +
   Group 4's row 38, covered by `test_open_conversations_count.py`/
   `verify_track_c1.sh`, + Group 4's row 39, covered by
@@ -146,19 +147,23 @@ scripts.
   Group 4's row 42, covered by `test_mailbox_brief_e2e.py`/
   `verify_track_c5.sh`, + Group 4's row 43, covered by
   `test_scope_utils.py`/`test_connection_service_reconnect_scopes.py`/
-  `verify_outlook_integration.sh`) + **22 manual** (Group 2's 17 + Group
-  4's 5 visual/live-mailbox checks - row 40 has no visual check, since
-  Track C3 has no frontend surface of its own).
+  `verify_outlook_integration.sh`, + row 44, covered by
+  `test_discovery_dedup_pure.py`/`test_discovery_normalization.py`/
+  `test_discovery_validation.py`/`verify_m2_phase1a.sh`) + **22 manual**
+  (Group 2's 17 + Group 4's 5 visual/live-mailbox checks - row 40 has no
+  visual check, since Track C3 has no frontend surface of its own; row 44
+  has no visual check either, since Phase 1a is backend-only).
 - **34 areas in Track B1**, **3 areas in Track B2**, **1 area in Track C1**,
   **1 area in Track C2**, **1 area in Track C3**, **1 area in Track C4**,
   **1 area in Track C5**, **1 area in the Outlook Integration milestone**
   (a post-C5 fix, not one of the original six dashboard capabilities -
-  found during the CEO's own live testing of Track C5).
+  found during the CEO's own live testing of Track C5), **1 area in M2
+  Phase 1 (Normalization + Validation sub-phase 1a)**.
 - **4 executed (row 38, Track C1; row 39, Track C2; row 40, Track C3; row
   41, Track C4 — all `Pass`, confirmed by the CEO against a real
-  Docker/Postgres/browser run). 39 rows remain `Pending`, including row 42
-  (Track C5) and row 43 (Outlook Integration) until the CEO runs their
-  respective `verify_*.sh` scripts for real.**
+  Docker/Postgres/browser run). 40 rows remain `Pending`, including row 42
+  (Track C5), row 43 (Outlook Integration), and row 44 (M2 Phase 1a) until
+  the CEO runs their respective `verify_*.sh` scripts for real.**
 
 This matrix should be updated in place as each row executes — mark each
 `Status` as `Pass`, `Fail`, or `Skipped` (with a one-line reason) rather
