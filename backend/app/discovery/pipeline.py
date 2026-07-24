@@ -30,6 +30,27 @@ registration_number/email is opportunistically backfilled onto the
 matched Prospect if it didn't already have a value for that field (see
 _backfill_identifier_fields() below) - conflicting values are never
 silently overwritten, only logged.
+
+M2 Phase 1c: graceful cancellation. DiscoveryJob.cancel_requested_at is a
+REQUEST written by a separate API request/session (see
+app/api/routes/discovery_jobs.py's cancel route) - this function is the
+ONLY thing that ever reads it back and decides what to do, and the ONLY
+thing that ever writes DiscoveryJobStatus.CANCELLED (mirroring how
+COMPLETED/PARTIALLY_COMPLETED/FAILED are already exclusively written
+here, never from a route). Because this whole function runs as one
+synchronous Python call (there is no separate thread/process to
+interrupt mid-provider-call - see the migration's own docstring), a
+cancellation can only take effect at safe checkpoints BETWEEN units of
+work: before starting the next provider, and periodically between
+candidates within the provider currently being processed
+(_is_cancellation_requested() re-reads the row from the database, so it
+correctly observes a flag committed by a completely different request in
+the meantime - ordinary read-committed transaction visibility, the same
+mechanism M8.8's existing per-provider commit/refresh pattern already
+relies on). Whatever has already been committed (Prospects created,
+DiscoveryProviderResults recorded, counts) is never rolled back or
+discarded - a cancelled job is a genuinely partially-completed one, not
+a wiped one.
 """
 from datetime import datetime, timezone
 
@@ -79,6 +100,14 @@ DISCOVERY_JOB_PROGRESS_EVENT_TYPE = "discovery_job.progress"
 # re-statused by a later run - a re-surfacing just bumps last_seen_at and
 # records a new source, it doesn't relitigate a human decision.
 _REVIEWED_TERMINAL_STATUSES = {ProspectStatus.APPROVED, ProspectStatus.REJECTED, ProspectStatus.ARCHIVED}
+
+# M2 Phase 1c: how often (in candidates) the per-provider result loop
+# re-checks for a cancellation request. A compromise between "cancel
+# takes effect promptly" and "don't hammer the database with a fresh
+# SELECT on every single candidate" for a large manual_csv batch - see
+# this module's own docstring for why checking cannot be more granular
+# than "between units of work" at all.
+CANCELLATION_CHECK_INTERVAL = 25
 
 
 class DiscoveryConfigError(Exception):
@@ -185,6 +214,24 @@ def _score_and_apply(db: Session, prospect: Prospect, icp: ICPCriteria, products
     }))
 
 
+def _is_cancellation_requested(db: Session, job: DiscoveryJob) -> bool:
+    """M2 Phase 1c. Re-reads job.cancel_requested_at fresh from the
+    database - job may have been created/committed in THIS session, but
+    a cancellation request is written by a completely different
+    request's own session (see app/api/routes/discovery_jobs.py's
+    cancel route), so an in-memory value would never observe it.
+    db.refresh() issues a real SELECT; ordinary read-committed isolation
+    means it sees the other session's cancellation the moment that
+    session commits - the same visibility M8.8's existing per-provider
+    commit/refresh pattern already depends on elsewhere in this
+    function. Safe to call at any point where `job` has no pending
+    uncommitted attribute changes of its own (true at every call site
+    below - job's own fields are only ever mutated right before this
+    function's callers' own commits, never in between)."""
+    db.refresh(job)
+    return job.cancel_requested_at is not None
+
+
 def _publish_job_progress(db: Session, job: DiscoveryJob, company_profile_id) -> None:
     """One nudge, no payload beyond enough to identify the job - see this
     module's own docstring for why. Flushes but does not commit; callers
@@ -240,8 +287,14 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
     validation_failed_count = 0  # M2 Phase 1a
     error_messages: list[str] = []
     job_log: list[dict] = []
+    cancelled = False  # M2 Phase 1c
 
     for provider_key in search.provider_keys:
+        if _is_cancellation_requested(db, job):
+            cancelled = True
+            job_log.append({"event": "job_cancelled", "detail": f"stopped before starting provider {provider_key!r}"})
+            break
+
         started_at = _now()
         try:
             provider = get_provider(provider_key)
@@ -284,19 +337,35 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
 
         finished_at = _now()
         duration_ms = int((finished_at - started_at).total_seconds() * 1000)
-        db.add(DiscoveryJobProviderRun(
+        # M2 Phase 1c: kept as a local variable (not committed via db.add
+        # immediately) so its status/counts can still be corrected below
+        # if this provider's own candidate loop is interrupted by a
+        # cancellation request partway through - it isn't flushed until
+        # this provider's own end-of-loop commit, same as before.
+        provider_run = DiscoveryJobProviderRun(
             discovery_job_id=job.id, provider_key=provider_key, started_at=started_at, finished_at=finished_at,
             duration_ms=duration_ms, request_count=outcome.request_count, api_cost=outcome.api_cost,
             token_usage=outcome.token_usage, status="completed",
-        ))
+        )
+        db.add(provider_run)
         providers_used.append(provider_key)
-        raw_result_count += len(outcome.results)
-        job_log.append({
-            "provider_key": provider_key, "started_at": started_at.isoformat(), "finished_at": finished_at.isoformat(),
-            "status": "completed", "result_count": len(outcome.results), "duration_ms": duration_ms,
-        })
 
-        for raw in outcome.results:
+        processed_in_provider = 0  # M2 Phase 1c - only what was ACTUALLY processed, not len(outcome.results)
+        for idx, raw in enumerate(outcome.results):
+            # M2 Phase 1c: checked periodically (not every candidate - see
+            # CANCELLATION_CHECK_INTERVAL's own comment) so a large batch
+            # can still be stopped gracefully partway through, without a
+            # fresh SELECT on every single row.
+            if idx % CANCELLATION_CHECK_INTERVAL == 0 and _is_cancellation_requested(db, job):
+                cancelled = True
+                job_log.append({
+                    "provider_key": provider_key, "event": "job_cancelled",
+                    "detail": f"stopped after processing {processed_in_provider} of {len(outcome.results)} "
+                    f"candidates from this provider",
+                })
+                break
+
+            processed_in_provider += 1
             fetched_at = _now()
 
             # M2 Phase 1a: Normalization and Validation now run on every
@@ -454,6 +523,20 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
 
             touched_prospects[prospect.id] = prospect
 
+        # M2 Phase 1c: raw_result_count/the provider run's own record only
+        # ever reflect what was ACTUALLY processed - if this provider's
+        # loop above was interrupted by a cancellation, that's
+        # processed_in_provider (< len(outcome.results)), not the full
+        # result set this provider returned.
+        raw_result_count += processed_in_provider
+        if cancelled:
+            provider_run.status = "cancelled"
+        else:
+            job_log.append({
+                "provider_key": provider_key, "started_at": started_at.isoformat(), "finished_at": finished_at.isoformat(),
+                "status": "completed", "result_count": processed_in_provider, "duration_ms": duration_ms,
+            })
+
         # M8.8: this provider (and every prospect/result it produced) is
         # now fully written - commit + nudge before moving to the next
         # provider, so a live viewer's provider list fills in one entry at
@@ -464,6 +547,9 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
         _publish_job_progress(db, job, search.company_profile_id)
         db.commit()
         db.refresh(job)
+
+        if cancelled:  # M2 Phase 1c - stop entirely, don't start the next provider
+            break
 
     for prospect in touched_prospects.values():
         _score_and_apply(db, prospect, icp, context.products)
@@ -487,7 +573,12 @@ def run_discovery_search(db: Session, search: DiscoverySearch, triggered_by_user
     job.error_message = "; ".join(error_messages) if error_messages else None
     job.log = job_log
 
-    if not providers_used and error_messages:
+    # M2 Phase 1c: a requested cancellation is checked FIRST and always
+    # wins - even if some providers also errored, "the human asked this
+    # to stop" is the real reason this job ended, not "it failed."
+    if cancelled:
+        job.status = DiscoveryJobStatus.CANCELLED
+    elif not providers_used and error_messages:
         job.status = DiscoveryJobStatus.FAILED
     elif error_messages:
         job.status = DiscoveryJobStatus.PARTIALLY_COMPLETED

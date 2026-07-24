@@ -64,6 +64,15 @@ class DiscoveryJob(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     # (also mirrored as rows in discovery_job_provider_runs for querying).
     log: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
+    # M2 Phase 1c: a cancellation REQUEST, distinct from status (which
+    # stays owned exclusively by app.discovery.pipeline.run_discovery_search
+    # - see this column's own migration docstring for the full reasoning).
+    # NULL means never requested.
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    cancel_requested_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
     discovery_search: Mapped["DiscoverySearch"] = relationship(back_populates="jobs")
     provider_runs: Mapped[list["DiscoveryJobProviderRun"]] = relationship(
         back_populates="discovery_job", cascade="all, delete-orphan"

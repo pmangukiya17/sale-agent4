@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -25,6 +25,26 @@ class ProspectUpdate(BaseModel):
 
 class ProspectRejectRequest(BaseModel):
     rejection_reason: str
+
+
+class ProspectImportRequest(BaseModel):
+    """M2 Phase 1c - optional overrides for POST .../prospects/{id}/import.
+    Every field is optional; an empty/omitted body imports with sensible
+    defaults (name falls back to the Prospect's own name - see
+    app.opportunities.service.import_prospect_to_opportunity). Mirrors
+    OpportunityCreate's own optional fields (app.schemas.opportunity)
+    rather than inventing new field names - deliberately excludes
+    `stage`/`prospect_id`/`company_profile_id` (the former is never
+    settable at creation from anywhere but create_opportunity's own
+    QUALIFIED_LEAD default; the latter two come from the authenticated
+    path/profile, never the request body)."""
+
+    name: str | None = None
+    prospect_contact_id: uuid.UUID | None = None
+    estimated_revenue: float | None = None
+    currency: str | None = None
+    expected_close_date: date | None = None
+    owner_user_id: uuid.UUID | None = None
 
 
 class ProspectRead(BaseModel):

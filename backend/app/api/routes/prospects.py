@@ -9,10 +9,13 @@ from app.api.deps import get_current_user, get_owned_company_profile
 from app.db.session import get_db
 from app.models.company_profile import CompanyProfile
 from app.models.enums import ProspectStatus
+from app.models.opportunity import Opportunity
 from app.models.prospect import Prospect
 from app.models.prospect_timeline_event import ProspectTimelineEvent
 from app.models.user import User
-from app.schemas.prospect import ProspectRead, ProspectRejectRequest, ProspectUpdate
+from app.opportunities.service import ProspectNotApprovedError, import_prospect_to_opportunity
+from app.schemas.opportunity import OpportunityRead
+from app.schemas.prospect import ProspectImportRequest, ProspectRead, ProspectRejectRequest, ProspectUpdate
 
 router = APIRouter()
 
@@ -128,6 +131,59 @@ def reject_prospect(
     db.commit()
     db.refresh(prospect)
     return prospect
+
+
+@router.post(
+    "/company-profiles/{company_profile_id}/prospects/{prospect_id}/import",
+    response_model=OpportunityRead,
+)
+def import_prospect(
+    prospect_id: uuid.UUID,
+    import_in: ProspectImportRequest | None = None,
+    profile: CompanyProfile = Depends(get_owned_company_profile),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Opportunity:
+    """M2 Phase 1c - "Prospect -> Opportunity Import". Turns an APPROVED
+    Prospect into a real Opportunity (app.opportunities.service.
+    import_prospect_to_opportunity - the sole writer of Opportunity rows,
+    reused unchanged here, not duplicated). Idempotent: calling this
+    again for a Prospect that already has an Opportunity just returns
+    that same Opportunity - never creates a second one. Always 200 (not
+    conditionally 201/200) since both the "created" and "already existed"
+    outcomes return the same, valid resource shape - the response BODY
+    is what tells a caller which Opportunity is now associated with this
+    Prospect, not the status code.
+    """
+    prospect = _get_prospect_or_404(db, profile.id, prospect_id)
+
+    prospect_contact_id = import_in.prospect_contact_id if import_in is not None else None
+    if prospect_contact_id is not None and prospect_contact_id not in {c.id for c in prospect.contacts}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="prospect_contact_id must belong to this prospect.",
+        )
+
+    extra_fields = (
+        import_in.model_dump(exclude={"name", "prospect_contact_id"}, exclude_unset=True)
+        if import_in is not None
+        else {}
+    )
+
+    try:
+        opportunity, _created = import_prospect_to_opportunity(
+            db,
+            company_profile_id=profile.id,
+            prospect=prospect,
+            name=import_in.name if import_in is not None else None,
+            prospect_contact_id=prospect_contact_id,
+            actor_user_id=current_user.id,
+            **extra_fields,
+        )
+    except ProspectNotApprovedError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+    return opportunity
 
 
 @router.post("/company-profiles/{company_profile_id}/prospects/{prospect_id}/archive", response_model=ProspectRead)

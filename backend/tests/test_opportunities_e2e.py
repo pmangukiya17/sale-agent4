@@ -30,13 +30,17 @@ from app.api.routes.opportunities import (
     list_opportunities,
     update_opportunity,
 )
+from app.api.routes.prospects import import_prospect
 from app.models.company_profile import CompanyProfile
-from app.models.enums import OpportunityStage, UserRole
+from app.models.enums import OpportunityStage, ProspectStatus, UserRole
 from app.models.opportunity import Opportunity
 from app.models.opportunity_stage_history import OpportunityStageHistory
 from app.models.prospect import Prospect
+from app.models.prospect_contact import ProspectContact
+from app.models.prospect_timeline_event import ProspectTimelineEvent
 from app.models.user import User
 from app.schemas.opportunity import AdvanceStageRequest, OpportunityCreate, OpportunityUpdate
+from app.schemas.prospect import ProspectImportRequest
 
 
 class OpportunityTestBase(unittest.TestCase):
@@ -314,6 +318,111 @@ class TestOpportunityDelete(OpportunityTestBase):
         with self.assertRaises(HTTPException) as ctx:
             delete_opportunity(opportunity.id, profile=self.profile_b, db=self.db)
         self.assertEqual(ctx.exception.status_code, 404)
+
+
+class TestProspectImport(OpportunityTestBase):
+    """M2 Phase 1c - "Prospect -> Opportunity Import". Reuses
+    OpportunityTestBase's exact fixtures (profile_a/prospect_a,
+    profile_b/prospect_b) - Import is just a different entry point onto
+    the same create_opportunity()-backed Opportunity table, so the same
+    base fixture applies unchanged. Adds ProspectTimelineEvent/
+    ProspectContact cleanup on top of the base tearDown, since Import
+    (unlike plain OpportunityCreate) writes timeline events and this
+    class also creates ProspectContact rows for one test."""
+
+    def tearDown(self):
+        prospect_ids = [self.prospect_a.id, self.prospect_b.id]
+        self.db.query(ProspectTimelineEvent).filter(ProspectTimelineEvent.prospect_id.in_(prospect_ids)).delete(
+            synchronize_session=False
+        )
+        self.db.query(ProspectContact).filter(ProspectContact.prospect_id.in_(prospect_ids)).delete(
+            synchronize_session=False
+        )
+        self.db.commit()
+        super().tearDown()
+
+    def test_rejects_a_prospect_that_is_not_approved(self):
+        # prospect_a defaults to ProspectStatus.NEW - never approved.
+        with self.assertRaises(HTTPException) as ctx:
+            import_prospect(self.prospect_a.id, None, profile=self.profile_a, current_user=self.user_a, db=self.db)
+        self.assertEqual(ctx.exception.status_code, 400)
+        # Nothing was created by the rejected attempt.
+        self.assertEqual(
+            self.db.query(Opportunity).filter(Opportunity.prospect_id == self.prospect_a.id).count(), 0
+        )
+
+    def test_creates_an_opportunity_from_an_approved_prospect(self):
+        self.prospect_a.status = ProspectStatus.APPROVED
+        self.db.commit()
+
+        opportunity = import_prospect(self.prospect_a.id, None, profile=self.profile_a, current_user=self.user_a, db=self.db)
+        self._opportunity_ids.append(opportunity.id)
+
+        self.assertEqual(opportunity.prospect_id, self.prospect_a.id)
+        self.assertEqual(opportunity.company_profile_id, self.profile_a.id)
+        self.assertEqual(opportunity.name, self.prospect_a.name)  # default: falls back to the prospect's own name
+        self.assertEqual(opportunity.stage, OpportunityStage.QUALIFIED_LEAD)
+
+    def test_second_import_is_idempotent_returns_same_opportunity(self):
+        self.prospect_a.status = ProspectStatus.APPROVED
+        self.db.commit()
+
+        first = import_prospect(self.prospect_a.id, None, profile=self.profile_a, current_user=self.user_a, db=self.db)
+        self._opportunity_ids.append(first.id)
+        second = import_prospect(self.prospect_a.id, None, profile=self.profile_a, current_user=self.user_a, db=self.db)
+
+        self.assertEqual(first.id, second.id)
+        # Exactly one Opportunity row for this prospect - never two.
+        count = self.db.query(Opportunity).filter(Opportunity.prospect_id == self.prospect_a.id).count()
+        self.assertEqual(count, 1)
+
+    def test_idempotent_replay_does_not_write_a_second_timeline_event(self):
+        self.prospect_a.status = ProspectStatus.APPROVED
+        self.db.commit()
+
+        opportunity = import_prospect(self.prospect_a.id, None, profile=self.profile_a, current_user=self.user_a, db=self.db)
+        self._opportunity_ids.append(opportunity.id)
+        import_prospect(self.prospect_a.id, None, profile=self.profile_a, current_user=self.user_a, db=self.db)
+
+        events = (
+            self.db.query(ProspectTimelineEvent)
+            .filter(
+                ProspectTimelineEvent.prospect_id == self.prospect_a.id,
+                ProspectTimelineEvent.event_type == "imported_to_opportunity",
+            )
+            .all()
+        )
+        self.assertEqual(len(events), 1)
+        self.assertEqual(events[0].payload.get("opportunity_id"), str(opportunity.id))
+
+    def test_rejects_a_prospect_from_another_business(self):
+        self.prospect_b.status = ProspectStatus.APPROVED
+        self.db.commit()
+        with self.assertRaises(HTTPException) as ctx:
+            import_prospect(self.prospect_b.id, None, profile=self.profile_a, current_user=self.user_a, db=self.db)
+        self.assertEqual(ctx.exception.status_code, 404)
+
+    def test_name_override_is_respected(self):
+        self.prospect_a.status = ProspectStatus.APPROVED
+        self.db.commit()
+        opportunity = import_prospect(
+            self.prospect_a.id, ProspectImportRequest(name="Custom Deal Name"),
+            profile=self.profile_a, current_user=self.user_a, db=self.db,
+        )
+        self._opportunity_ids.append(opportunity.id)
+        self.assertEqual(opportunity.name, "Custom Deal Name")
+
+    def test_prospect_contact_id_must_belong_to_this_prospect(self):
+        self.prospect_a.status = ProspectStatus.APPROVED
+        other_contact = ProspectContact(prospect_id=self.prospect_b.id, name="Not This Prospect's Contact")
+        self.db.add(other_contact)
+        self.db.commit()
+        with self.assertRaises(HTTPException) as ctx:
+            import_prospect(
+                self.prospect_a.id, ProspectImportRequest(prospect_contact_id=other_contact.id),
+                profile=self.profile_a, current_user=self.user_a, db=self.db,
+            )
+        self.assertEqual(ctx.exception.status_code, 400)
 
 
 if __name__ == "__main__":

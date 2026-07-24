@@ -7,6 +7,16 @@ app/api/routes/opportunities.py is the only caller of advance_stage; its
 own PATCH endpoint deliberately never accepts a `stage` field (see that
 route's own docstring) so every stage change is guaranteed to produce an
 OpportunityStageHistory row, never a silent update.
+
+M2 Phase 1c adds import_prospect_to_opportunity() - the "Prospect ->
+Opportunity Import" action. It is deliberately a thin wrapper around the
+EXISTING create_opportunity() above (never a second, parallel writer of
+Opportunity rows) - this is what "reuse existing Opportunity/Contact/
+Timeline patterns wherever possible" means concretely here: Opportunity
+already keyed off prospect_id directly since Track C3 (never the legacy
+Company/Contact tables), so importing a Prospect needs no new model, no
+migration, and no second code path that could drift from create_opportunity's
+own stage-history-writing guarantee.
 """
 import uuid
 from datetime import datetime, timezone
@@ -14,14 +24,31 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.enums import OpportunityStage
+from app.models.enums import OpportunityStage, ProspectStatus
 from app.models.opportunity import Opportunity
 from app.models.opportunity_stage_history import OpportunityStageHistory
+from app.models.prospect import Prospect
+from app.models.prospect_timeline_event import ProspectTimelineEvent
 from app.opportunities.state_machine import plan_stage_transition
 
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class ProspectNotApprovedError(ValueError):
+    """M2 Phase 1c. Raised by import_prospect_to_opportunity() when the
+    given Prospect's status isn't APPROVED - app.api.routes.prospects
+    translates this into a 400. Mirrors
+    app.opportunities.state_machine.InvalidStageTransitionError's own
+    "domain module raises a specific exception, the route translates it"
+    shape. APPROVED (not QUALIFIED) is the deliberate gate here - it's
+    the literal language Prospect's own model docstring has used since
+    M1: "until a future milestone's explicit, one-way import action
+    creates a Company from an APPROVED Prospect." A QUALIFIED-but-not-
+    yet-human-reviewed Prospect has passed automatic scoring, not a
+    person's judgment call - Import is that second, human gate, turning
+    a review decision into a real sales-pipeline record."""
 
 
 def create_opportunity(
@@ -61,6 +88,77 @@ def create_opportunity(
     db.commit()
     db.refresh(opportunity)
     return opportunity
+
+
+def import_prospect_to_opportunity(
+    db: Session,
+    *,
+    company_profile_id: uuid.UUID,
+    prospect: Prospect,
+    name: str | None = None,
+    prospect_contact_id: uuid.UUID | None = None,
+    actor_user_id: uuid.UUID | None = None,
+    **extra_fields,
+) -> tuple[Opportunity, bool]:
+    """M2 Phase 1c - "Prospect -> Opportunity Import".
+
+    Idempotent: if an Opportunity already exists for this
+    (company_profile_id, prospect_id) pair, returns that EXISTING row
+    unchanged (bool=False) rather than creating a second one - "multiple
+    imports must never create duplicate Opportunities" is enforced here,
+    by query, not by a database uniqueness constraint (see the Phase 1c
+    migration's own docstring for why a hard UNIQUE(prospect_id) would
+    foreclose a legitimate future case: a second deal with a repeat
+    customer after their first Opportunity already closed).
+
+    Gated on prospect.status == APPROVED (see ProspectNotApprovedError's
+    own docstring for why APPROVED specifically). Multi-business
+    isolation is the caller's responsibility, exactly like every other
+    Prospect-scoped route in this codebase: the caller must have already
+    resolved `prospect` through get_owned_company_profile + a
+    company_profile_id-scoped lookup (app.api.routes.prospects.
+    _get_prospect_or_404) before this function ever sees it - this
+    function only re-uses that already-validated company_profile_id, it
+    does not re-check prospect.company_profile_id itself.
+
+    On a genuine (non-idempotent-replay) import, writes exactly one
+    ProspectTimelineEvent (event_type="imported_to_opportunity") - full
+    audit/history, same append-only pattern every other Prospect
+    lifecycle action (approve/reject/archive) already uses. An idempotent
+    replay writes nothing new - the one real creation is what's on
+    record, not every subsequent no-op check."""
+    if prospect.status != ProspectStatus.APPROVED:
+        raise ProspectNotApprovedError(
+            f"Only APPROVED prospects can be imported into an Opportunity. Current status: '{prospect.status.value}'."
+        )
+
+    existing = db.scalars(
+        select(Opportunity).where(
+            Opportunity.company_profile_id == company_profile_id,
+            Opportunity.prospect_id == prospect.id,
+        )
+    ).first()
+    if existing is not None:
+        return existing, False
+
+    opportunity = create_opportunity(
+        db,
+        company_profile_id=company_profile_id,
+        prospect_id=prospect.id,
+        name=name or prospect.name,
+        prospect_contact_id=prospect_contact_id,
+        **extra_fields,
+    )
+
+    db.add(ProspectTimelineEvent(
+        prospect_id=prospect.id,
+        event_type="imported_to_opportunity",
+        actor=f"user:{actor_user_id}" if actor_user_id else "system",
+        payload={"opportunity_id": str(opportunity.id)},
+    ))
+    db.commit()
+    db.refresh(opportunity)
+    return opportunity, True
 
 
 def advance_stage(
