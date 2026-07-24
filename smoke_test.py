@@ -41,8 +41,10 @@ M1 checks (Buyer Discovery Engine):
 M2 checks (AI Research & Prospect Intelligence):
     18. Research Templates reachable       (GET .../research-templates — system defaults seeded in 0004)
     19. Research Request creation          (POST .../prospects/{id}/research-requests, pinned to a system template)
-    20. Research Request run succeeds      (POST .../research-requests/{id}/run using the manual_document provider,
-                                             synchronous — the deterministic AI stub analyzes the pasted text)
+    20. Research Request run succeeds      (POST .../research-requests/{id}/run — ASYNCHRONOUS since M8.13, same
+                                             202/"queued" + poll-until-terminal contract as step 15, applied to
+                                             GET .../research-jobs?research_request_id={id}. The deterministic AI
+                                             stub analyzes the pasted text once the job actually runs.)
     21. Intelligence Snapshot created      (GET .../intelligence-snapshots/current — version 1, populated from the AI stub)
     22. Signals detected                   (GET .../signals — the pasted text's "expanding"/"hiring" keywords surfaced)
     23. Research Report generation succeeds (POST .../research-reports/generate, built FROM the current snapshot)
@@ -50,9 +52,12 @@ M2 checks (AI Research & Prospect Intelligence):
 M3 checks (AI Personalization Engine):
     24. Personalization Templates reachable      (GET .../personalization-templates — system defaults seeded in 0005)
     25. Personalization Request creation         (POST .../prospects/{id}/personalization-requests, pinned to a system template)
-    26. Personalization Request run succeeds     (POST .../personalization-requests/{id}/run — synchronous, reads the
-                                                   Intelligence Snapshot/Signals/Recommendations from steps 20-23, no
-                                                   external input of its own)
+    26. Personalization Request run succeeds     (POST .../personalization-requests/{id}/run — ASYNCHRONOUS since
+                                                   M8.14, same 202/"queued" + poll-until-terminal contract as step
+                                                   15, applied to GET .../personalization-jobs?
+                                                   personalization_request_id={id}. Reads the Intelligence Snapshot/
+                                                   Signals/Recommendations from steps 20-23 once it actually runs; no
+                                                   external input of its own.)
     27. Personalization Snapshot created         (GET .../personalization-snapshots/current — version 1, buyer_readiness
                                                    computed from the active Signals, at least primary+fallback strategies)
     28. Communication Strategy present           (all 8 axes populated on the current snapshot)
@@ -63,9 +68,11 @@ M4 checks (AI Outreach Generation Engine):
                                                    stakeholder, not the account, per the account-based-selling refinement)
     31. Outreach Request creation succeeds        (POST .../contacts/{id}/outreach-requests, pinned to the system
                                                    playbook + channel=email)
-    32. Outreach Request run succeeds             (POST .../outreach-requests/{id}/run — synchronous, reads the current
-                                                   Personalization Snapshot from steps 26-28, renders via the
-                                                   deterministic EmailChannelProvider)
+    32. Outreach Request run succeeds             (POST .../outreach-requests/{id}/run — ASYNCHRONOUS since M8.15,
+                                                   same 202/"queued" + poll-until-terminal contract as step 15,
+                                                   applied to GET .../outreach-jobs?outreach_request_id={id}. Reads
+                                                   the current Personalization Snapshot from steps 26-28 and renders
+                                                   via the deterministic EmailChannelProvider once it actually runs.)
     33. Outreach Draft created                    (GET .../outreach-drafts/current?channel_key=email — version 1,
                                                    assembled subject+body present, evidence anchored to the primary
                                                    strategy)
@@ -135,13 +142,17 @@ ENV_FILE = Path(__file__).resolve().parent / ".env"
 POLL_ATTEMPTS = 10
 POLL_DELAY_SECONDS = 2
 
-# Shared by two independent-worker wait patterns, both materially longer/
+# Shared by five independent-worker wait patterns, all materially longer/
 # coarser-grained than the HTTP/DB-readiness polling above:
-#   - M1 step 15 waits for the Workflow Engine's Event Dispatcher +
-#     Step Runner workers (their own poll intervals,
-#     WORKFLOW_EVENT_DISPATCHER_POLL_INTERVAL_SECONDS/
+#   - M1 step 15, M2 step 20, M3 step 26, and M4 step 32 each wait for
+#     the Workflow Engine's Event Dispatcher + Step Runner workers
+#     (their own poll intervals, WORKFLOW_EVENT_DISPATCHER_POLL_INTERVAL_SECONDS/
 #     WORKFLOW_STEP_RUNNER_POLL_INTERVAL_SECONDS) to turn a queued
-#     discovery_search.run_requested event into a completed DiscoveryJob.
+#     *_run_requested event into a completed Discovery/Research/
+#     Personalization/OutreachJob, respectively - all four /run
+#     endpoints share the identical M8.8-established async contract
+#     (202/"queued", poll the corresponding *-jobs list endpoint until
+#     terminal), so all four checks share this same poll budget.
 #   - M5 steps 41/44 wait for the independent `worker` container's own
 #     poll loop (DELIVERY_WORKER_POLL_INTERVAL_SECONDS, 15s by default)
 #     to notice and dispatch a queue item.
@@ -724,20 +735,52 @@ def check_run_research_request() -> str:
     if not all([token, profile_id, prospect_id, request_id]):
         raise RuntimeError("skipped — missing token/company_profile_id/prospect_id/research_request_id from earlier steps")
 
+    # M8.13: /run is asynchronous - exact mirror of Discovery's M8.8
+    # change (see check_run_discovery_search's own comment above). 202/
+    # "queued" with no ResearchJob yet; real execution happens on the
+    # Event Dispatcher/Step Runner workers' next poll tick.
     status, raw = http_request(
         "POST",
         f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/research-requests/{request_id}/run",
         headers={"Authorization": f"Bearer {token}"},
         json_body={"documents": [{"document_type": "pasted_text", "extracted_text": RESEARCH_TEST_TEXT}]},
     )
-    if status != 201:
+    if status != 202:
         raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
-    payload = json.loads(raw)
-    if payload.get("status") not in ("completed", "partially_completed"):
-        raise RuntimeError(f"unexpected job status: {payload}")
-    if payload.get("raw_document_count", 0) < 1:
-        raise RuntimeError(f"expected at least 1 raw document, got: {payload}")
-    return f"job {payload.get('id')} status={payload.get('status')} raw_document_count={payload.get('raw_document_count')}"
+    queued_payload = json.loads(raw)
+    if queued_payload.get("status") != "queued":
+        raise RuntimeError(f"expected status='queued' from the async /run response, got: {queued_payload}")
+
+    # Poll for the resulting ResearchJob - same pattern as
+    # check_run_discovery_search, applied to research-jobs instead of
+    # discovery-jobs.
+    def attempt():
+        status, raw = http_request(
+            "GET",
+            f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/research-jobs?research_request_id={request_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if status != 200:
+            raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+        jobs = json.loads(raw)
+        if not jobs:
+            raise RuntimeError(
+                "no ResearchJob yet - Event Dispatcher/Step Runner haven't picked up the run request yet"
+            )
+        job = jobs[0]  # list_research_jobs orders by created_at desc
+        if job.get("status") not in ("completed", "partially_completed", "failed", "cancelled"):
+            raise RuntimeError(f"ResearchJob {job.get('id')} still status={job.get('status')!r}")
+        return job
+
+    job = poll(attempt, attempts=WORKER_POLL_ATTEMPTS, delay=WORKER_POLL_DELAY_SECONDS)
+    if job.get("status") not in ("completed", "partially_completed"):
+        raise RuntimeError(f"unexpected terminal job status: {job}")
+    if job.get("raw_document_count", 0) < 1:
+        raise RuntimeError(f"expected at least 1 raw document, got: {job}")
+    return (
+        f"job {job.get('id')} status={job.get('status')} "
+        f"raw_document_count={job.get('raw_document_count')} (queued -> polled to completion)"
+    )
 
 
 def check_intelligence_snapshot() -> str:
@@ -864,18 +907,47 @@ def check_run_personalization_request() -> str:
     if not all([token, profile_id, prospect_id, request_id]):
         raise RuntimeError("skipped — missing token/company_profile_id/prospect_id/personalization_request_id from earlier steps")
 
+    # M8.14: /run is asynchronous - exact mirror of Discovery's M8.8
+    # change. 202/"queued" with no PersonalizationJob yet.
     status, raw = http_request(
         "POST",
         f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/personalization-requests/{request_id}/run",
         headers={"Authorization": f"Bearer {token}"},
         json_body={},
     )
-    if status != 201:
+    if status != 202:
         raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
-    payload = json.loads(raw)
-    if payload.get("status") != "completed":
-        raise RuntimeError(f"unexpected job status: {payload}")
-    return f"job {payload.get('id')} status={payload.get('status')}"
+    queued_payload = json.loads(raw)
+    if queued_payload.get("status") != "queued":
+        raise RuntimeError(f"expected status='queued' from the async /run response, got: {queued_payload}")
+
+    # Poll for the resulting PersonalizationJob - same pattern as
+    # check_run_discovery_search, applied to personalization-jobs.
+    # PersonalizationJobStatus has no PARTIALLY_COMPLETED value (unlike
+    # Discovery/Research) - only completed/failed/cancelled are terminal.
+    def attempt():
+        status, raw = http_request(
+            "GET",
+            f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/personalization-jobs"
+            f"?personalization_request_id={request_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if status != 200:
+            raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+        jobs = json.loads(raw)
+        if not jobs:
+            raise RuntimeError(
+                "no PersonalizationJob yet - Event Dispatcher/Step Runner haven't picked up the run request yet"
+            )
+        job = jobs[0]  # list_personalization_jobs orders by created_at desc
+        if job.get("status") not in ("completed", "failed", "cancelled"):
+            raise RuntimeError(f"PersonalizationJob {job.get('id')} still status={job.get('status')!r}")
+        return job
+
+    job = poll(attempt, attempts=WORKER_POLL_ATTEMPTS, delay=WORKER_POLL_DELAY_SECONDS)
+    if job.get("status") != "completed":
+        raise RuntimeError(f"unexpected terminal job status: {job}")
+    return f"job {job.get('id')} status={job.get('status')} (queued -> polled to completion)"
 
 
 def check_personalization_snapshot() -> str:
@@ -1011,18 +1083,46 @@ def check_run_outreach_request() -> str:
     if not all([token, profile_id, prospect_id, contact_id, request_id]):
         raise RuntimeError("skipped — missing token/company_profile_id/prospect_id/prospect_contact_id/outreach_request_id from earlier steps")
 
+    # M8.15: /run is asynchronous - exact mirror of Discovery's M8.8
+    # change. 202/"queued" with no OutreachJob yet.
     status, raw = http_request(
         "POST",
         f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/prospects/{prospect_id}/contacts/{contact_id}/outreach-requests/{request_id}/run",
         headers={"Authorization": f"Bearer {token}"},
         json_body={},
     )
-    if status != 201:
+    if status != 202:
         raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
-    payload = json.loads(raw)
-    if payload.get("status") != "completed":
-        raise RuntimeError(f"unexpected job status: {payload}")
-    return f"job {payload.get('id')} status={payload.get('status')}"
+    queued_payload = json.loads(raw)
+    if queued_payload.get("status") != "queued":
+        raise RuntimeError(f"expected status='queued' from the async /run response, got: {queued_payload}")
+
+    # Poll for the resulting OutreachJob - same pattern as
+    # check_run_discovery_search, applied to outreach-jobs.
+    # OutreachJobStatus has no PARTIALLY_COMPLETED value either - only
+    # completed/failed/cancelled are terminal.
+    def attempt():
+        status, raw = http_request(
+            "GET",
+            f"{BACKEND_URL}/api/v1/company-profiles/{profile_id}/outreach-jobs?outreach_request_id={request_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        if status != 200:
+            raise RuntimeError(f"unexpected status {status}: {raw[:200]!r}")
+        jobs = json.loads(raw)
+        if not jobs:
+            raise RuntimeError(
+                "no OutreachJob yet - Event Dispatcher/Step Runner haven't picked up the run request yet"
+            )
+        job = jobs[0]  # list_outreach_jobs orders by created_at desc
+        if job.get("status") not in ("completed", "failed", "cancelled"):
+            raise RuntimeError(f"OutreachJob {job.get('id')} still status={job.get('status')!r}")
+        return job
+
+    job = poll(attempt, attempts=WORKER_POLL_ATTEMPTS, delay=WORKER_POLL_DELAY_SECONDS)
+    if job.get("status") != "completed":
+        raise RuntimeError(f"unexpected terminal job status: {job}")
+    return f"job {job.get('id')} status={job.get('status')} (queued -> polled to completion)"
 
 
 def check_outreach_draft() -> str:
