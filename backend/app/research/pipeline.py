@@ -270,7 +270,17 @@ def run_research_request(
     # app/research/analysis/registry.py's own docstring - this call site
     # is unchanged in shape from the single-engine version it replaces.
     engine = get_analysis_engine()
-    analysis_outcomes: list[AnalysisOutcome] = engine.analyze(context, raw_documents, premium_approved=premium_approved)
+    analysis_outcomes: list[AnalysisOutcome] = engine.analyze(
+        context,
+        raw_documents,
+        premium_approved=premium_approved,
+        # M11 (AI Provider Hierarchy) - threaded through purely for AI
+        # Gateway request logging (see GatewayRequest.company_profile_id/
+        # user_id's own docstring) - both already in hand at this point in
+        # the pipeline, never persisted anywhere new.
+        company_profile_id=str(request.company_profile_id),
+        user_id=str(triggered_by_user.id),
+    )
 
     analyses_by_type: dict = {}
     for outcome in analysis_outcomes:

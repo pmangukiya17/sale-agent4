@@ -76,14 +76,22 @@ class AgentRuntime:
             attempt += 1
             context = agent.build_context(input_data)
             request = PromptBuilder.build(context, policy)
-            if input_data.premium_approved:
-                # M11 (AI Provider Hierarchy) - copied here, AFTER
-                # PromptBuilder.build() has already produced the request
-                # from context+policy alone, never from anything the
-                # Agent itself constructed. GatewayRequest is a frozen
-                # dataclass (request.py) - dataclasses.replace() is the
-                # standard way to set one field on an immutable instance.
-                request = dataclasses.replace(request, premium_approved=True)
+            # M11 (AI Provider Hierarchy) - copied here, AFTER
+            # PromptBuilder.build() has already produced the request from
+            # context+policy alone, never from anything the Agent itself
+            # constructed. GatewayRequest is a frozen dataclass
+            # (request.py) - dataclasses.replace() is the standard way to
+            # set fields on an immutable instance. company_profile_id/
+            # user_id are logging-only (see their own docstrings) so
+            # copying them unconditionally (unlike premium_approved,
+            # which only matters when True) is safe - None is their
+            # correct default either way.
+            request = dataclasses.replace(
+                request,
+                premium_approved=input_data.premium_approved,
+                company_profile_id=input_data.company_profile_id,
+                user_id=input_data.user_id,
+            )
 
             try:
                 response = gateway.complete(request)

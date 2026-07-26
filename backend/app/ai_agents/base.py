@@ -89,6 +89,12 @@ class AgentInput:
     context: dict
     idempotency_key: str | None = None
     premium_approved: bool = False
+    # M11 addition - same "logging/observability only, never business
+    # content" reasoning as premium_approved above. See
+    # GatewayRequest.company_profile_id/user_id's own docstring for the
+    # full "Workspace"/"User" logging-field mapping.
+    company_profile_id: str | None = None
+    user_id: str | None = None
 
 
 @dataclass(frozen=True)

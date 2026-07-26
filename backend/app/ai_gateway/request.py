@@ -96,6 +96,18 @@ class GatewayRequest:
     # specific request" - see errors.PremiumApprovalRequiredError's own
     # docstring for the full flow this participates in.
     premium_approved: bool = False
+    # M11 (AI Provider Hierarchy) - logging/observability context only,
+    # same "present for accounting, never branched on" discipline as
+    # GatewayResponse.provider_key/model (see that dataclass's own
+    # docstring). CompanyProfile is this codebase's existing tenant
+    # boundary (no separate "workspace" concept exists yet - see
+    # docs/architecture/m11-ai-provider-hierarchy-plan.md Section 3.3),
+    # so `company_profile_id` is the closest honest analog to the spec's
+    # "Workspace" logging field. Both optional/None-default so every
+    # existing caller (and every capability that doesn't have this
+    # context threaded to it yet) is unaffected.
+    company_profile_id: str | None = None
+    user_id: str | None = None
 
 
 @dataclass(frozen=True)

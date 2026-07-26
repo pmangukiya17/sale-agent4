@@ -65,13 +65,20 @@ def _find_matches(keyword: str, texts: list[str]) -> list[int]:
 
 class DeterministicAnalysisEngine(AIAnalysisEngine):
     def analyze(
-        self, context: ResearchContext, raw_documents: list[RawDocument], *, premium_approved: bool = False
+        self,
+        context: ResearchContext,
+        raw_documents: list[RawDocument],
+        *,
+        premium_approved: bool = False,
+        company_profile_id: str | None = None,
+        user_id: str | None = None,
     ) -> list[AnalysisOutcome]:
-        # M11 (AI Provider Hierarchy): premium_approved is accepted (for
-        # signature compatibility with the abstract base) and intentionally
-        # ignored - this engine never calls the AI Gateway, so there is no
-        # provider tier to approve.
-        del premium_approved
+        # M11 (AI Provider Hierarchy): premium_approved/company_profile_id/
+        # user_id are all accepted (for signature compatibility with the
+        # abstract base) and intentionally ignored - this engine never
+        # calls the AI Gateway, so there is no provider tier to approve
+        # and no request to attach logging context to.
+        del premium_approved, company_profile_id, user_id
         texts = _lower_texts(raw_documents)
         all_indices = list(range(len(raw_documents)))
 

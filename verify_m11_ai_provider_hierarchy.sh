@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# M9 - AI Provider Hierarchy (Local -> Free -> Premium)
+# M11 - AI Provider Hierarchy (Local -> Free -> Premium)
 #
 # CEO-directed architecture milestone: extends the existing AI Gateway
 # (M7.2/M7.3, unchanged in shape - see
-# docs/architecture/ai-provider-hierarchy-v3-plan.md for the full review
+# docs/architecture/m11-ai-provider-hierarchy-plan.md for the full review
 # and design) with a configurable, tier-aware provider hierarchy - Local
 # (Ollama-compatible) -> Free (Groq) -> Premium (Claude/OpenAI/Gemini) -
 # four AI Modes (local_only / hybrid_recommended / automatic_premium /
@@ -11,7 +11,7 @@
 # a heuristic confidence-assessment module, pre-call cost estimation, and
 # structured request logging.
 #
-# Backend changes (all additive - see each file's own M9 docstring):
+# Backend changes (all additive - see each file's own M11 docstring):
 #   - app/core/config.py: AI_MODE, AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL
 #     (default True - see its own docstring for why this is safe:
 #     Research's "llm" engine is itself still off by default), LOCAL_MODEL_*,
@@ -146,7 +146,7 @@ echo "access in the authoring sandbox):"
 echo "-- (a) Confirm default behavior for every OTHER AI-backed feature is"
 echo "--     UNCHANGED: with no LOCAL_MODEL_BASE_URL/GROQ_API_KEY set and"
 echo "--     RESEARCH_ANALYSIS_ENGINE_BACKEND=deterministic (the existing"
-echo "--     default), Research still runs exactly as before M9."
+echo "--     default), Research still runs exactly as before M11."
 echo "-- (b) Set RESEARCH_ANALYSIS_ENGINE_BACKEND=llm and ANTHROPIC_API_KEY,"
 echo "--     leave LOCAL_MODEL_BASE_URL/GROQ_API_KEY unset (AI_MODE defaults"
 echo "--     to hybrid_recommended, AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL"
@@ -154,7 +154,7 @@ echo "--     defaults true). Run Research on a prospect with pasted text -"
 echo "--     the Premium Approval dialog should appear BEFORE the run is"
 echo "--     submitted, showing 'Claude' as the candidate provider."
 echo "-- (c) Click 'Yes' - confirm the run proceeds and completes with a"
-echo "--     real Claude-produced Intelligence Snapshot, same as pre-M9's"
+echo "--     real Claude-produced Intelligence Snapshot, same as pre-M11's"
 echo "--     'llm' engine behavior once approved."
 echo "-- (d) Click 'No' (or start a fresh run and decline) - confirm the run"
 echo "--     completes without AI escalation, and the stored AIAnalysis rows'"
@@ -163,7 +163,7 @@ echo "--     declined (prefixed 'PREMIUM_APPROVAL_REQUIRED:' - see"
 echo "--     llm_engine.py's own constant)."
 echo "-- (e) Set AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL=false, re-run - confirm"
 echo "--     Claude is now called automatically with NO dialog shown (the"
-echo "--     exact pre-M9 behavior, byte for byte)."
+echo "--     exact pre-M11 behavior, byte for byte)."
 echo "-- (f) If a real Ollama/vLLM/LM Studio instance is available, set"
 echo "--     LOCAL_MODEL_BASE_URL to its OpenAI-compatible endpoint (e.g."
 echo "--     http://localhost:11434/v1 for Ollama) and LOCAL_MODEL_DEFAULT_MODEL"

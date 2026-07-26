@@ -111,7 +111,13 @@ def _build_agent_context(context: ResearchContext, raw_documents: list[RawDocume
 
 class LLMAnalysisEngine(AIAnalysisEngine):
     def analyze(
-        self, context: ResearchContext, raw_documents: list[RawDocument], *, premium_approved: bool = False
+        self,
+        context: ResearchContext,
+        raw_documents: list[RawDocument],
+        *,
+        premium_approved: bool = False,
+        company_profile_id: str | None = None,
+        user_id: str | None = None,
     ) -> list[AnalysisOutcome]:
         """`premium_approved` (M11, AI Provider Hierarchy) - default False
         preserves this method's exact prior signature/behavior for any
@@ -119,10 +125,20 @@ class LLMAnalysisEngine(AIAnalysisEngine):
         run_research_request()'s own new optional parameter, itself read
         from the /run request body - see pipeline.py and
         app/api/routes/research_requests.py's ai-preflight endpoint for
-        where a human actually makes this decision."""
+        where a human actually makes this decision.
+
+        `company_profile_id`/`user_id` (M11) - logging/observability only
+        (see GatewayRequest's own docstring for the full "Workspace"/
+        "User" logging-field mapping) - both optional, both default None."""
         agent_context = _build_agent_context(context, raw_documents)
         execution_result = AgentRuntime.run_with_metadata(
-            RESEARCH_ANALYSIS_AGENT_KEY, AgentInput(context=agent_context, premium_approved=premium_approved)
+            RESEARCH_ANALYSIS_AGENT_KEY,
+            AgentInput(
+                context=agent_context,
+                premium_approved=premium_approved,
+                company_profile_id=company_profile_id,
+                user_id=user_id,
+            ),
         )
         model_used = execution_result.model or MODEL_USED_FALLBACK
 

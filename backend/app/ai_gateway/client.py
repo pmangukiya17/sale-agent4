@@ -134,6 +134,8 @@ class AIGateway:
                             completion_tokens=response.usage.completion_tokens,
                             cost_usd=response.usage.cost_usd,
                             success=True,
+                            company_profile_id=request.company_profile_id,
+                            user_id=request.user_id,
                         )
                     )
                     return response, None
@@ -151,6 +153,8 @@ class AIGateway:
                         cost_usd=None,
                         success=False,
                         error_type=type(last_error).__name__,
+                        company_profile_id=request.company_profile_id,
+                        user_id=request.user_id,
                     )
                 )
                 raise last_error
@@ -185,6 +189,8 @@ class AIGateway:
                 success=False,
                 confidence_score=assessment.score,
                 error_type="PremiumApprovalRequiredError",
+                company_profile_id=request.company_profile_id,
+                user_id=request.user_id,
             )
         )
         raise PremiumApprovalRequiredError(

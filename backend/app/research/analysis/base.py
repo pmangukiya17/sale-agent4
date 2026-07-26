@@ -54,7 +54,13 @@ class AIAnalysisEngine(ABC):
 
     @abstractmethod
     def analyze(
-        self, context: ResearchContext, raw_documents: list[RawDocument], *, premium_approved: bool = False
+        self,
+        context: ResearchContext,
+        raw_documents: list[RawDocument],
+        *,
+        premium_approved: bool = False,
+        company_profile_id: str | None = None,
+        user_id: str | None = None,
     ) -> list[AnalysisOutcome]:
         """Analyze the given raw documents for one prospect and return zero
         or more AnalysisOutcome objects (at most one per AIAnalysisType).
