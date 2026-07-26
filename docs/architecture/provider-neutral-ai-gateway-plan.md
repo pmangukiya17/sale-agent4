@@ -508,3 +508,34 @@ real model card.
 Awaiting your answers to 6.3 (granularity) and the two open questions in
 6.4 (distinct error type, `reasoning_support` as live routing input vs.
 descriptive-only) before this becomes part of M-AIGW-1's scope.
+
+## 7. ProviderCapabilities decisions — resolved
+
+- **Granularity (6.3): provider + per-model override table.** Protocol-level
+  booleans (`structured_output`, `tool_calling`, `streaming`) stay a
+  `ClassVar[ProviderCapabilities]` on each `ProviderClient`. A new
+  `(provider_key, model) -> partial capability overrides` table (mirroring
+  `accounting.py`'s `_PRICE_TABLE_USD_PER_1K` keying exactly) supplies
+  `max_context_tokens`/`max_output_tokens`/`reasoning_support` per the
+  actually-configured model, falling back to the provider-level default
+  when no model-specific entry exists.
+- **Failure mode (6.4): distinct `NoCapableProviderError(GatewayError)`.**
+  Not retryable, not fallback-eligible — raised when capability-filtering
+  empties both the chain and the premium list, kept separate from "no
+  provider chain resolved" (unconfigured) so logs/callers can tell the two
+  failure classes apart.
+- **`reasoning_support` (6.4): real routing input now.** New
+  `GatewayRequest.requires_deep_reasoning: bool = False` field
+  (default preserves every existing caller), set by
+  `ExecutionPolicy`/`PromptBuilder`, read by `ProviderRouter.select()` to
+  exclude non-reasoning-capable providers from the chain when `True`.
+  Fully additive — no existing caller sets this yet, so no behavior
+  changes for Research until `ResearchAnalysisAgent`'s own
+  `ExecutionPolicy` is deliberately updated to set it.
+- **`vision`/`embeddings` (6.4): declare now, wire up later.** Both fields
+  ship in `ProviderCapabilities` for completeness, correctly declared per
+  provider, but stay functionally inert this pass — no request/response
+  shape work for either is in scope here.
+
+This is now folded into M-AIGW-1's scope (task #198, updated below) — the
+plan is finalized pending your go-ahead to begin implementation.
