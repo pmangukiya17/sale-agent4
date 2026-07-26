@@ -822,3 +822,26 @@ anchored to the primary/fallback `PersonalizationStrategy` the same way
 the deterministic engine is, but without hand-tuning per-block_key
 prose rules - that is real Outreach product work, not Gateway
 validation).
+
+## 13. Provider-Neutral AI Gateway v1 — complete (CEO-approved)
+
+M-AIGW-1 through M-AIGW-5 are all approved and shipped. Research and
+Outreach are both real, structurally-different Gateway consumers (fixed
+four-section JSON vs. a variable per-block list), proving the
+abstraction generalizes rather than being research-specific - the CEO's
+own stated acceptance criterion for calling v1 complete.
+
+See `docs/architecture/ai-gateway-consumer-landscape.md` (new companion
+document) for the full picture requested before scoping the next major
+AI milestone: how Research, Outreach, future Personalization, future
+Reply Intelligence, and future Multi-Agent orchestration (Supervisor)
+each relate to the Gateway, which of those already have a
+registry/config-flag seam built versus needing one from scratch, and a
+recorded (not scheduled, not implemented) future roadmap note on
+consolidating `ProviderCapabilities`/pricing/tier/default-model metadata
+into a single `ModelMetadata` structure.
+
+No further changes to the Gateway's own core (`AIGateway`,
+`ProviderRouter`, `PromptBuilder`, `AgentRuntime`) are implied by v1's
+completion. Each future domain's Gateway adoption remains its own
+future milestone, scoped and approved individually.
