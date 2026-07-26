@@ -22,71 +22,45 @@ goes down mid-run, for instance), the run simply degrades to the existing
 "AI analysis failed"-shaped outcome (see llm_engine.py's
 _premium_approval_outcomes()), with a clear message to re-run once
 approved - never a silent crash, never a silent premium call.
+
+M-AIGW-1 (Provider-Neutral AI Gateway foundation) rewrite: this module
+used to call ProviderRouter.select(), providers.registry.get_provider_client(),
+confidence.assess_complexity(), and accounting.estimate_pre_call_cost_usd()
+directly, plus carried its own hardcoded provider_key -> default-model
+dict (`_default_model_for`, covering exactly "claude"/"openai"/"gemini" -
+silently wrong for any provider outside that list). All four Gateway-
+internal calls, and the hardcoded dict, are gone - this is now a thin
+caller of the Gateway's own public `AIGateway.preflight()` (see
+app.ai_gateway.client's and app.ai_gateway.request.PreflightResult's own
+docstrings), reading `default_model` off whichever ProviderClient the
+Gateway resolves internally instead of guessing from a name string. The
+ONE thing that stays here, correctly - `RESEARCH_ANALYSIS_ENGINE_BACKEND
+!= "llm"` -> `applicable=False` - is a Research-domain concept (which
+analysis engine Research itself is configured to use), not a Gateway
+concept; the Gateway has no notion of "applicable" at all (see
+PreflightResult's own docstring).
 """
-from app.ai_gateway.confidence import assess_complexity
+from app.ai_gateway.client import AIGateway
 from app.ai_gateway.request import GatewayRequest
-from app.ai_gateway.router import ProviderRouter
 from app.core.config import settings
 from app.research.analysis.llm_agent import RESEARCH_ANALYSIS_AGENT_KEY, RESPONSE_FORMAT
 from app.schemas.research_request import AIPreflightResult
-
-
-def _is_configured(provider_key: str) -> bool:
-    from app.ai_gateway.providers.registry import get_provider_client
-
-    try:
-        return get_provider_client(provider_key).is_configured()
-    except KeyError:
-        return False
 
 
 def compute_ai_preflight(*, prompt_char_length: int = 0, document_count: int = 0) -> AIPreflightResult:
     if settings.RESEARCH_ANALYSIS_ENGINE_BACKEND != "llm":
         return AIPreflightResult(applicable=False, approval_required=False)
 
-    request = GatewayRequest(capability=RESEARCH_ANALYSIS_AGENT_KEY, response_format=RESPONSE_FORMAT)
-    decision = ProviderRouter.select(request)
-
-    chain_has_configured_candidate = any(_is_configured(key) for key in decision.chain())
-    if chain_has_configured_candidate or not decision.premium:
-        # Local/free will be attempted automatically and at least one
-        # candidate is actually usable (or there's no premium tier to ask
-        # about at all, e.g. automatic_premium/premium_only modes) - no
-        # approval needed.
-        return AIPreflightResult(applicable=True, approval_required=False)
-
-    if not settings.AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL:
-        return AIPreflightResult(applicable=True, approval_required=False)
-
-    from app.ai_gateway.accounting import estimate_pre_call_cost_usd
-
-    candidate = decision.premium[0]
-    assessment = assess_complexity(
-        context_char_length=prompt_char_length,
-        document_count=document_count,
+    request = GatewayRequest(
+        capability=RESEARCH_ANALYSIS_AGENT_KEY,
         response_format=RESPONSE_FORMAT,
+        document_count=document_count,
     )
-    estimated_cost_usd = estimate_pre_call_cost_usd(
-        provider_key=candidate,
-        model=_default_model_for(candidate),
-        prompt_char_length=prompt_char_length,
-    )
+    result = AIGateway().preflight(request, prompt_char_length=prompt_char_length)
     return AIPreflightResult(
         applicable=True,
-        approval_required=True,
-        candidate_provider_key=candidate,
-        estimated_cost_usd=estimated_cost_usd,
-        reasons=assessment.reasons,
+        approval_required=result.approval_required,
+        candidate_provider_key=result.candidate_provider_key,
+        estimated_cost_usd=result.estimated_cost_usd,
+        reasons=result.reasons,
     )
-
-
-def _default_model_for(provider_key: str) -> str:
-    """Best-effort model id for the pre-call cost estimate only - the real
-    call (if approved) resolves its own model from ExecutionPolicy/
-    settings exactly as today; this is purely cosmetic for the estimate
-    lookup in accounting.py's price table."""
-    return {
-        "claude": settings.ANTHROPIC_DEFAULT_MODEL,
-        "openai": settings.OPENAI_DEFAULT_MODEL,
-        "gemini": settings.GOOGLE_DEFAULT_MODEL,
-    }.get(provider_key) or provider_key

@@ -58,4 +58,5 @@ class PromptBuilder:
             timeout_seconds=policy.timeout_seconds,
             response_format=policy.response_format,
             budget_usd=policy.budget_usd,
+            requires_deep_reasoning=policy.requires_deep_reasoning,
         )

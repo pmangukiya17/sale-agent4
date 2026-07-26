@@ -24,9 +24,30 @@ client.py's own docstring already established for
 app.ai_gateway.providers.registry. Every other piece of this module
 (RoutingDecision, CAPABILITY_PROVIDER_PREFERENCE, partition-by-tier logic)
 remains fully importable and testable without settings/pydantic_settings.
+
+M-AIGW-1 (Provider-Neutral AI Gateway foundation) adds a further,
+SEPARATE filtering pass on top of the above, applied only in select()
+itself (never inside _build_decision(), which keeps its exact existing
+signature/tests untouched - see tests/test_ai_provider_hierarchy_pure.py's
+own TestBuildDecisionPerMode, none of which pass a GatewayRequest at all):
+once _build_decision() has produced a tier/AI_MODE-shaped decision,
+select() further drops any provider_key from chain()/premium whose
+declared app.ai_gateway.capabilities.ProviderCapabilities don't satisfy
+what THIS SPECIFIC request needs (derived from response_format/tools/
+requires_deep_reasoning - see capabilities.derive_required_capabilities()).
+This is a fast no-op (returns the decision completely unchanged) for
+every request that doesn't require structured_output/tool_calling/
+reasoning_support - i.e. every existing caller in this codebase today,
+since none set requires_deep_reasoning and every currently-registered
+provider already declares structured_output=True/tool_calling=True (see
+each provider client's own _CAPABILITIES declaration) - so this is a real,
+exercised code path for Research's actual JSON-schema traffic, not dead
+code, but produces byte-for-byte the same RoutingDecision as before this
+addition for every request in production today.
 """
 from dataclasses import dataclass, field
 
+from app.ai_gateway.capabilities import derive_required_capabilities, filter_capable
 from app.ai_gateway.request import GatewayRequest
 from app.ai_gateway.tiers import partition
 
@@ -45,6 +66,16 @@ class RoutingDecision:
     # M11 addition. Provider_keys classified PREMIUM for this capability,
     # in preference order - NOT part of chain()/attempted automatically.
     premium: list[str] = field(default_factory=list)
+    # M-AIGW-1 addition. Provider_keys that WOULD have been in chain()/
+    # premium after tier/AI_MODE partitioning, but were removed by
+    # select()'s capability-filtering pass because they don't satisfy this
+    # request's required capabilities - never populated by
+    # _build_decision() itself (always [] there), only by select()'s own
+    # post-processing. AIGateway.complete() reads this to distinguish
+    # "nothing configured" (existing GatewayError) from "nothing
+    # configured CAN do what this request needs"
+    # (errors.NoCapableProviderError) - see that error's own docstring.
+    capability_excluded: list[str] = field(default_factory=list)
 
     def chain(self) -> list[str]:
         """The full ordered, AUTO-ATTEMPTED sequence - primary, then each
@@ -127,7 +158,12 @@ class ProviderRouter:
     @staticmethod
     def select(request: GatewayRequest) -> RoutingDecision:
         if request.capability in ROUTING_POLICY:
-            # Test-only override - see ROUTING_POLICY's own docstring.
+            # Test-only override - see ROUTING_POLICY's own docstring. A
+            # capability present here bypasses tier/AI_MODE resolution
+            # entirely BY DESIGN - capability-filtering (M-AIGW-1) is part
+            # of that same bypassed resolution, so it's deliberately
+            # skipped here too: a test wants a fixed, predictable chain
+            # regardless of settings OR declared provider capabilities.
             return ROUTING_POLICY[request.capability]
 
         from app.core.config import settings  # lazy - see module docstring
@@ -135,4 +171,56 @@ class ProviderRouter:
         preference = CAPABILITY_PROVIDER_PREFERENCE.get(
             request.capability, CAPABILITY_PROVIDER_PREFERENCE[_DEFAULT_CAPABILITY_KEY]
         )
-        return _build_decision(preference, settings.AI_MODE)
+        decision = _build_decision(preference, settings.AI_MODE)
+
+        required = derive_required_capabilities(request)
+        if not required.any_required():
+            # Fast path - see capabilities.filter_capable()'s own
+            # docstring. Skips the PROVIDER_CLIENT_REGISTRY import entirely
+            # for the common case (every existing caller today), not just
+            # the filtering work - that import needs settings transitively
+            # (every concrete provider client module imports
+            # app.core.config.settings itself), which is exactly why it's
+            # lazy and conditional, mirroring the `settings` import above.
+            return decision
+
+        from app.ai_gateway.providers.registry import PROVIDER_CLIENT_REGISTRY
+
+        provider_level = {key: cls.capabilities for key, cls in PROVIDER_CLIENT_REGISTRY.items()}
+        return _apply_capability_filter(decision, request, provider_level=provider_level)
+
+
+def _apply_capability_filter(
+    decision: RoutingDecision, request: GatewayRequest, *, provider_level: dict
+) -> RoutingDecision:
+    """M-AIGW-1 (Provider-Neutral AI Gateway foundation). Post-processes an
+    already tier/AI_MODE-shaped RoutingDecision, dropping any provider_key
+    that doesn't satisfy `request`'s required capabilities - see module
+    docstring for why this lives here (in select(), as a distinct pass)
+    rather than inside _build_decision() itself.
+
+    Deliberately PURE - `provider_level` is an explicit parameter (a plain
+    {provider_key: ProviderCapabilities} dict), never resolved by this
+    function itself, exactly mirroring capabilities.filter_capable()'s own
+    signature. select() is the only real caller, and the only place that
+    does the (settings-requiring) PROVIDER_CLIENT_REGISTRY lookup to build
+    that dict - see select()'s own comment. This function recomputes
+    derive_required_capabilities() itself (cheap, and keeps this function
+    correct/self-contained if ever called directly, e.g. from a test, with
+    an empty provider_level and no real requirements)."""
+    required = derive_required_capabilities(request)
+    if not required.any_required():
+        return decision
+
+    capable_chain, excluded_chain = filter_capable(
+        decision.chain(), required, model=request.model, provider_level=provider_level
+    )
+    capable_premium, excluded_premium = filter_capable(
+        decision.premium, required, model=request.model, provider_level=provider_level
+    )
+    return RoutingDecision(
+        primary=capable_chain[0] if capable_chain else None,
+        fallbacks=capable_chain[1:] if capable_chain else [],
+        premium=capable_premium,
+        capability_excluded=excluded_chain + excluded_premium,
+    )

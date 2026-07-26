@@ -42,6 +42,14 @@ class ExecutionPolicy:
     the provider layer decide" (e.g. model=None lets a ProviderClient
     fall back to its own settings.<PROVIDER>_DEFAULT_MODEL), never a
     silently-guessed value invented by this dataclass itself.
+
+    `requires_deep_reasoning` (M-AIGW-1, Provider-Neutral AI Gateway
+    foundation) maps directly onto GatewayRequest.requires_deep_reasoning -
+    see that field's own docstring for how ProviderRouter.select() reads
+    it to exclude non-reasoning-capable providers from the routing chain.
+    Defaults False, preserving every existing Agent's ExecutionPolicy
+    unchanged - real behavior change only once a specific Agent's
+    registered policy deliberately sets it True.
     """
 
     provider_capability: str
@@ -51,3 +59,4 @@ class ExecutionPolicy:
     timeout_seconds: float | None = None
     budget_usd: float | None = None
     response_format: ResponseFormat | None = None
+    requires_deep_reasoning: bool = False

@@ -29,6 +29,7 @@ import time
 import openai
 
 from app.ai_gateway.accounting import build_usage
+from app.ai_gateway.capabilities import ProviderCapabilities
 from app.ai_gateway.errors import (
     InvalidRequestError,
     InvalidResponseError,
@@ -41,11 +42,32 @@ from app.ai_gateway.providers.base import ProviderClient
 from app.ai_gateway.request import GatewayRequest, GatewayResponse, ResponseFormatType, ToolCall
 from app.core.config import settings
 
+# Shared protocol-level default for every OpenAI-compatible subclass
+# (LocalOllamaProviderClient, GroqProviderClient) - best-effort
+# structured_output/tool_calling per this file's own disclosed caveat
+# ("not every local model/server actually honors response_format the way
+# OpenAI's own API does"), streaming=False (see claude_client.py's own
+# comment - AIGateway.stream() itself is unimplemented regardless of
+# provider), reasoning_support=False as the conservative default for a
+# generic local/free model (a specific model known to reason well is a
+# per-(provider, model) capability override, not a class-level change -
+# see app.ai_gateway.capabilities' own docstring).
+_CAPABILITIES = ProviderCapabilities(
+    structured_output=True,
+    tool_calling=True,
+    streaming=False,
+    vision=False,
+    embeddings=False,
+    reasoning_support=False,
+)
+
 
 class OpenAICompatibleProviderClient(ProviderClient):
     """Not registered itself - PROVIDER_CLIENT_REGISTRY only ever holds
     concrete subclasses, exactly like ProviderClient itself is never
     registered directly."""
+
+    capabilities = _CAPABILITIES
 
     @property
     def base_url(self) -> str | None:

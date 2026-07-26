@@ -29,6 +29,7 @@ import time
 import anthropic
 
 from app.ai_gateway.accounting import build_usage
+from app.ai_gateway.capabilities import ProviderCapabilities
 from app.ai_gateway.errors import (
     InvalidRequestError,
     InvalidResponseError,
@@ -42,6 +43,26 @@ from app.ai_gateway.request import GatewayRequest, GatewayResponse, ResponseForm
 from app.core.config import settings
 
 _PROVIDER_KEY = "claude"
+
+# Protocol-level facts about the Messages API integration itself (see
+# app.ai_gateway.capabilities' own docstring for why this is provider-level,
+# not per-model). structured_output=True reflects the prompt-instruction +
+# parse workaround this file already implements (see module docstring) -
+# not a native JSON mode, but a real, working capability from this
+# Gateway's point of view either way. streaming=False regardless of the
+# SDK's real streaming support - AIGateway.stream() itself is unimplemented
+# (see client.py) - revisit when it ships. reasoning_support=True is a
+# provider-level default (Claude's current lineup generally reasons well);
+# a future per-model override can correct this for a specific smaller/older
+# model once one is actually configured (see resolve_capabilities()).
+_CAPABILITIES = ProviderCapabilities(
+    structured_output=True,
+    tool_calling=True,
+    streaming=False,
+    vision=True,
+    embeddings=False,
+    reasoning_support=True,
+)
 
 
 def _split_system_messages(messages: list[dict]) -> tuple[str | None, list[dict]]:
@@ -64,15 +85,20 @@ def _parse_content(content_blocks: list) -> tuple[str, list[ToolCall] | None]:
 
 class ClaudeProviderClient(ProviderClient):
     key = _PROVIDER_KEY
+    capabilities = _CAPABILITIES
 
     def is_configured(self) -> bool:
         return bool(settings.ANTHROPIC_API_KEY)
+
+    @property
+    def default_model(self) -> str | None:
+        return settings.ANTHROPIC_DEFAULT_MODEL
 
     def complete(self, request: GatewayRequest) -> GatewayResponse:
         if not self.is_configured():
             raise ProviderAuthError("ANTHROPIC_API_KEY is not configured", provider_key=self.key)
 
-        model = request.model or settings.ANTHROPIC_DEFAULT_MODEL
+        model = request.model or self.default_model
         if not model:
             raise InvalidRequestError(
                 "No model specified and settings.ANTHROPIC_DEFAULT_MODEL is unset", provider_key=self.key

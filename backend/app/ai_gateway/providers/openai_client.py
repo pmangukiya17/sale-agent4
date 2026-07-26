@@ -19,6 +19,7 @@ import time
 import openai
 
 from app.ai_gateway.accounting import build_usage
+from app.ai_gateway.capabilities import ProviderCapabilities
 from app.ai_gateway.errors import (
     InvalidRequestError,
     InvalidResponseError,
@@ -33,18 +34,38 @@ from app.core.config import settings
 
 _PROVIDER_KEY = "openai"
 
+# Protocol-level facts about the Chat Completions API integration itself -
+# see claude_client.py's own comment for why streaming=False regardless of
+# the SDK's real support, and reasoning_support/max_context/max_output
+# being provider-level defaults here pending a per-model override once a
+# specific configured model needs a more precise value (see
+# app.ai_gateway.capabilities' own docstring).
+_CAPABILITIES = ProviderCapabilities(
+    structured_output=True,
+    tool_calling=True,
+    streaming=False,
+    vision=True,
+    embeddings=True,
+    reasoning_support=True,
+)
+
 
 class OpenAIProviderClient(ProviderClient):
     key = _PROVIDER_KEY
+    capabilities = _CAPABILITIES
 
     def is_configured(self) -> bool:
         return bool(settings.OPENAI_API_KEY)
+
+    @property
+    def default_model(self) -> str | None:
+        return settings.OPENAI_DEFAULT_MODEL
 
     def complete(self, request: GatewayRequest) -> GatewayResponse:
         if not self.is_configured():
             raise ProviderAuthError("OPENAI_API_KEY is not configured", provider_key=self.key)
 
-        model = request.model or settings.OPENAI_DEFAULT_MODEL
+        model = request.model or self.default_model
         if not model:
             raise InvalidRequestError("No model specified and settings.OPENAI_DEFAULT_MODEL is unset", provider_key=self.key)
 

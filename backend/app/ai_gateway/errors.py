@@ -99,6 +99,33 @@ class BudgetExceededError(GatewayError):
     fallback_eligible = False
 
 
+class NoCapableProviderError(GatewayError):
+    """M-AIGW-1 (Provider-Neutral AI Gateway foundation). Raised by
+    AIGateway.complete() when ProviderRouter.select()'s capability
+    filtering (see app.ai_gateway.capabilities) removes every candidate
+    from BOTH the auto-attempted chain and the premium list, for a
+    request whose capability requirements (structured_output/tool_calling/
+    reasoning_support - see capabilities.derive_required_capabilities())
+    none of the currently-configured providers declare support for.
+
+    Deliberately a DISTINCT error from the plain 'no provider chain
+    resolved' GatewayError (still raised, unchanged, when a chain is empty
+    for an unrelated reason - e.g. no provider configured at all, or
+    local_only mode with no local candidate) - these are different failure
+    classes a caller/log line should be able to tell apart: 'you haven't
+    configured an API key' vs. 'nothing you have configured can do what
+    this request needs.' Not retryable (a different provider config is
+    needed, not a retry) and not fallback_eligible (there is, by
+    definition, nothing left in the chain to fall through to)."""
+
+    retryable = False
+    fallback_eligible = False
+
+    def __init__(self, message: str, *, excluded_provider_keys: list[str]):
+        super().__init__(message)
+        self.excluded_provider_keys = excluded_provider_keys
+
+
 class PremiumApprovalRequiredError(GatewayError):
     """M11 (AI Provider Hierarchy). Raised by AIGateway.complete() when the
     local/free tier chain is exhausted (every candidate unconfigured or

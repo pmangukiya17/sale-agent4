@@ -38,6 +38,7 @@ from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 
 from app.ai_gateway.accounting import build_usage
+from app.ai_gateway.capabilities import ProviderCapabilities
 from app.ai_gateway.errors import (
     InvalidRequestError,
     InvalidResponseError,
@@ -51,6 +52,21 @@ from app.ai_gateway.request import GatewayRequest, GatewayResponse, ResponseForm
 from app.core.config import settings
 
 _PROVIDER_KEY = "gemini"
+
+# Protocol-level facts about this SDK integration - see claude_client.py's
+# own comment for why streaming=False regardless of the SDK's real support.
+# This provider_key stays PREMIUM-tier (see tiers.py) - M-AIGW-3 (Gemini
+# free-tier split) is separate, deferred, unimplemented work; a future
+# `gemini_ai_studio` provider_key would declare the identical capabilities
+# below (same underlying client), just a different tier classification.
+_CAPABILITIES = ProviderCapabilities(
+    structured_output=True,
+    tool_calling=True,
+    streaming=False,
+    vision=True,
+    embeddings=False,
+    reasoning_support=True,
+)
 
 _ROLE_TRANSLATION = {"assistant": "model", "user": "user"}
 
@@ -72,15 +88,20 @@ def _to_gemini_contents(messages: list[dict]) -> list[genai_types.Content]:
 
 class GeminiProviderClient(ProviderClient):
     key = _PROVIDER_KEY
+    capabilities = _CAPABILITIES
 
     def is_configured(self) -> bool:
         return bool(settings.GOOGLE_API_KEY)
+
+    @property
+    def default_model(self) -> str | None:
+        return settings.GOOGLE_DEFAULT_MODEL
 
     def complete(self, request: GatewayRequest) -> GatewayResponse:
         if not self.is_configured():
             raise ProviderAuthError("GOOGLE_API_KEY is not configured", provider_key=self.key)
 
-        model = request.model or settings.GOOGLE_DEFAULT_MODEL
+        model = request.model or self.default_model
         if not model:
             raise InvalidRequestError("No model specified and settings.GOOGLE_DEFAULT_MODEL is unset", provider_key=self.key)
 

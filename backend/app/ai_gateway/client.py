@@ -50,14 +50,35 @@ not just an incidental DI convenience - unchanged from M7.2, see that
 milestone's own docstring reasoning (still applies verbatim to the two new
 M11 provider clients, both lazily imported the same way via the real
 registry).
+
+M-AIGW-1 (Provider-Neutral AI Gateway foundation) additions:
+
+  - `complete()`'s "chain and premium both empty" branch now distinguishes
+    two failure classes: ordinary "nothing configured"
+    (unchanged GatewayError) vs. `decision.capability_excluded` being
+    non-empty, meaning ProviderRouter.select() DID find configured
+    candidates but none of them declare the capabilities this request
+    needs - raises the new, distinct `NoCapableProviderError` instead (see
+    errors.py's own docstring for why these are kept separate).
+  - `_raise_premium_approval_required()` now reads `request.document_count`
+    (previously hardcoded to 0 regardless of the real request - see this
+    module's own git history) and `request.requires_deep_reasoning`
+    (previously never read at all, defaulting confidence.assess_complexity's
+    `reasoning_depth_hint` to "shallow" unconditionally) - both real signal
+    that was already flowing into `GatewayRequest` but never reaching this
+    call site.
+  - `preflight()` - the Gateway's own public "would this need approval,
+    and what would it cost" answer (see request.PreflightResult's own
+    docstring for why this replaces app.research.ai_preflight's four
+    separate direct calls into Gateway internals).
 """
 import logging
 import time
 
 from app.ai_gateway.accounting import estimate_pre_call_cost_usd
 from app.ai_gateway.confidence import assess_complexity
-from app.ai_gateway.errors import GatewayError, PremiumApprovalRequiredError
-from app.ai_gateway.request import GatewayRequest, GatewayResponse, GatewayStreamChunk
+from app.ai_gateway.errors import GatewayError, NoCapableProviderError, PremiumApprovalRequiredError
+from app.ai_gateway.request import GatewayRequest, GatewayResponse, GatewayStreamChunk, PreflightResult
 from app.ai_gateway.request_log import AIRequestLogEntry, log_ai_request
 from app.ai_gateway.router import ProviderRouter, RoutingDecision
 from app.ai_gateway.tiers import tier_of
@@ -173,8 +194,9 @@ class AIGateway:
         )
         assessment = assess_complexity(
             context_char_length=prompt_char_length,
-            document_count=0,
+            document_count=request.document_count,
             response_format=request.response_format,
+            reasoning_depth_hint="deep" if request.requires_deep_reasoning else "shallow",
         )
         log_ai_request(
             AIRequestLogEntry(
@@ -203,8 +225,19 @@ class AIGateway:
 
     def complete(self, request: GatewayRequest) -> GatewayResponse:
         decision = ProviderRouter.select(request)
+        if decision.capability_excluded:
+            logger.info(
+                "ai_gateway.capability_excluded",
+                extra={"capability": request.capability, "excluded_provider_keys": decision.capability_excluded},
+            )
         chain = decision.chain()
         if not chain and not decision.premium:
+            if decision.capability_excluded:
+                raise NoCapableProviderError(
+                    f"No configured provider for capability '{request.capability}' supports the "
+                    f"capabilities this request requires (excluded: {decision.capability_excluded})",
+                    excluded_provider_keys=decision.capability_excluded,
+                )
             raise GatewayError(f"No provider chain resolved for capability '{request.capability}'")
 
         response, last_error = (None, None)
@@ -231,6 +264,78 @@ class AIGateway:
         if last_error is not None:
             raise last_error
         raise GatewayError(f"No premium provider for capability '{request.capability}' could be attempted")
+
+    def preflight(self, request: GatewayRequest, *, prompt_char_length: int = 0) -> PreflightResult:
+        """M-AIGW-1 (Provider-Neutral AI Gateway foundation). Answers "would
+        completing THIS request right now need premium approval, and if so
+        what would it cost and why" WITHOUT attempting a real call - reads
+        only `is_configured()` (no network call - see
+        providers.base.ProviderClient's own docstring) plus the same
+        confidence/cost-estimate machinery `_raise_premium_approval_required()`
+        uses for the in-flight case.
+
+        `prompt_char_length` is a separate parameter, not derived from
+        `request.messages`, because a genuine pre-submission preflight check
+        (the only caller today - app.research.ai_preflight) is called
+        BEFORE PromptBuilder.build() has ever run for this request - there
+        are no real messages yet, only a caller-supplied estimate (e.g.
+        summed length of not-yet-analyzed raw documents). `request.document_count`
+        IS read directly from the request - unlike prompt_char_length, a
+        real document count is already known pre-submission and is exactly
+        the same field `_raise_premium_approval_required()` reads for the
+        in-flight case, unifying what were previously two independently-
+        threaded document counts into one.
+
+        Deliberately does NOT reuse ProviderRouter.select()'s capability-
+        filtering result to change the approval answer itself this pass -
+        if every capable candidate is also unconfigured, this still reports
+        "needs approval" against the (possibly capability-filtered) premium
+        list exactly as select() resolved it; a request capability-excluded
+        down to nothing configured at all is a `NoCapableProviderError`
+        only inside complete() itself (see that method), not surfaced as a
+        distinct PreflightResult shape - out of scope for this pass, noted
+        here rather than silently glossed over.
+        """
+        decision = ProviderRouter.select(request)
+        chain_has_configured_candidate = any(self._is_configured_safe(key) for key in decision.chain())
+        if chain_has_configured_candidate or not decision.premium:
+            return PreflightResult(approval_required=False)
+
+        if not settings.AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL:
+            return PreflightResult(approval_required=False)
+
+        candidate = decision.premium[0]
+        model = request.model or self._default_model_safe(candidate) or candidate
+        estimated_cost_usd = estimate_pre_call_cost_usd(
+            provider_key=candidate,
+            model=model,
+            prompt_char_length=prompt_char_length,
+            expected_completion_tokens=request.max_tokens or 1024,
+        )
+        assessment = assess_complexity(
+            context_char_length=prompt_char_length,
+            document_count=request.document_count,
+            response_format=request.response_format,
+            reasoning_depth_hint="deep" if request.requires_deep_reasoning else "shallow",
+        )
+        return PreflightResult(
+            approval_required=True,
+            candidate_provider_key=candidate,
+            estimated_cost_usd=estimated_cost_usd,
+            reasons=assessment.reasons,
+        )
+
+    def _is_configured_safe(self, provider_key: str) -> bool:
+        try:
+            return self._resolve_provider(provider_key).is_configured()
+        except KeyError:
+            return False
+
+    def _default_model_safe(self, provider_key: str) -> str | None:
+        try:
+            return self._resolve_provider(provider_key).default_model
+        except KeyError:
+            return None
 
     def stream(self, request: GatewayRequest):  # -> Iterator[GatewayStreamChunk]
         raise NotImplementedError(

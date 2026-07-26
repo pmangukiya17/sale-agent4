@@ -108,6 +108,31 @@ class GatewayRequest:
     # context threaded to it yet) is unaffected.
     company_profile_id: str | None = None
     user_id: str | None = None
+    # M-AIGW-1 (Provider-Neutral AI Gateway foundation) additions. Both
+    # default to their exact pre-existing implicit value (0 / False), so
+    # every caller that doesn't set them is unaffected.
+    #
+    # `document_count` - real document count for THIS request, read by
+    # confidence.assess_complexity() at the one production call site that
+    # previously hardcoded 0 regardless of the real request (see
+    # client.py::_raise_premium_approval_required's own docstring/history) -
+    # closes that dead-signal gap. Also read directly by
+    # AIGateway.preflight() (see client.py) for the pre-submission check,
+    # unifying what were previously two independently-passed document
+    # counts (one hardcoded, one threaded from the API route) into one
+    # field on the same request object.
+    document_count: int = 0
+    # `requires_deep_reasoning` - set by ExecutionPolicy/PromptBuilder (see
+    # prompt_builder/policy.py's own docstring), never by an Agent
+    # directly. Read by ProviderRouter.select() (via
+    # capabilities.derive_required_capabilities()) to exclude providers
+    # whose declared ProviderCapabilities.reasoning_support is False from
+    # the auto-attempted chain/premium list, and by
+    # confidence.assess_complexity()'s own reasoning_depth_hint parameter
+    # for the premium-approval "reasons" list. No existing ExecutionPolicy
+    # sets this yet - real behavior change only once a caller deliberately
+    # opts in.
+    requires_deep_reasoning: bool = False
 
 
 @dataclass(frozen=True)
@@ -132,6 +157,29 @@ class GatewayResponse:
     provider_key: str
     model: str
     finish_reason: str
+
+
+@dataclass(frozen=True)
+class PreflightResult:
+    """M-AIGW-1 (Provider-Neutral AI Gateway foundation). The Gateway's own
+    public answer to "would completing this request right now need premium
+    approval, and if so, what would it cost and why" - returned by
+    AIGateway.preflight() (see client.py). Deliberately generic/domain-
+    agnostic (no notion of "applicable" - whether a given domain's engine
+    is even in "llm" mode is that domain's own concern, not the Gateway's -
+    see app.research.ai_preflight's own thin wrapper for how Research
+    layers its `applicable` field on top of this).
+
+    Replaces app.research.ai_preflight's four separate direct calls into
+    ProviderRouter/providers.registry/confidence/accounting with one
+    Gateway-owned method call - see this milestone's own architecture
+    review (docs/architecture/provider-neutral-ai-gateway-plan.md, Section
+    1.2) for why that mattered."""
+
+    approval_required: bool
+    candidate_provider_key: str | None = None
+    estimated_cost_usd: float | None = None
+    reasons: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
