@@ -24,6 +24,16 @@ so only these two real transitions exist; a fabricated "halfway" event
 would violate the project's "never fake progress" principle. block_count
 (migration 0021) is a real, already-computed local variable
 (len(outcome.blocks)) that was simply never persisted per-job before.
+
+M-AIGW-5 update (Outreach as the Gateway's second production consumer -
+see docs/architecture/provider-neutral-ai-gateway-plan.md Section 12):
+run_outreach_request() gained an optional run_input parameter (mirroring
+research/pipeline.py::run_research_request()'s own premium_approved
+extraction exactly) and now threads premium_approved/company_profile_id/
+user_id into provider.render() - only meaningful once
+get_channel_provider() resolves to LLMEmailChannelProvider
+(settings.OUTREACH_EMAIL_CHANNEL_BACKEND="llm"); EmailChannelProvider,
+the default, ignores all three.
 """
 from datetime import datetime, timezone
 
@@ -200,7 +210,21 @@ def _supersede_previous_current_draft(db: Session, prospect_contact_id, channel_
             draft.status = OutreachDraftStatus.SUPERSEDED
 
 
-def run_outreach_request(db: Session, request: OutreachRequest, triggered_by_user: User) -> OutreachJob:
+def run_outreach_request(
+    db: Session, request: OutreachRequest, triggered_by_user: User, run_input: dict | None = None
+) -> OutreachJob:
+    """`run_input` (M-AIGW-5, see
+    docs/architecture/provider-neutral-ai-gateway-plan.md Section 12) -
+    optional, defaults to None so the one existing caller
+    (OutreachExecutionAction) keeps working byte-for-byte unmodified.
+    Mirrors research/pipeline.py::run_research_request()'s own
+    run_input-based premium_approved extraction exactly. Deliberately NOT
+    wired into the API/schema layer this pass (OutreachRequestRunBody
+    stays the same documented "unused placeholder" it already was) -
+    disclosed, scoped-out product-facing work, not silently deferred; see
+    the plan doc's own Section 12 for the full disclosure."""
+    premium_approved = bool((run_input or {}).get("premium_approved", False))
+
     context = _build_context(db, request)
     snapshot = context.personalization_snapshot
     prompt_version = context.prompt_version
@@ -231,7 +255,18 @@ def run_outreach_request(db: Session, request: OutreachRequest, triggered_by_use
 
     try:
         provider = get_channel_provider(request.channel_key)
-        outcome: ChannelRenderOutcome = provider.render(context)
+        outcome: ChannelRenderOutcome = provider.render(
+            context,
+            premium_approved=premium_approved,
+            # M-AIGW-5 - logging/observability only (see
+            # GatewayRequest.company_profile_id/user_id's own docstring
+            # for the full "Workspace"/"User" logging-field mapping),
+            # both already in hand at this point in the pipeline, never
+            # persisted anywhere new. A deterministic provider (the
+            # default) ignores both entirely.
+            company_profile_id=str(request.company_profile_id),
+            user_id=str(triggered_by_user.id),
+        )
         job_log.append(
             {"provider": outcome.model_used, "prompt_version": outcome.prompt_version_marker, "status": "completed"}
         )

@@ -8,9 +8,14 @@ from ai_guidance + the buyer's PersonalizationSnapshot context) - never
 inventing facts beyond what personalization_variables/strategies provide.
 
 This exists to prove the schema/pipeline/evidence machinery end to end for
-outreach, not to be good sales copy. Swapping this out later for a real
-LLM-backed provider requires only a new class honoring the same
-ChannelRenderOutcome/RenderedBlockDraft/OutreachEvidenceDraft shapes.
+outreach, not to be good sales copy. M-AIGW-5 added exactly the swap this
+docstring anticipated - LLMEmailChannelProvider (llm_email_provider.py),
+a real LLM-backed provider honoring the same ChannelRenderOutcome/
+RenderedBlockDraft/OutreachEvidenceDraft shapes, selected instead of this
+class via settings.OUTREACH_EMAIL_CHANNEL_BACKEND (default stays
+"deterministic" - this class - so this docstring's "requires only a new
+class" claim held exactly as written, zero change needed here beyond
+render()'s now-shared keyword-only signature below).
 """
 import re
 
@@ -136,7 +141,18 @@ def _strategy_evidence_drafts(strategy, block_key: str) -> list[OutreachEvidence
 class EmailChannelProvider(ChannelProvider):
     key = "email"
 
-    def render(self, context: OutreachContext) -> ChannelRenderOutcome:
+    def render(
+        self,
+        context: OutreachContext,
+        *,
+        premium_approved: bool = False,
+        company_profile_id: str | None = None,
+        user_id: str | None = None,
+    ) -> ChannelRenderOutcome:
+        # M-AIGW-5's three new keyword-only params (base.py's own
+        # docstring) are accepted but deliberately unused here - this
+        # provider never calls the AI Gateway, so it has no approval gate
+        # or request-logging identity to thread them into.
         variables = _flatten_variables(context)
         primary = _primary_strategy(context)
         fallback = _fallback_strategy(context)

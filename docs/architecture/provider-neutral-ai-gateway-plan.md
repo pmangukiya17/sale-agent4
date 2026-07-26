@@ -716,3 +716,109 @@ all" case still returns `None`. Full pure suite: 150 tests, 0 failures,
 
 No further architectural changes to M-AIGW-4. M-AIGW-5 remains queued,
 not started without explicit go-ahead (Section 4/5).
+
+## 12. M-AIGW-5 — scoped design note (Outreach as the Gateway's second consumer)
+
+**Scoping clarification, stated up front.** "Outreach Personalization" is
+ambiguous between two separately-shipped domains: `app/personalization/`
+(M3, buyer-strategy synthesis - `DeterministicPersonalizationEngine`) and
+`app/outreach/` (M4, channel content generation -
+`EmailChannelProvider`). Per Decision 4 (Section 4/5) this milestone
+targets **Outreach's email subject/body generation** - `app/outreach/`,
+not `app/personalization/`. Personalization's own LLM upgrade is a
+separate, not-yet-scoped future milestone.
+
+**Why Outreach, and why this validates the Gateway rather than merely
+using it.** Research's `ResearchAnalysisAgent` proved the Agent/Gateway
+stack end to end, but with one shape of problem: a single combined call
+producing four fixed, always-present JSON sections. Outreach's email
+generation is structurally different in exactly the ways that matter for
+proving the abstraction generalizes: (1) its output is a *variable-length
+list of blocks* (one per `OutreachPlaybook` block, per-prospect), not a
+fixed set of keys; (2) each block carries a `behavior`
+(FIXED/AI_ASSISTED/AI_GENERATED) that determines whether the model should
+touch it AT ALL - FIXED content (legal disclaimers, unsubscribe links)
+must stay 100% deterministic even when the LLM backend is selected,
+never rewritten by a model; (3) it is the second-ever caller of the
+premium-approval/preflight machinery, the first opportunity to confirm
+that machinery isn't accidentally Research-specific. If the Gateway/Agent
+Runtime/PromptBuilder stack handles this shape as cleanly as Research's,
+that is real evidence the abstraction is genuinely provider- AND
+domain-neutral, not just "worked once."
+
+**Design - reusing the exact seam Research established, no new
+infrastructure:**
+
+- `app/outreach/channels/llm_mapping.py` (new, pure, stdlib-only) -
+  `parse_agent_response_content()`/`validate_email_response()`, the exact
+  same role `research/analysis/llm_mapping.py` plays, duplicated rather
+  than shared (each domain owns its own pure mapping module - Research's
+  own `llm_mapping.py` isn't shared with Discovery's
+  `brave_search_mapping.py` either).
+- `app/outreach/channels/llm_agent.py` (new, pure) - `OutreachEmailAgent`,
+  a concrete `Agent` (`app.ai_agents.base`), registered exactly like
+  `ResearchAnalysisAgent`: `register_agent()`/`register_prompt_template()`/
+  `register_execution_policy()` at import time. `provider_capability =
+  "outreach_email_generation"` - a NEW capability key with no dedicated
+  `CAPABILITY_PROVIDER_PREFERENCE` entry, falling through to the
+  `"default"` list by design (identical to `ResearchAnalysisAgent`'s own
+  `research_analysis` key) - zero `router.py` change needed.
+  `build_context()`/`interpret()` only ever see a plain dict and a
+  `GatewayResponse` - no ORM types, no provider/model reachable from
+  either method's signature, same structural guarantee Research's Agent
+  has.
+- `app/outreach/channels/llm_email_provider.py` (new) - `LLMEmailChannelProvider`,
+  a second concrete `ChannelProvider` (same interface `EmailChannelProvider`
+  implements). The ORM->primitives boundary: FIXED blocks are rendered
+  deterministically (reusing `email_provider.py`'s own `_substitute()`/
+  `_flatten_variables()` - deliberately shared, not duplicated, same
+  "share implementation, keep behavior distinct" precedent M-AIGW-3 used
+  for the Gemini split) and NEVER sent to the model; only
+  AI_ASSISTED/AI_GENERATED blocks are asked of `OutreachEmailAgent` via
+  `AgentRuntime.run_with_metadata()`. Degrades - never raises - into a
+  low-confidence outcome (FIXED blocks still render correctly) on
+  premium-approval-required or a genuine Gateway failure, matching
+  `LLMAnalysisEngine`'s own "degrade not crash" contract exactly.
+- `app/outreach/channels/base.py` - `ChannelProvider.render()`'s abstract
+  signature gains three new keyword-only parameters,
+  `premium_approved: bool = False`, `company_profile_id: str | None = None`,
+  `user_id: str | None = None` - all defaulted, so `provider.render(context)`
+  (the one existing call site, `pipeline.py`) keeps working unmodified for
+  `EmailChannelProvider`, which accepts and ignores them.
+- `app/outreach/channels/registry.py` - `get_channel_provider()` gains a
+  small backend-selection layer for the `"email"` channel_key only (new
+  `CHANNEL_BACKEND_REGISTRY: {"email": {"deterministic": EmailChannelProvider,
+  "llm": LLMEmailChannelProvider}}`, selected by the new
+  `settings.OUTREACH_EMAIL_CHANNEL_BACKEND` setting), mirroring
+  `research/analysis/registry.py`'s `ANALYSIS_ENGINE_REGISTRY`/
+  `RESEARCH_ANALYSIS_ENGINE_BACKEND` pattern exactly. Any other
+  channel_key (none exist yet) resolves via the pre-existing flat
+  `CHANNEL_PROVIDER_REGISTRY`, completely untouched.
+- `app/outreach/pipeline.py` - `run_outreach_request()` gains one new
+  optional parameter, `run_input: dict | None = None`, from which
+  `premium_approved` is extracted exactly like `run_research_request()`
+  already does - defaulting to `None`/`False` preserves the one existing
+  call site (`OutreachExecutionAction`, untouched) byte-for-byte.
+- `app/core/config.py` - `OUTREACH_EMAIL_CHANNEL_BACKEND: str = "deterministic"` -
+  default stays the existing stub, matching Research Phase 3's own
+  original rollout convention (default old behavior first; flipping the
+  default to `"llm"` later, if ever, is a separate, explicitly
+  CEO-approved follow-up commit, exactly how `RESEARCH_ANALYSIS_ENGINE_BACKEND`'s
+  default was flipped only after Research's `llm` engine had already
+  shipped and been reviewed).
+
+**Deliberately out of scope this pass (disclosed, not silently
+deferred), per the explicit "validate the architecture, don't expand
+Outreach functionality" instruction:** no API/schema wiring for
+`premium_approved` on Outreach's `/run` endpoint or an Outreach
+ai-preflight endpoint (`OutreachRequestRunBody` stays the same
+documented "unused placeholder" it already was - Research's own
+equivalent wiring took a separate pass after its engine shipped); no new
+channels; no change to `OutreachExecutionAction` (M8.15); no attempt to
+replicate the deterministic engine's fine-grained per-`block_key`
+AI_GENERATED behavior branching inside the LLM prompt (the LLM path asks
+for all AI_ASSISTED/AI_GENERATED block content in one call, evidence-
+anchored to the primary/fallback `PersonalizationStrategy` the same way
+the deterministic engine is, but without hand-tuning per-block_key
+prose rules - that is real Outreach product work, not Gateway
+validation).

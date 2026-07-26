@@ -251,6 +251,19 @@ class Settings(BaseSettings):
     # value, never a pipeline.py change.
     RESEARCH_ANALYSIS_ENGINE_BACKEND: str = "llm"
 
+    # Which ChannelProvider app/outreach/channels/registry.py uses for the
+    # "email" channel_key - "deterministic" (EmailChannelProvider, the
+    # original M4 stub) or "llm" (LLMEmailChannelProvider, M-AIGW-5's
+    # Gateway-backed provider - see
+    # docs/architecture/provider-neutral-ai-gateway-plan.md Section 12).
+    # Default stays "deterministic" - unlike RESEARCH_ANALYSIS_ENGINE_BACKEND
+    # above (already flipped to "llm" in a separate, later, explicitly
+    # CEO-approved follow-up commit after Research's engine had shipped
+    # and been reviewed), this flag has not yet had that same follow-up
+    # decision made for it - zero behavior change for any deployment until
+    # an operator (or a future approved commit) sets it to "llm".
+    OUTREACH_EMAIL_CHANNEL_BACKEND: str = "deterministic"
+
     # --- M11: AI Provider Hierarchy (Local -> Free -> Premium) ---------------
     # See docs/architecture/m11-ai-provider-hierarchy-plan.md for the full
     # design. AI_MODE selects which tiers app.ai_gateway.router.ProviderRouter
