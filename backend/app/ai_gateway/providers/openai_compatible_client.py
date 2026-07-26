@@ -1,5 +1,5 @@
 """
-OpenAICompatibleProviderClient - M9 (AI Provider Hierarchy). A GENERIC base
+OpenAICompatibleProviderClient - M11 (AI Provider Hierarchy). A GENERIC base
 class for any provider that speaks the OpenAI chat-completions wire format
 against a configurable base_url - which today means Ollama (and vLLM, LM
 Studio, text-generation-webui - any local server, not just Ollama

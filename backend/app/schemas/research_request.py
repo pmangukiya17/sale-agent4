@@ -48,7 +48,7 @@ class ResearchRequestRunBody(BaseModel):
     """
     source_types: list[str] | None = None
     documents: list[dict[str, Any]] | None = None
-    # M9 (AI Provider Hierarchy). Default False preserves exact prior
+    # M11 (AI Provider Hierarchy). Default False preserves exact prior
     # behavior for every existing caller. The frontend sets this True only
     # after the user has explicitly clicked "Yes" on the premium-approval
     # dialog shown from GET .../ai-preflight - see
@@ -60,7 +60,7 @@ class ResearchRequestRunBody(BaseModel):
 
 
 class AIPreflightResult(BaseModel):
-    """M9 (AI Provider Hierarchy). Response shape for GET
+    """M11 (AI Provider Hierarchy). Response shape for GET
     .../research-requests/{request_id}/ai-preflight - lets the frontend
     show the premium-approval dialog BEFORE the user submits a run, rather
     than discovering mid-run that approval is needed (see

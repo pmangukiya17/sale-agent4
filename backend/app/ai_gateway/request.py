@@ -87,7 +87,7 @@ class GatewayRequest:
     stream: bool = False
     budget_usd: float | None = None
     idempotency_key: str | None = None
-    # M9 (AI Provider Hierarchy). Defaults False, preserving every
+    # M11 (AI Provider Hierarchy). Defaults False, preserving every
     # existing caller's behavior exactly - only meaningful once
     # ProviderRouter's tier-aware routing (router.py) produces a
     # RoutingDecision with a non-empty `premium` list AND

@@ -1,5 +1,5 @@
 """
-Provider tier classification - M9 (AI Provider Hierarchy). Deliberately a
+Provider tier classification - M11 (AI Provider Hierarchy). Deliberately a
 plain dict, not a property of any ProviderClient class - which provider_key
 is "local"/"free"/"premium" is a RESERVATION/DEPLOYMENT decision (which
 bucket an operator puts a provider in), never something the code
@@ -10,7 +10,7 @@ Studio key) can be registered as "free" here, or a Gemini paid key
 registered as "premium" - the client code (GeminiProviderClient) never
 knows or cares which.
 
-See docs/architecture/ai-provider-hierarchy-v3-plan.md Section 4.1.
+See docs/architecture/m11-ai-provider-hierarchy-plan.md Section 4.1.
 """
 import enum
 
@@ -30,7 +30,7 @@ class ProviderTier(str, enum.Enum):
 # Day-1 values: the three pre-existing cloud SDKs stay "premium" (matches
 # today's actual behavior exactly - see AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL's
 # own docstring for how this interacts with backward compatibility). The
-# two new M9 provider clients are classified per the spec's own hierarchy.
+# two new M11 provider clients are classified per the spec's own hierarchy.
 # An operator who obtains a Gemini AI Studio (free-tier) key can re-classify
 # "gemini" to FREE here - or, in a later phase, register it a second time
 # under a distinct provider_key (e.g. "gemini_free" vs "gemini_paid") if

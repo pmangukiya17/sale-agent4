@@ -78,7 +78,7 @@ class AgentInput:
     itself already applies one layer down. Only the Agent's own
     build_context() implementation gives this dict meaning.
 
-    `premium_approved` (M9, AI Provider Hierarchy) is DELIBERATELY here,
+    `premium_approved` (M11, AI Provider Hierarchy) is DELIBERATELY here,
     not inside `context` - it's a provider/approval concern, the one
     thing an Agent's build_context() must never see or touch (see
     Agent.build_context()'s own docstring). AgentRuntime.run_with_metadata()
@@ -104,7 +104,7 @@ class AgentOutput:
 
 @dataclass(frozen=True)
 class PremiumApprovalContext:
-    """M9 (AI Provider Hierarchy) addition. Populated on AgentExecutionResult
+    """M11 (AI Provider Hierarchy) addition. Populated on AgentExecutionResult
     only when AIGateway.complete() raised PremiumApprovalRequiredError - see
     that error's own docstring and app.ai_gateway.client's module docstring
     for the full "STOP, ask user" flow this surfaces. Carries exactly what
@@ -129,7 +129,7 @@ class AgentExecutionResult:
     a real GatewayResponse was ever produced (the whole provider chain
     exhausted - see AIGateway.complete()'s own docstring).
 
-    `premium_approval` (M9) is populated ONLY when the Gateway call
+    `premium_approval` (M11) is populated ONLY when the Gateway call
     stopped specifically because a premium provider needs explicit user
     approval - a distinct, non-error outcome from an ordinary FAILURE
     (`output.status` is still AgentOutcome.FAILURE in this case, since

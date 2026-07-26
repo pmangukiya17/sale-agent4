@@ -45,7 +45,7 @@ def estimate_cost_usd(*, provider_key: str, model: str, prompt_tokens: int, comp
 def estimate_pre_call_cost_usd(
     *, provider_key: str, model: str, prompt_char_length: int, expected_completion_tokens: int = 1024
 ) -> float | None:
-    """M9 (AI Provider Hierarchy). A rough, BEFORE-the-call cost estimate,
+    """M11 (AI Provider Hierarchy). A rough, BEFORE-the-call cost estimate,
     for the premium-approval prompt ("Estimated API cost: ~$0.xx") - unlike
     estimate_cost_usd() above, which needs real token counts that only
     exist after a call completes. Uses a standard, approximate

@@ -114,7 +114,7 @@ def ai_preflight_research_request(
     db: Session = Depends(get_db),
 ) -> AIPreflightResult:
     """
-    M9 (AI Provider Hierarchy). Called by the Research page BEFORE
+    M11 (AI Provider Hierarchy). Called by the Research page BEFORE
     submitting a run, so the premium-approval Yes/No dialog (if needed)
     can be shown at submission time - see app/research/ai_preflight.py's
     own docstring for why this is a pre-flight check rather than a

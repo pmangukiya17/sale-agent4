@@ -62,7 +62,7 @@ class AIAnalysisEngine(ABC):
         null fields and low confidence instead; only raise for a genuine
         engine failure.
 
-        `premium_approved` (M9, AI Provider Hierarchy) - default False so
+        `premium_approved` (M11, AI Provider Hierarchy) - default False so
         every existing/future engine implementation keeps working
         unmodified if it has no notion of provider tiers at all (e.g.
         DeterministicAnalysisEngine simply accepts and ignores it - it

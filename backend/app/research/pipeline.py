@@ -139,7 +139,7 @@ def run_research_request(
     triggered_by_user: User,
     run_input: dict | None = None,
 ) -> ResearchJob:
-    # M9 (AI Provider Hierarchy): premium_approved is a per-run AI-approval
+    # M11 (AI Provider Hierarchy): premium_approved is a per-run AI-approval
     # decision, not document-source configuration - extracted here, before
     # merging the rest of run_input into source_spec, so it never leaks
     # into a research provider's own fetch() config dict. See

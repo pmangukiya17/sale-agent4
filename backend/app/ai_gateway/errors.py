@@ -100,7 +100,7 @@ class BudgetExceededError(GatewayError):
 
 
 class PremiumApprovalRequiredError(GatewayError):
-    """M9 (AI Provider Hierarchy). Raised by AIGateway.complete() when the
+    """M11 (AI Provider Hierarchy). Raised by AIGateway.complete() when the
     local/free tier chain is exhausted (every candidate unconfigured or
     failed), a premium-tier provider exists in the routing decision, and
     settings.AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL is True, and the request

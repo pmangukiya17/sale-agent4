@@ -1,5 +1,5 @@
 """
-AI pre-flight check - M9 (AI Provider Hierarchy). Lets the Research page ask
+AI pre-flight check - M11 (AI Provider Hierarchy). Lets the Research page ask
 "will this run need premium approval?" BEFORE the user submits it, so the
 Yes/No approval dialog (the spec's own UX) can be shown at submission time
 rather than discovered mid-run.
@@ -13,7 +13,7 @@ codebase's workflow/agent primitives were deliberately never built with
 one). Building genuine mid-flight pause/resume would mean adding that
 state across ResearchJobStatus, the Workflow Engine's step-runner, and the
 Live Workflow Progress UI - a materially larger, separate architectural
-change (see docs/architecture/ai-provider-hierarchy-v3-plan.md Section 5,
+change (see docs/architecture/m11-ai-provider-hierarchy-plan.md Section 5,
 "Phase 2"). This module intentionally covers the common, expected case
 (the user is prompted before submitting, exactly like the spec's own
 mockup shows) - if a job's approval need somehow changes between preflight

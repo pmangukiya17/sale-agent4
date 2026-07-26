@@ -1,7 +1,7 @@
 """
-LocalOllamaProviderClient - M9 (AI Provider Hierarchy). Priority-1 ("always
+LocalOllamaProviderClient - M11 (AI Provider Hierarchy). Priority-1 ("always
 the default") provider per the AI Provider Hierarchy spec - see
-docs/architecture/ai-provider-hierarchy-v3-plan.md Section 4.2 for why this
+docs/architecture/m11-ai-provider-hierarchy-plan.md Section 4.2 for why this
 is a thin, otherwise-empty subclass of OpenAICompatibleProviderClient
 rather than a bespoke Ollama SDK integration: Ollama's own API already
 implements the OpenAI chat-completions wire format at /v1, so pointing the

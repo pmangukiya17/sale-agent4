@@ -1,7 +1,7 @@
 """
-GroqProviderClient - M9 (AI Provider Hierarchy). One example of Priority-2
+GroqProviderClient - M11 (AI Provider Hierarchy). One example of Priority-2
 ("Free Cloud Providers") per the spec - see
-docs/architecture/ai-provider-hierarchy-v3-plan.md Section 4.2. Groq's API
+docs/architecture/m11-ai-provider-hierarchy-plan.md Section 4.2. Groq's API
 is itself OpenAI-compatible, so - exactly like LocalOllamaProviderClient -
 this is a thin subclass of OpenAICompatibleProviderClient with a fixed,
 documented base_url, not a bespoke SDK integration. Whether "groq" actually

@@ -40,7 +40,7 @@ from app.research.context import ResearchContext
 
 MODEL_USED_FALLBACK = "research-analysis-agent-unresolved"
 
-# M9 (AI Provider Hierarchy). A fixed, greppable prefix so the frontend can
+# M11 (AI Provider Hierarchy). A fixed, greppable prefix so the frontend can
 # detect "this run needs premium approval, not a genuine failure" from the
 # stored AnalysisOutcome.reasoning string WITHOUT a schema change (no new
 # AIAnalysis column this phase - see the AI Provider Hierarchy design doc's
@@ -113,7 +113,7 @@ class LLMAnalysisEngine(AIAnalysisEngine):
     def analyze(
         self, context: ResearchContext, raw_documents: list[RawDocument], *, premium_approved: bool = False
     ) -> list[AnalysisOutcome]:
-        """`premium_approved` (M9, AI Provider Hierarchy) - default False
+        """`premium_approved` (M11, AI Provider Hierarchy) - default False
         preserves this method's exact prior signature/behavior for any
         existing caller that doesn't pass it. Threaded from
         run_research_request()'s own new optional parameter, itself read

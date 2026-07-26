@@ -1,5 +1,5 @@
 """
-M9 (AI Provider Hierarchy) - E2E tests requiring Docker (sqlalchemy is not
+M11 (AI Provider Hierarchy) - E2E tests requiring Docker (sqlalchemy is not
 imported here, but `app.core.config.settings` IS - constructing it needs
 pydantic_settings, unavailable in the authoring sandbox - confirmed by
 direct import attempt AND a direct `pip install pydantic-settings

@@ -1,5 +1,5 @@
 """
-M9 (AI Provider Hierarchy) - pure, zero-third-party-dependency tests.
+M11 (AI Provider Hierarchy) - pure, zero-third-party-dependency tests.
 Genuinely executable and executed in the authoring sandbox (no Docker, no
 pydantic_settings, no sqlalchemy - see this project's own standing
 disclosure convention, e.g. test_llm_mapping_pure.py). Covers exactly the
@@ -64,7 +64,7 @@ class TestRoutingDecisionChain(unittest.TestCase):
         self.assertEqual(decision.chain(), ["a", "b", "c"])
 
     def test_chain_is_empty_when_primary_is_none(self):
-        # M9's "nothing to auto-attempt, everything gated behind premium
+        # M11's "nothing to auto-attempt, everything gated behind premium
         # approval" state - AIGateway.complete() must treat this exactly
         # like an exhausted chain, never crash on it.
         decision = RoutingDecision(primary=None, premium=["claude"])
@@ -101,7 +101,7 @@ class TestBuildDecisionPerMode(unittest.TestCase):
         self.assertEqual(d.premium, ["claude"])
 
     def test_backward_compatibility_day1_deployment_all_premium_under_hybrid(self):
-        # The exact pre-M9 shape: a preference list containing ONLY
+        # The exact pre-M11 shape: a preference list containing ONLY
         # "claude" (no local/free provider configured anywhere, matching
         # every real deployment before this milestone) - under the new
         # default mode, this correctly gates behind approval (chain

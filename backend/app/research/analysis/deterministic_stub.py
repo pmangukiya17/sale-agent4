@@ -67,7 +67,7 @@ class DeterministicAnalysisEngine(AIAnalysisEngine):
     def analyze(
         self, context: ResearchContext, raw_documents: list[RawDocument], *, premium_approved: bool = False
     ) -> list[AnalysisOutcome]:
-        # M9 (AI Provider Hierarchy): premium_approved is accepted (for
+        # M11 (AI Provider Hierarchy): premium_approved is accepted (for
         # signature compatibility with the abstract base) and intentionally
         # ignored - this engine never calls the AI Gateway, so there is no
         # provider tier to approve.

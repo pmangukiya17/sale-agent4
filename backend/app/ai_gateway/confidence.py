@@ -1,5 +1,5 @@
 """
-Confidence evaluation - M9 (AI Provider Hierarchy). Produces the human-
+Confidence evaluation - M11 (AI Provider Hierarchy). Produces the human-
 readable "why does this task want a stronger model" reasons shown in the
 premium-approval prompt (the spec's own "Reason: - Large document -
 Advanced reasoning required - Multiple data sources" example) - and a

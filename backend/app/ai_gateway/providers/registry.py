@@ -30,7 +30,7 @@ from app.ai_gateway.providers.groq_client import GroqProviderClient
 from app.ai_gateway.providers.local_client import LocalOllamaProviderClient
 from app.ai_gateway.providers.openai_client import OpenAIProviderClient
 
-# M9 (AI Provider Hierarchy) adds LocalOllamaProviderClient/GroqProviderClient
+# M11 (AI Provider Hierarchy) adds LocalOllamaProviderClient/GroqProviderClient
 # - both subclass OpenAICompatibleProviderClient (imports `openai`, not a new
 # SDK) rather than adding a new permitted-import file; the grep rule in this
 # docstring's header still holds unchanged.

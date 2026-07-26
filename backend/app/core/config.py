@@ -244,8 +244,8 @@ class Settings(BaseSettings):
     # registry entry + changing this value, never a pipeline.py change.
     RESEARCH_ANALYSIS_ENGINE_BACKEND: str = "deterministic"
 
-    # --- M9: AI Provider Hierarchy (Local -> Free -> Premium) ---------------
-    # See docs/architecture/ai-provider-hierarchy-v3-plan.md for the full
+    # --- M11: AI Provider Hierarchy (Local -> Free -> Premium) ---------------
+    # See docs/architecture/m11-ai-provider-hierarchy-plan.md for the full
     # design. AI_MODE selects which tiers app.ai_gateway.router.ProviderRouter
     # auto-attempts vs. gates behind explicit approval - a GLOBAL setting for
     # now (see that doc's Section 3.3 for why per-workspace persistence is
@@ -264,7 +264,7 @@ class Settings(BaseSettings):
     # Whether AIGateway.complete() actually enforces the stop-and-ask gate
     # (raising PremiumApprovalRequiredError) when the local/free chain is
     # exhausted and only a premium provider remains. True from the moment
-    # this ships (M9) alongside the Research page's own approval dialog -
+    # this ships (M11) alongside the Research page's own approval dialog -
     # see app/api/routes/research_requests.py's ai-preflight endpoint and
     # ProspectResearch.tsx's PremiumApprovalDialog. Kept as its own flag
     # (independent of AI_MODE) so it can be turned off for a deployment that

@@ -8,7 +8,7 @@ import type { BadgeTone } from "../design-system";
 import { engineBadgeTone, engineLabel } from "../research/useResearchExecution";
 import { PremiumApprovalDialog } from "../research/PremiumApprovalDialog";
 
-// M9 (AI Provider Hierarchy). Shape of POST .../ai-preflight's response
+// M11 (AI Provider Hierarchy). Shape of POST .../ai-preflight's response
 // (app.schemas.research_request.AIPreflightResult) - checked BEFORE
 // submitting a run so the premium-approval dialog can be shown at
 // submission time rather than discovered mid-run (see
@@ -115,7 +115,7 @@ export default function ProspectResearch() {
   const [pastedText, setPastedText] = useState("");
   const [runningRequestId, setRunningRequestId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
-  // M9 (AI Provider Hierarchy) - non-null while the premium-approval
+  // M11 (AI Provider Hierarchy) - non-null while the premium-approval
   // dialog is open, holding what's needed to either proceed
   // (premium_approved: true) or run without AI escalation on decline.
   const [pendingApproval, setPendingApproval] = useState<{
@@ -179,7 +179,7 @@ export default function ProspectResearch() {
     // resulting job as the Workflow Engine actually produces it.
     await apiClient.post(`${base}/research-requests/${requestId}/run`, {
       documents,
-      // M9 (AI Provider Hierarchy) - only meaningful when the ai-preflight
+      // M11 (AI Provider Hierarchy) - only meaningful when the ai-preflight
       // check found local/free unavailable and a premium provider needs
       // approval; harmless (ignored) otherwise - see
       // ResearchRequestRunBody.premium_approved's own docstring.
@@ -196,7 +196,7 @@ export default function ProspectResearch() {
       ? [{ document_type: "pasted_text", extracted_text: pastedText.trim() }]
       : [];
     try {
-      // M9 (AI Provider Hierarchy): check BEFORE submitting whether this
+      // M11 (AI Provider Hierarchy): check BEFORE submitting whether this
       // run would need premium-provider approval, so the Yes/No dialog
       // can be shown at submission time - see
       // app/research/ai_preflight.py's own docstring for why this is a

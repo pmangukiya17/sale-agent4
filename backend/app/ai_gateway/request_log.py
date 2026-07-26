@@ -1,5 +1,5 @@
 """
-AI request logging - M9 (AI Provider Hierarchy). Structured-logs every
+AI request logging - M11 (AI Provider Hierarchy). Structured-logs every
 attempted AI Gateway call (provider, model, tier, capability, duration,
 tokens, cost, success/failure, confidence score) via the standard
 `logging` module - the same observability discipline every other point in

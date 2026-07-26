@@ -1,7 +1,7 @@
 import { Button, Modal } from "../design-system";
 
 /**
- * PremiumApprovalDialog — M9 (AI Provider Hierarchy). Renders the exact
+ * PremiumApprovalDialog — M11 (AI Provider Hierarchy). Renders the exact
  * "STOP, ask user" prompt the AI Provider Hierarchy spec describes:
  * local/free AI providers were unavailable, and using a premium provider
  * (Claude/OpenAI/Gemini) requires the user's explicit Yes/No, never an

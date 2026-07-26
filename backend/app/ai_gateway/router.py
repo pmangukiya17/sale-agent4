@@ -1,5 +1,5 @@
 """
-Provider Router - M7.2, extended M9 (AI Provider Hierarchy). Decides WHICH
+Provider Router - M7.2, extended M11 (AI Provider Hierarchy). Decides WHICH
 provider (and, if it fails, which to fall back to) serves a given
 GatewayRequest, keyed by `request.capability` - never by agent_key, and
 never known by anything above the AI Gateway (the approved architecture's
@@ -8,9 +8,9 @@ selected"). Deliberately a thin, swappable policy - see
 CAPABILITY_PROVIDER_PREFERENCE's own comment for why this is a plain
 Python dict rather than a database table.
 
-M9 changes the SHAPE of the policy from "one provider, no fallback" to
+M11 changes the SHAPE of the policy from "one provider, no fallback" to
 "an ordered preference list, partitioned by tier and settings.AI_MODE" -
-see docs/architecture/ai-provider-hierarchy-v3-plan.md Section 4.3 for the
+see docs/architecture/m11-ai-provider-hierarchy-plan.md Section 4.3 for the
 full design. `RoutingDecision.chain()` keeps its exact M7.2 meaning (the
 list AIGateway.complete() auto-attempts) - it's just no longer always
 length 1. The NEW `premium` list is never auto-attempted by
@@ -35,24 +35,24 @@ _DEFAULT_CAPABILITY_KEY = "default"
 
 @dataclass(frozen=True)
 class RoutingDecision:
-    # M9: primary is now OPTIONAL - str for every M7.2 test/caller
+    # M11: primary is now OPTIONAL - str for every M7.2 test/caller
     # constructing RoutingDecision(primary="something") unchanged, but
-    # None is a legitimate M9 state ("nothing to auto-attempt, everything
+    # None is a legitimate M11 state ("nothing to auto-attempt, everything
     # is gated behind premium approval" - see _build_decision() below).
     # chain() below is what actually encodes "empty means empty."
     primary: str | None = None
     fallbacks: list[str] = field(default_factory=list)
-    # M9 addition. Provider_keys classified PREMIUM for this capability,
+    # M11 addition. Provider_keys classified PREMIUM for this capability,
     # in preference order - NOT part of chain()/attempted automatically.
     premium: list[str] = field(default_factory=list)
 
     def chain(self) -> list[str]:
         """The full ordered, AUTO-ATTEMPTED sequence - primary, then each
-        fallback in order (local + free tier only, post-M9). Never
+        fallback in order (local + free tier only, post-M11). Never
         includes `premium` - AIGateway.complete() walks this list, never
         `primary`/`fallbacks` individually, and reads `premium` on its own
         only after this chain is exhausted. Returns [] when primary is
-        None (M9's "nothing auto-attempted, ask before premium" case) -
+        None (M11's "nothing auto-attempted, ask before premium" case) -
         AIGateway.complete() already handles an empty chain by skipping
         straight to the premium-approval check, unchanged from how it
         already handled "chain exhausted with no response.\""""
@@ -68,7 +68,7 @@ class RoutingDecision:
 # capability with no specific entry, so a newly-added capability never
 # fails to route just because nobody has assigned it a policy yet.
 #
-# M9: this is now an ORDERED PREFERENCE LIST per capability - "try these
+# M11: this is now an ORDERED PREFERENCE LIST per capability - "try these
 # provider_keys in this order," partitioned into auto-attempted (local/
 # free) vs. approval-gated (premium) by app.ai_gateway.tiers.partition()
 # and settings.AI_MODE inside select() below. "claude" stays first/only

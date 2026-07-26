@@ -77,7 +77,7 @@ class AgentRuntime:
             context = agent.build_context(input_data)
             request = PromptBuilder.build(context, policy)
             if input_data.premium_approved:
-                # M9 (AI Provider Hierarchy) - copied here, AFTER
+                # M11 (AI Provider Hierarchy) - copied here, AFTER
                 # PromptBuilder.build() has already produced the request
                 # from context+policy alone, never from anything the
                 # Agent itself constructed. GatewayRequest is a frozen
@@ -88,7 +88,7 @@ class AgentRuntime:
             try:
                 response = gateway.complete(request)
             except PremiumApprovalRequiredError as exc:
-                # M9 (AI Provider Hierarchy). Caught NARROWER than, and
+                # M11 (AI Provider Hierarchy). Caught NARROWER than, and
                 # before, the generic GatewayError clause below - this is
                 # not an ordinary failure, it's the Gateway's "STOP, ask
                 # the user" decision point (see errors.py's own

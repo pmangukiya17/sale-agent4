@@ -1,5 +1,5 @@
 """
-AIGateway - M7.2, extended M9 (AI Provider Hierarchy). The single entry
+AIGateway - M7.2, extended M11 (AI Provider Hierarchy). The single entry
 point everything above app/ai_gateway/ calls (PromptBuilder, via
 AgentRuntime - see app.ai_agents.runtime). Owns the one piece of behavior
 nothing else in this layer is allowed to own: walking a RoutingDecision's
@@ -10,7 +10,7 @@ to the next provider in the chain when a fallback-eligible error persists
 `fallback_eligible`), never branching on a specific error subclass or
 provider identity.
 
-M9 addition - the "STOP, ask user" gate: RoutingDecision now carries a
+M11 addition - the "STOP, ask user" gate: RoutingDecision now carries a
 separate `premium` list (see router.py) that is NEVER included in
 `chain()` and is therefore never auto-attempted by the loop above. Once
 `chain()` is exhausted, if `decision.premium` is non-empty, this method
@@ -48,7 +48,7 @@ request.py's own GatewayStreamChunk docstring.
 `provider_lookup` (constructor param) is a deliberate testability seam,
 not just an incidental DI convenience - unchanged from M7.2, see that
 milestone's own docstring reasoning (still applies verbatim to the two new
-M9 provider clients, both lazily imported the same way via the real
+M11 provider clients, both lazily imported the same way via the real
 registry).
 """
 import logging
@@ -230,7 +230,7 @@ class AIGateway:
         raise NotImplementedError(
             "AIGateway.stream() is reserved for a future milestone - GatewayStreamChunk's shape is "
             "already fixed in app.ai_gateway.request so no caller-facing change is needed when it "
-            "ships. M7.2/M9 implement complete() only."
+            "ships. M7.2/M11 implement complete() only."
         )
 
     @staticmethod
