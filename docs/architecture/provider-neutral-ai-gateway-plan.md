@@ -344,3 +344,167 @@ CEO decisions received, recorded here before implementation begins:
 Implementation order: M-AIGW-1 (foundation, no behavior change) →
 M-AIGW-2 (documentation-only) → M-AIGW-3 (Gemini free tier) → M-AIGW-4
 (cost table) → M-AIGW-5 (Outreach Agent, own design pass first).
+
+## 6. ProviderCapabilities abstraction (CEO follow-up — added before this milestone finalizes)
+
+Requested addition: each provider should declare capabilities
+(`structured_output`, `tool_calling`, `streaming`, `vision`, `embeddings`,
+`max_context_tokens`, `max_output_tokens`, `reasoning_support`), and the
+Gateway should route/validate against those declared capabilities instead
+of ever branching on a provider's name.
+
+Honest starting note: there is no `if provider_key == "claude"`-style
+branching anywhere in this codebase today (confirmed via
+`grep -rn 'provider_key ==\|== "claude"\|== "openai"\|== "gemini"' app/` —
+the only matches are in the unrelated email-provider-connections domain).
+This abstraction is genuinely preventive — closing off a failure mode
+before a sixth or seventh provider tempts someone into writing that
+branch — not a fix for an existing violation. Worth stating plainly
+rather than implying a bug that isn't there.
+
+### 6.1 What already implicitly encodes some of this
+
+`GatewayRequest` already carries three fields that are really capability
+*requirements* in disguise: `response_format.type == JSON` (wants
+`structured_output`), `tools` (wants `tool_calling`), `stream` (wants
+`streaming`, though `AIGateway.stream()` itself raises
+`NotImplementedError` today regardless of provider — see 6.4). Today
+nothing checks whether the routed-to provider can actually satisfy these
+before attempting the call; each `ProviderClient.complete()` just tries,
+and either succeeds or raises `InvalidRequestError`/`InvalidResponseError`
+after a real network round-trip. `vision`, `embeddings`,
+`max_context_tokens`, `max_output_tokens`, and `reasoning_support` have no
+corresponding request-side concept at all yet — `messages` is
+text-only `list[dict]` (no image content shape exists), there is no
+embeddings call path (`GatewayResponse` is chat-completion-shaped, not
+embedding-vector-shaped), and nothing validates a request's size/length
+against any real model ceiling before sending it.
+
+### 6.2 Proposed shape
+
+```python
+# app/ai_gateway/capabilities.py
+@dataclass(frozen=True)
+class ProviderCapabilities:
+    structured_output: bool = False
+    tool_calling: bool = False
+    streaming: bool = False
+    vision: bool = False
+    embeddings: bool = False
+    max_context_tokens: int | None = None
+    max_output_tokens: int | None = None
+    reasoning_support: bool = False
+```
+
+Missing/unknown defaults to the conservative direction (`False`/`None`) —
+same "fail safe, not fail permissive" precedent `tiers.tier_of()` already
+established for an unclassified provider defaulting to `PREMIUM`. A
+provider that hasn't declared a capability is treated as NOT having it,
+never assumed capable.
+
+### 6.3 Open question: per-provider or per-(provider, model)?
+
+This is the one place a straight copy of `tiers.py`'s pattern would be
+wrong, and worth flagging rather than silently deciding. `tiers.py`'s own
+docstring is explicit that tier is a *deployment/reservation* decision,
+not a property of the class — the same `GeminiProviderClient` class can
+legitimately be free or premium depending on which key an operator plugs
+in. Capabilities are different: `tool_calling`/`structured_output` are
+real, fixed facts about what a given wire protocol/SDK integration
+supports — provider-level is the right granularity for those, and a
+`capabilities: ClassVar[ProviderCapabilities]` declared directly on each
+concrete `ProviderClient` (same pattern `key: ClassVar[str]` already
+uses) is the natural home.
+
+But `max_context_tokens`/`max_output_tokens` (and arguably
+`reasoning_support` — e.g. only some models in a given provider's lineup
+have an extended-thinking mode) genuinely vary **per model**, not per
+provider: `settings.ANTHROPIC_DEFAULT_MODEL` could be configured to a
+model with a very different context window than another Claude model,
+and a single provider-level number would be wrong for whichever one
+isn't configured. `accounting.py` already solved exactly this granularity
+problem for pricing — it keys `_PRICE_TABLE_USD_PER_1K` by `(provider_key,
+model)`, not by `provider_key` alone. My recommendation: reuse that
+precedent — provider-level `ClassVar` capabilities for the three
+protocol-level booleans (`structured_output`, `tool_calling`,
+`streaming`), plus a `(provider_key, model) -> partial ProviderCapabilities`
+override table (mirroring the price table's own shape) for the
+model-varying fields, falling back to a documented conservative default
+when no specific model entry exists. This needs your sign-off before I
+build it — it's more moving parts than a single flat dict, and I don't
+want to build the more complex version without you confirming the
+precision is worth it.
+
+### 6.4 How the Gateway would actually use this
+
+- **Routing**: `ProviderRouter.select()` gains a capability-filter step —
+  before partitioning a capability's preference list by tier, drop any
+  `provider_key` whose declared capabilities don't satisfy what the
+  `GatewayRequest` actually needs (derived from `response_format`/`tools`/
+  future vision-or-embeddings fields), so an incapable provider is never
+  in the chain at all — not attempted, not logged as a failed attempt.
+  Recomputed fresh per request (same as today), so no caching/staleness
+  concern.
+- **Validation / failure mode**: if filtering empties the chain AND the
+  premium list entirely (every configured provider lacks the required
+  capability), that's a fundamentally different failure than "nothing was
+  configured" — recommend a new, distinct error
+  (`NoCapableProviderError(GatewayError)`, not retryable, not
+  fallback-eligible) rather than folding it into the existing generic
+  "no provider chain resolved" message, so a caller/log line can tell
+  "you don't have an API key set" apart from "none of your configured
+  providers can do tool-calling." Open question: agree with a distinct
+  error type, or fold it into the existing `GatewayError` message string?
+- **`reasoning_support` specifically**: this is the one capability with no
+  corresponding request field today — `confidence.py`'s
+  `reasoning_depth_hint` is a parameter passed ad hoc to
+  `assess_complexity()` by individual callers (`client.py`,
+  `ai_preflight.py`), never threaded onto `GatewayRequest` itself, so
+  there's currently nothing for the Router to read at routing time. Making
+  `reasoning_support` a real routing input (not just descriptive
+  metadata) means adding a new `GatewayRequest.requires_deep_reasoning:
+  bool = False` field, set by `ExecutionPolicy`/`PromptBuilder`, that
+  `ProviderRouter.select()` reads to exclude non-reasoning-capable
+  providers from the chain when `True`. Open question: build this now
+  (real behavior change, however small and additive), or declare
+  `reasoning_support` on each provider as descriptive-only metadata for
+  now (visible, not yet load-bearing) until a real caller needs
+  deep-reasoning-aware routing?
+- **`streaming` specifically**: `AIGateway.stream()` raises
+  `NotImplementedError` unconditionally today, regardless of provider.
+  Declaring `streaming=True` for any provider right now would describe a
+  capability the Gateway itself cannot yet deliver — recommend every
+  provider declares `streaming=False` until `stream()` is actually
+  implemented, then flip declarations at that point, rather than
+  declaring the SDK-level truth now and having it silently mean nothing.
+- **`vision`/`embeddings` specifically**: neither has anywhere to be used
+  via `AIGateway.complete()` today — `messages` has no image-content
+  shape, and embeddings aren't a chat-completion call at all (different
+  response shape entirely: a vector, not text/tool-calls). These two
+  fields would be declared and correct, but inert — visible, honest
+  metadata for a future milestone, not something this pass makes
+  functional. Confirming that's the intent (declare now, wire up later)
+  rather than scope-creeping this pass into building vision/embeddings
+  request support.
+
+### 6.5 Provisional per-provider declarations (protocol-level, pending confirmation)
+
+Based on what each client's `complete()` already actually does today:
+
+| provider_key | structured_output | tool_calling | streaming | reasoning_support |
+|---|---|---|---|---|
+| `claude` | True (prompt-instruction + parse workaround, not native JSON mode — see `claude_client.py`'s own docstring) | True | False (see 6.4) | True (model-dependent — see 6.3's per-model question) |
+| `openai` | True (native `response_format`) | True | False | model-dependent |
+| `gemini` / `gemini_ai_studio` (post M-AIGW-3) | True (native `response_schema`) | True | False | model-dependent |
+| `local_ollama` | True (best-effort — not every local model actually honors it, see `openai_compatible_client.py`'s own disclosed caveat) | True | False | model-dependent, usually False for small local models |
+| `groq` | True (best-effort, same OpenAI-compatible caveat) | True | False | model-dependent |
+
+`max_context_tokens`/`max_output_tokens`/`vision`/`embeddings` are left
+out of this table deliberately — see 6.3, these need the
+per-(provider, model) design resolved first, and I don't want to publish
+placeholder numbers that look authoritative but aren't sourced from a
+real model card.
+
+Awaiting your answers to 6.3 (granularity) and the two open questions in
+6.4 (distinct error type, `reasoning_support` as live routing input vs.
+descriptive-only) before this becomes part of M-AIGW-1's scope.
