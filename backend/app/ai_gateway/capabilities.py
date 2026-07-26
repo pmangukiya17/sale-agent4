@@ -27,7 +27,9 @@ once as a `ClassVar[ProviderCapabilities]` on each concrete `ProviderClient`
 `reasoning_support` genuinely vary PER MODEL (the same provider_key can be
 configured with a small or a large model) - `_CAPABILITY_OVERRIDES` below
 keys these by `(provider_key, model)`, mirroring `accounting.py`'s own
-`_PRICE_TABLE_USD_PER_1K` keying exactly. `resolve_capabilities()` starts
+`_MODEL_PRICE_OVERRIDES_USD_PER_1K` keying exactly (M-AIGW-4's per-model
+override table - see that module's own docstring for its two-level
+provider-default/per-model-override split). `resolve_capabilities()` starts
 from the provider-level default and merges in an override's fields when
 the caller knows the concrete model; when `model` is None (every existing
 caller today - see this module's own limitation note below),
@@ -128,7 +130,8 @@ def satisfies(capabilities: ProviderCapabilities, required: RequiredCapabilities
 
 # (provider_key, model) -> partial field overrides, merged on top of that
 # provider's own ClassVar default. Mirrors accounting.py's
-# _PRICE_TABLE_USD_PER_1K keying exactly - see module docstring for why
+# _MODEL_PRICE_OVERRIDES_USD_PER_1K keying exactly (M-AIGW-4's per-model
+# override table) - see module docstring for why
 # this granularity is necessary for max_context_tokens/max_output_tokens/
 # reasoning_support specifically. Empty by default; populated via
 # register_capability_override() as real per-model facts are confirmed,

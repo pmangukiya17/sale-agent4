@@ -635,3 +635,84 @@ results, risks) delivered in-chat; not duplicated here.
 
 No further architectural changes to M-AIGW-3. M-AIGW-4/M-AIGW-5 remain
 queued, not started without explicit go-ahead (Section 4/5).
+
+CEO's approval on M-AIGW-3 explicitly recorded the disclosed `gemini`
+preference-list gap above as "a deliberate future product decision
+rather than silently changing routing behavior inside an infrastructure
+milestone" — i.e. any future fix to it is a product/routing-policy call,
+not something a later infrastructure milestone should quietly fold in.
+
+## 11. M-AIGW-4 — approved, shipped (Cost Registry)
+
+Implemented exactly as scoped against the five constraints the CEO set
+before implementation:
+
+1. **Centralized, Gateway-owned metadata.** All pricing stays in
+   `app/ai_gateway/accounting.py` - the one place this codebase has ever
+   kept it. No `ProviderClient` (gemini_client.py/claude_client.py/
+   openai_client.py/openai_compatible_client.py) declares its own price;
+   each still only calls `accounting.build_usage()`, unchanged.
+2. **Not scattered into provider implementations.** Confirmed via `grep
+   -rn "price\|_usd_per_1k" app/ai_gateway/providers/` returning nothing
+   pricing-related outside calls to `build_usage()`.
+3. **Model-aware: provider defaults with per-model overrides.**
+   `accounting.py` now has two dicts instead of one:
+   `_PROVIDER_DEFAULT_PRICE_USD_PER_1K` (one entry per `provider_key` -
+   "whatever this provider's typical current-generation model costs") and
+   `_MODEL_PRICE_OVERRIDES_USD_PER_1K` (the pre-existing exact
+   `(provider_key, model)` table, checked FIRST). Mirrors
+   `capabilities.py`'s own provider-level-default + per-model-override
+   split exactly (see that module's updated docstring cross-references).
+   `register_provider_default_price()` is the new registration function
+   for the first tier; `register_price()` (renamed internally to target
+   the override dict, same public signature) still handles the second.
+4. **Independent from routing.** Confirmed via `grep -n "accounting"
+   app/ai_gateway/router.py` returning nothing - `CAPABILITY_PROVIDER_PREFERENCE`,
+   `RoutingDecision`, and the tier-partition logic never read a price.
+   Cost stays purely informational (pre-call estimates for the
+   premium-approval prompt, post-call actuals on `TokenUsage.cost_usd`)
+   and a soft-budget-check input (`client.py`'s own `_check_soft_budget`,
+   logs only, never blocks) - never a routing input. A future cost-aware
+   policy engine can call `estimate_cost_usd()` directly without this
+   module changing again.
+5. **Backward compatible except where the registry itself is exercised.**
+   No schema changed - `PreflightResult.estimated_cost_usd`,
+   `PremiumApprovalRequiredError.estimated_cost_usd`, and
+   `GatewayResponse.usage.cost_usd` were already `float | None` fields;
+   this milestone only changes whether they're populated. The real,
+   intended behavior change: `estimate_cost_usd()`/
+   `estimate_pre_call_cost_usd()` now return a real number instead of
+   `None` for the six provider_keys `PROVIDER_CLIENT_REGISTRY` currently
+   registers (`claude`, `openai`, `gemini`, `gemini_ai_studio`, `groq`,
+   `local_ollama`), whenever no per-model override matches first - this
+   IS the fix for the "structurally complete but functionally inert in
+   production" gap this project's own AI-layer architecture review
+   recorded (register_price() had never once been called outside a test,
+   so cost_usd was always None in real deployments). No other module's
+   behavior changes.
+
+Pricing sourced from each provider's own official pricing page,
+web-verified at implementation time (2026-07-26) - see accounting.py's
+own per-entry comments for the exact page/model each number is drawn
+from (docs.claude.com, developers.openai.com/api/docs/pricing,
+ai.google.dev/gemini-api/docs/pricing, groq.com/pricing). Disclosed as an
+estimate, not an invoice - provider pricing changes regularly and this
+table will drift, same "will always lag real provider catalogs"
+limitation this module has always carried.
+
+Tests: `TestProviderDefaultCostRegistry` (5 new pure tests) covering
+every registered provider_key resolving to a real default price,
+free-tier providers (`gemini_ai_studio`/`local_ollama`) estimating to
+exactly $0, per-model override precedence over the provider default, and
+`register_provider_default_price()` itself. One pre-existing test
+(`test_unpriced_model_returns_none`, now
+`test_unpriced_provider_and_model_returns_none`) was updated - it
+previously asserted `provider_key="claude"` with an unregistered model
+returned `None`, which no longer holds now that "claude" has a real
+provider-level default; the updated test uses a genuinely
+never-registered provider_key to confirm the true "nothing priced at
+all" case still returns `None`. Full pure suite: 150 tests, 0 failures,
+2 pre-existing unrelated skips.
+
+No further architectural changes to M-AIGW-4. M-AIGW-5 remains queued,
+not started without explicit go-ahead (Section 4/5).

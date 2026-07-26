@@ -21,7 +21,12 @@ openai`).
 """
 import unittest
 
-from app.ai_gateway.accounting import estimate_pre_call_cost_usd, register_price
+from app.ai_gateway.accounting import (
+    estimate_cost_usd,
+    estimate_pre_call_cost_usd,
+    register_price,
+    register_provider_default_price,
+)
 from app.ai_gateway.confidence import assess_complexity
 from app.ai_gateway.request import ResponseFormat, ResponseFormatType
 from app.ai_gateway.router import CAPABILITY_PROVIDER_PREFERENCE, RoutingDecision, _build_decision
@@ -208,9 +213,14 @@ class TestPreCallCostEstimate(unittest.TestCase):
     def setUp(self):
         register_price("test_provider", "test_model", prompt_price_per_1k=1.0, completion_price_per_1k=2.0)
 
-    def test_unpriced_model_returns_none(self):
+    def test_unpriced_provider_and_model_returns_none(self):
+        # A provider_key with neither a per-model override NOR a
+        # provider-level default (unlike "claude"/"openai"/"gemini"/etc,
+        # which M-AIGW-4 populated a real default for below) still
+        # returns None - "nothing priced at all" remains a normal,
+        # expected state, never an error.
         result = estimate_pre_call_cost_usd(
-            provider_key="claude", model="some-model-with-no-registered-price", prompt_char_length=1000
+            provider_key="some_never_configured_provider", model="some-model-with-no-registered-price", prompt_char_length=1000
         )
         self.assertIsNone(result)
 
@@ -230,6 +240,67 @@ class TestPreCallCostEstimate(unittest.TestCase):
         )
         self.assertIsNotNone(result)
         self.assertGreaterEqual(result, 0)
+
+
+class TestProviderDefaultCostRegistry(unittest.TestCase):
+    """M-AIGW-4 (Cost Registry - see
+    docs/architecture/provider-neutral-ai-gateway-plan.md Section 11).
+    Covers the two-level (provider-default, per-model-override) lookup
+    accounting.py now does - the fix for the "structurally complete but
+    functionally inert in production" gap this project's own AI-layer
+    architecture review recorded (a price table keyed only by exact
+    model id never matched any real, operator-configured model string,
+    so cost_usd was always None in practice)."""
+
+    def test_claude_has_a_real_provider_default_price_now(self):
+        # Any model string NOT in the per-model override table still
+        # resolves to Claude's provider-level default - this is the
+        # actual fix: an operator's freely-chosen ANTHROPIC_DEFAULT_MODEL
+        # (which this codebase can't predict) still gets a real cost
+        # estimate instead of silently going back to None.
+        result = estimate_cost_usd(
+            provider_key="claude", model="claude-sonnet-4-6", prompt_tokens=1000, completion_tokens=1000
+        )
+        self.assertIsNotNone(result)
+        self.assertGreater(result, 0)
+
+    def test_every_registered_provider_has_a_default_price(self):
+        # PROVIDER_CLIENT_REGISTRY's own five provider_keys (M-AIGW-3's
+        # final shape) - every one should resolve to SOME price (even if
+        # $0/$0 for the genuinely-free ones), never silently None, now
+        # that M-AIGW-4 has populated real defaults for all of them.
+        for provider_key in ("claude", "openai", "gemini", "gemini_ai_studio", "groq", "local_ollama"):
+            result = estimate_cost_usd(
+                provider_key=provider_key, model="some-unregistered-model-id", prompt_tokens=1000, completion_tokens=1000
+            )
+            self.assertIsNotNone(result, f"{provider_key} should have a provider-level default price")
+
+    def test_free_tier_providers_estimate_to_exactly_zero(self):
+        for provider_key in ("gemini_ai_studio", "local_ollama"):
+            result = estimate_cost_usd(
+                provider_key=provider_key, model="whatever-model", prompt_tokens=100_000, completion_tokens=100_000
+            )
+            self.assertEqual(result, 0.0)
+
+    def test_per_model_override_takes_precedence_over_provider_default(self):
+        # claude-opus-4-5 is pricier than the "claude" provider default
+        # (Sonnet-class) - confirms the override table is actually
+        # consulted FIRST, not just as a fallback.
+        default_price = estimate_cost_usd(provider_key="claude", model="claude-sonnet-4-6", prompt_tokens=1000, completion_tokens=1000)
+        override_price = estimate_cost_usd(provider_key="claude", model="claude-opus-4-5", prompt_tokens=1000, completion_tokens=1000)
+        self.assertNotEqual(default_price, override_price)
+        self.assertGreater(override_price, default_price)
+
+    def test_register_provider_default_price_adds_a_new_default(self):
+        estimate_before = estimate_cost_usd(
+            provider_key="a_brand_new_test_only_provider", model="anything", prompt_tokens=1000, completion_tokens=1000
+        )
+        self.assertIsNone(estimate_before)
+        register_provider_default_price("a_brand_new_test_only_provider", prompt_price_per_1k=1.0, completion_price_per_1k=1.0)
+        estimate_after = estimate_cost_usd(
+            provider_key="a_brand_new_test_only_provider", model="anything", prompt_tokens=1000, completion_tokens=1000
+        )
+        self.assertEqual(estimate_after, 2.0)
 
 
 if __name__ == "__main__":
