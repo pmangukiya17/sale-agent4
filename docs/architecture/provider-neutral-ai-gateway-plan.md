@@ -313,6 +313,34 @@ real, separately-sized work that should get their own explicit go-ahead.
 
 ---
 
-Awaiting your decisions on Sections 3.1–3.4 (registration architecture,
-Gemini free-tier split, cost table population, second-caller migration)
-and explicit approval before any of Section 4 is implemented.
+## 5. Decisions — resolved
+
+CEO decisions received, recorded here before implementation begins:
+
+- **Decision 1 (registration architecture): Option A — keep direct-import.**
+  No registry restructure. M-AIGW-2 becomes documentation-only (a clear
+  "how to add a provider" checklist in `registry.py`'s own docstring),
+  not a self-registration rebuild.
+- **Decision 2 (Gemini free tier): split into two keys now.** M-AIGW-3 is
+  in scope: a new `gemini_ai_studio` provider_key (FREE tier, its own
+  settings pair), existing `gemini` (PREMIUM, paid key) untouched.
+- **Decision 3 (cost table): populate now.** M-AIGW-4 is in scope: real
+  current per-1K-token prices for Claude/OpenAI/Gemini/Groq's configured
+  default models, each `register_price()` call disclosing the pricing
+  page and date checked.
+- **Decision 4 (second caller): yes — migrate one now, Outreach personalization
+  (M8.15).** M-AIGW-5 is in scope, targeting Outreach's subject-line/body
+  personalization (currently a deterministic template engine) as the
+  second real Gateway caller, following the exact
+  `LLMAnalysisEngine`-alongside-`DeterministicAnalysisEngine` pattern
+  Research already established (new engine class, existing deterministic
+  stub untouched, a settings flag selects between them). Per this doc's
+  own Section 4, M-AIGW-5 gets its own scoped architecture note (an
+  Outreach-Agent-specific design pass, mirroring how
+  `ResearchAnalysisAgent` was designed before M2 Phase 3's code was
+  written) before its code is implemented — not skipped just because the
+  overall milestone was approved.
+
+Implementation order: M-AIGW-1 (foundation, no behavior change) →
+M-AIGW-2 (documentation-only) → M-AIGW-3 (Gemini free tier) → M-AIGW-4
+(cost table) → M-AIGW-5 (Outreach Agent, own design pass first).
