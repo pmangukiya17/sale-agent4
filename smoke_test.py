@@ -673,6 +673,21 @@ def check_approve_prospect() -> str:
 # "expanding"/"new facility" and "hiring" -> business_signals, "terry
 # towel" -> sales_intelligence (matches the product's keywords set in
 # check_create_product).
+#
+# NOTE (post-Phase-3-default-flip): RESEARCH_ANALYSIS_ENGINE_BACKEND's
+# global default is now "llm" (see app/core/config.py), not
+# "deterministic" - this section's checks below only exercise the
+# keyword vocabulary above if the server this script targets has
+# RESEARCH_ANALYSIS_ENGINE_BACKEND=deterministic set explicitly in its
+# own env. Running this smoke test against a server left on the new
+# "llm" default will either produce differently-shaped AI output (real
+# model output instead of keyword matches) or, if no local/free AI
+# Gateway provider is configured, a "needs premium approval" degraded
+# result (see app/research/analysis/llm_engine.py's
+# PREMIUM_APPROVAL_REASONING_PREFIX) - not a bug, just this script's own
+# assumption becoming environment-dependent. Set the env var back to
+# "deterministic" for this specific smoke run if you want these checks
+# to stay meaningful as written.
 RESEARCH_TEST_TEXT = (
     "We are a certified manufacturer with ISO 9001 certification. We are "
     "currently expanding with a new facility in Gujarat. Our procurement "

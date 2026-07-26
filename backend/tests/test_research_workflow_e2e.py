@@ -40,6 +40,7 @@ from sqlalchemy import or_, select
 # tests/test_conversation_models.py's own docstring for the full
 # explanation (identical fix, identical failure mode).
 from app.db import base as _base  # noqa: F401
+from app.core.config import settings
 from app.db.session import SessionLocal
 from app.models.ai_analysis import AIAnalysis
 from app.models.company_profile import CompanyProfile
@@ -82,6 +83,18 @@ def _now():
 
 class TestResearchWorkflowEndToEnd(unittest.TestCase):
     def setUp(self):
+        # This test's whole point (see module docstring) is proving the
+        # deterministic keyword-match Signal-detection path end to end -
+        # it never asserted RESEARCH_ANALYSIS_ENGINE_BACKEND explicitly
+        # because "deterministic" used to be the global default anyway.
+        # Now that the CEO has approved flipping that default to "llm"
+        # (the M11 AI Gateway/Agent-backed engine, which would attempt a
+        # real provider call here), this test pins its own backend
+        # explicitly so it keeps testing exactly what its docstring says
+        # it tests, independent of whatever the global default is.
+        self._original_backend = settings.RESEARCH_ANALYSIS_ENGINE_BACKEND
+        settings.RESEARCH_ANALYSIS_ENGINE_BACKEND = "deterministic"
+
         self.db = SessionLocal()
 
         # Real bootstrap - idempotent, exactly what app.main's lifespan()
@@ -122,6 +135,8 @@ class TestResearchWorkflowEndToEnd(unittest.TestCase):
         self.db.commit()
 
     def tearDown(self):
+        settings.RESEARCH_ANALYSIS_ENGINE_BACKEND = self._original_backend
+
         self.db.rollback()
 
         instance_ids = select(WorkflowInstance.id).where(WorkflowInstance.company_profile_id == self.company_profile.id)

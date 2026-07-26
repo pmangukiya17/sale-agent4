@@ -235,14 +235,21 @@ class Settings(BaseSettings):
     # --- M2 Phase 3: Research Intelligence Engine ---------------------------
     # Selects the active AIAnalysisEngine implementation via
     # app/research/analysis/registry.py - exact same shape/reasoning as
-    # REPLY_CLASSIFIER_BACKEND above: "deterministic" (the only backend
-    # before this phase, keyword/regex-based, no provider API calls) stays
-    # the default so enabling the new "llm" backend (the first production
-    # caller of app.ai_gateway/app.ai_agents) is an explicit, reversible
-    # config change, never a hard cutover bundled with this phase's own
-    # commit. Adding a future analysis backend is a new class + one
-    # registry entry + changing this value, never a pipeline.py change.
-    RESEARCH_ANALYSIS_ENGINE_BACKEND: str = "deterministic"
+    # REPLY_CLASSIFIER_BACKEND above. Default was "deterministic" for the
+    # initial Phase 3 commit (keyword/regex-based, no provider API calls),
+    # by design, per that commit's own rollout plan step 4: "flip the
+    # default in a small, separately-approved follow-up commit - not
+    # bundled with the initial build." This is that follow-up: CEO
+    # explicitly approved flipping the default to "llm" (the M11 AI
+    # Gateway/Agent-backed engine). Still fully reversible - operators can
+    # set this back to "deterministic" via env/.env - and the M11 Premium
+    # Approval Gate (AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL, default True)
+    # still applies unchanged: an unconfigured/no local-or-free-provider
+    # deployment degrades to "AI analysis needs premium approval" outcomes,
+    # never a crash and never a silent premium call. Adding a future
+    # analysis backend is a new class + one registry entry + changing this
+    # value, never a pipeline.py change.
+    RESEARCH_ANALYSIS_ENGINE_BACKEND: str = "llm"
 
     # --- M11: AI Provider Hierarchy (Local -> Free -> Premium) ---------------
     # See docs/architecture/m11-ai-provider-hierarchy-plan.md for the full

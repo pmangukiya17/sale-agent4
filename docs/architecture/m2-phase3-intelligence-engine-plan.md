@@ -314,3 +314,33 @@ process. Open decision point for the CEO specifically: confirm the
 Phase 3/Phase 4 renumbering in the scope note above, and confirm 3B
 (signal-adjusted priority) is wanted in this phase or should be deferred
 to keep Phase 3 to 3A only.
+
+## Addendum — rollout step 4 executed (default flip)
+
+3A (this document's own scope) was approved and shipped: commits
+`8c2fa6b` (this plan), `17d297c` (ResearchAnalysisAgent + LLMAnalysisEngine
++ registry/config flag + observability UX), `94f0569` (E2E test mapper-
+registration fix). 3B (signal-adjusted priority, Section 8) was never
+separately approved and remains deferred - not built.
+
+Per this document's own Section 14 "Rollout plan," step 4 says: *"Once
+confident, flip the default in a small, separately-approved follow-up
+commit - not bundled with the initial build."* The CEO has now
+explicitly approved that flip: `RESEARCH_ANALYSIS_ENGINE_BACKEND`'s
+default in `app/core/config.py` changed from `"deterministic"` to
+`"llm"`. `"deterministic"` remains fully selectable (config-only).
+
+This lands after, and composes with, the M11 AI Provider Hierarchy work
+(`docs/architecture/m11-ai-provider-hierarchy-plan.md`) - the Premium
+Approval Gate (`AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL`, default `True`)
+still governs every LLM-backed research run: an environment with no
+local/free provider configured degrades to a "needs premium approval"
+result rather than raising or silently calling a paid provider. See
+`app/research/analysis/llm_engine.py`'s `PREMIUM_APPROVAL_REASONING_PREFIX`.
+
+One test (`tests/test_research_workflow_e2e.py`) and one operational
+script (`smoke_test.py`'s "M2 checks: AI Research & Prospect
+Intelligence" section) specifically exercise the deterministic
+keyword-stub path and have been updated/annotated accordingly rather
+than left silently broken by this default change - see their own
+inline comments.

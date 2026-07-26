@@ -35,11 +35,14 @@ class TestAnalysisEngineRegistry(unittest.TestCase):
     def tearDown(self):
         settings.RESEARCH_ANALYSIS_ENGINE_BACKEND = self._original_backend
 
-    def test_default_backend_is_deterministic(self):
-        # The whole point of the config-gated rollout: the default must
-        # stay "deterministic" so this phase's own commit changes zero
-        # existing behavior until an operator explicitly opts in.
-        self.assertEqual(settings.RESEARCH_ANALYSIS_ENGINE_BACKEND, "deterministic")
+    def test_default_backend_is_llm(self):
+        # Default was "deterministic" for the initial Phase 3 commit
+        # (zero behavior change until an operator opted in). Per that
+        # commit's own rollout plan step 4, the CEO has since explicitly
+        # approved flipping the default to "llm" in a separate follow-up
+        # commit - "deterministic" stays fully selectable, just no longer
+        # the out-of-the-box default.
+        self.assertEqual(settings.RESEARCH_ANALYSIS_ENGINE_BACKEND, "llm")
 
     def test_deterministic_backend_resolves_to_deterministic_engine(self):
         settings.RESEARCH_ANALYSIS_ENGINE_BACKEND = "deterministic"
