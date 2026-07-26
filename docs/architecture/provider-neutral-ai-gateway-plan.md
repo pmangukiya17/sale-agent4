@@ -539,3 +539,39 @@ descriptive-only) before this becomes part of M-AIGW-1's scope.
 
 This is now folded into M-AIGW-1's scope (task #198, updated below) — the
 plan is finalized pending your go-ahead to begin implementation.
+
+## 8. M-AIGW-1 — approved, shipped (commit `68c0416`)
+
+Implemented exactly as scoped: `ProviderCapabilities` (provider-level
+`ClassVar` for the three protocol-level booleans + a `(provider_key,
+model)` override table for `max_context_tokens`/`max_output_tokens`/
+`reasoning_support`), `ProviderRouter.select()` capability-filtering,
+`NoCapableProviderError`, `GatewayRequest.document_count`/
+`requires_deep_reasoning`, `AIGateway.preflight()`, and
+`app/research/ai_preflight.py`'s rewrite as a thin Gateway caller. Full
+report (architecture summary, API changes, migration impact, test
+results, risks) delivered in-chat; not duplicated here.
+
+Two architectural notes raised at handoff, and the CEO's disposition on
+each:
+
+- **Per-model capability overrides currently have narrow practical
+  effect** (every `ExecutionPolicy` today leaves `model=None`, so
+  `requires_deep_reasoning` routing only ever reads provider-level
+  declarations). **Disposition: keep the current implementation as-is.**
+  Do not build explicit model-selection policies now — the per-model
+  override table's real value lands once a future milestone's
+  `ExecutionPolicy` starts deliberately selecting models. No action this
+  pass.
+- **`AIGateway.preflight()` doesn't yet distinguish "capability mismatch"
+  from "needs approval"** — both currently surface as
+  `approval_required=True` against whatever the (possibly
+  capability-filtered) decision carries. **Disposition: do not modify
+  M-AIGW-1.** Recorded here as a real, scoped future enhancement: a later
+  milestone should evolve `PreflightResult` into a three-state result -
+  `READY`, `APPROVAL_REQUIRED`, `NO_CAPABLE_PROVIDER` - once additional
+  Gateway consumers exist and the distinction actually matters to a
+  caller. Not built now; not forgotten either.
+
+No further architectural changes to M-AIGW-1. Proceeding to M-AIGW-2
+exactly as originally scoped in Section 4/5.

@@ -22,6 +22,58 @@ via a repeatable grep check:
       | grep -v "^app/ai_gateway/providers/"
 
 should always return nothing.
+
+M-AIGW-2 (Provider-Neutral AI Gateway foundation follow-up - see
+docs/architecture/provider-neutral-ai-gateway-plan.md Section 3/5, and
+the CEO's own decision recorded there: keep this direct-import registry,
+do not rebuild it as a self-registering plugin system). Documentation-
+only addition, no code change: the checklist for adding a NEW provider,
+now that M-AIGW-1 added a fifth step (declaring capabilities). All five
+edits are small, explicit, and each lives at the file a contributor would
+naturally look in for that concern - nothing here is hidden behind
+indirection or magic registration:
+
+  1. Write the new `app/ai_gateway/providers/<name>_client.py` - a
+     concrete `ProviderClient` subclass. If it speaks the OpenAI
+     chat-completions wire format (most local/free providers do), prefer
+     subclassing `OpenAICompatibleProviderClient` over a bespoke SDK
+     integration (see that module's own docstring) - this is genuinely
+     the common case, not just today's two examples.
+  2. On that new class, declare `capabilities: ClassVar[ProviderCapabilities]`
+     (see app.ai_gateway.capabilities' own docstring) reflecting what this
+     provider's wire-format/SDK integration ACTUALLY supports - never
+     copy another provider's declaration without checking. Leave
+     `streaming=False` unless/until AIGateway.stream() itself is
+     implemented (see client.py's own docstring for why declaring it True
+     earlier would be dishonest - the Gateway can't deliver it yet
+     regardless of what the SDK supports). Override `default_model` (a
+     property, see providers/base.py's own docstring) to return this
+     provider's own `settings.<PROVIDER>_DEFAULT_MODEL`-shaped value.
+  3. Add the new class to `PROVIDER_CLIENT_REGISTRY` below (this file).
+  4. Classify its tier in `app.ai_gateway.tiers.PROVIDER_TIER_REGISTRY`
+     (local/free/premium - a deployment/reservation decision, see that
+     module's own docstring for why it's data, not a property of the
+     class itself).
+  5. Add its `provider_key` to whichever `CAPABILITY_PROVIDER_PREFERENCE`
+     entries (app.ai_gateway.router) should actually try it, in the
+     right preference order - a brand new provider added to steps 3/4
+     alone is NOT automatically tried by anything; a capability's
+     preference list is the one place that decides "try this provider for
+     this kind of request."
+
+Plus, if the provider needs its own API key/base_url/default-model
+settings (nearly always): add the `settings.<PROVIDER>_*` block to
+`app/core/config.py`, following any existing provider's block as the
+template (see that file's own AI Gateway section comments).
+
+This checklist is deliberately NOT itself enforced by a test or CI check
+- unlike the anthropic/openai/google.genai import boundary above, "did
+you complete all 5 steps for provider X" has no single grep-able
+invariant (a provider missing from CAPABILITY_PROVIDER_PREFERENCE, for
+instance, is a valid, sometimes-intentional state - see that dict's own
+docstring for "an agent with no specific entry... routes through the same
+single-provider... default"). Treat this as a contributor checklist, not
+a substitute for reviewing the diff.
 """
 from app.ai_gateway.providers.base import ProviderClient
 from app.ai_gateway.providers.claude_client import ClaudeProviderClient
