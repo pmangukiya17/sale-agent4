@@ -77,7 +77,7 @@ a substitute for reviewing the diff.
 """
 from app.ai_gateway.providers.base import ProviderClient
 from app.ai_gateway.providers.claude_client import ClaudeProviderClient
-from app.ai_gateway.providers.gemini_client import GeminiProviderClient
+from app.ai_gateway.providers.gemini_client import GeminiAIStudioProviderClient, GeminiProviderClient
 from app.ai_gateway.providers.groq_client import GroqProviderClient
 from app.ai_gateway.providers.local_client import LocalOllamaProviderClient
 from app.ai_gateway.providers.openai_client import OpenAIProviderClient
@@ -85,11 +85,15 @@ from app.ai_gateway.providers.openai_client import OpenAIProviderClient
 # M11 (AI Provider Hierarchy) adds LocalOllamaProviderClient/GroqProviderClient
 # - both subclass OpenAICompatibleProviderClient (imports `openai`, not a new
 # SDK) rather than adding a new permitted-import file; the grep rule in this
-# docstring's header still holds unchanged.
+# docstring's header still holds unchanged. M-AIGW-3 (Gemini Free-Tier Split)
+# adds GeminiAIStudioProviderClient - shares gemini_client.py's own
+# _GeminiProviderClientBase with the pre-existing GeminiProviderClient, same
+# "no new permitted-import file needed" reasoning.
 PROVIDER_CLIENT_REGISTRY: dict[str, type[ProviderClient]] = {
     ClaudeProviderClient.key: ClaudeProviderClient,
     OpenAIProviderClient.key: OpenAIProviderClient,
     GeminiProviderClient.key: GeminiProviderClient,
+    GeminiAIStudioProviderClient.key: GeminiAIStudioProviderClient,
     LocalOllamaProviderClient.key: LocalOllamaProviderClient,
     GroqProviderClient.key: GroqProviderClient,
 }

@@ -575,3 +575,63 @@ each:
 
 No further architectural changes to M-AIGW-1. Proceeding to M-AIGW-2
 exactly as originally scoped in Section 4/5.
+
+## 9. M-AIGW-2 — approved, shipped
+
+Documentation-only, no runtime behavior change: the provider-registration
+checklist (all five steps, including the `ProviderCapabilities`/
+`default_model` requirements M-AIGW-1 introduced) added to
+`app/ai_gateway/providers/registry.py`'s own docstring — the first file a
+contributor opens when adding or modifying a provider. Full report
+delivered in-chat; not duplicated here.
+
+CEO's approval confirmed the documentation accurately reflects the
+current architecture (direct-import registry, three registry
+dictionaries plus settings configuration, `ProviderCapabilities`/
+`default_model` requirements, no runtime behavior changes), and both
+M-AIGW-1 architectural notes (Section 8 above) remain deferred exactly
+as recorded — no change to either disposition.
+
+No further changes required for M-AIGW-2. Proceeding to M-AIGW-3.
+
+## 10. M-AIGW-3 — approved, shipped (Gemini Free-Tier Split)
+
+Implemented exactly as scoped: `app/ai_gateway/providers/gemini_client.py`
+split into a shared `_GeminiProviderClientBase` (unchanged translation
+logic — the SDK integration, error mapping, and Gemini-specific message
+handling this file has always had) plus two thin concrete subclasses —
+`GeminiProviderClient` (`key="gemini"`, reads `GOOGLE_API_KEY`/
+`GOOGLE_DEFAULT_MODEL`, unchanged from before this split) and
+`GeminiAIStudioProviderClient` (`key="gemini_ai_studio"`, new, reads the
+new `GOOGLE_AI_STUDIO_API_KEY`/`GOOGLE_AI_STUDIO_DEFAULT_MODEL` settings).
+Both declare the same `ProviderCapabilities` — capability is a fact about
+the shared SDK integration, never about which tier an operator
+classifies a given key under (`tiers.py`'s own docstring).
+
+Registered in all the places the M-AIGW-2 checklist calls out:
+`PROVIDER_CLIENT_REGISTRY` (registry.py), `PROVIDER_TIER_REGISTRY` —
+`gemini_ai_studio` classified FREE, `gemini` stays PREMIUM, unchanged
+(tiers.py) — and `CAPABILITY_PROVIDER_PREFERENCE["default"]`, which
+gained `gemini_ai_studio` (ordered after `groq`, before `claude`) but
+deliberately did **not** gain `gemini` — see below.
+
+**Disclosed pre-existing gap, not fixed in this pass:** `gemini` (the
+paid key) was registered and tiered PREMIUM since M11 shipped, but was
+never actually present in any `CAPABILITY_PROVIDER_PREFERENCE` entry —
+meaning a deployment with `GOOGLE_API_KEY` configured has never had it
+auto-attempted or gated behind approval by default routing; it's been
+silently unreachable via the default capability path this whole time.
+Adding `gemini_ai_studio` to the preference list is safe (a brand-new,
+certainly-unconfigured setting for every existing deployment). Adding
+plain `gemini` now would be a real, newly-activated behavior change for
+any deployment that already has `GOOGLE_API_KEY` set — outside this
+milestone's backward-compatibility mandate. Left as a disclosed, scoped
+follow-up (candidate for a future milestone or a deliberate one-line
+change, at the CEO's discretion) rather than silently bundled into
+M-AIGW-3.
+
+Full report (architecture impact, API impact, migration impact, test
+results, risks) delivered in-chat; not duplicated here.
+
+No further architectural changes to M-AIGW-3. M-AIGW-4/M-AIGW-5 remain
+queued, not started without explicit go-ahead (Section 4/5).

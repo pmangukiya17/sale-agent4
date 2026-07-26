@@ -106,8 +106,27 @@ class RoutingDecision:
 # in the premium bucket for "default" - day-1 backward compatibility (see
 # AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL's own docstring for how the actual
 # approval ENFORCEMENT is what's new, not this list's shape).
+#
+# M-AIGW-3 (Gemini Free-Tier Split) adds "gemini_ai_studio" after "groq" -
+# safe by construction: GOOGLE_AI_STUDIO_API_KEY is unset by default (see
+# app.core.config.settings' own comment), so is_configured() is False and
+# this new entry is silently skipped for every deployment until an
+# operator sets it, same "additive, zero behavior change until configured"
+# discipline as every other M11/M-AIGW addition to this file.
+#
+# Deliberately NOT adding plain "gemini" here in this same pass, disclosed
+# rather than silently done either way: "gemini" has been registered and
+# tiered PREMIUM since M11, but was NEVER actually part of this preference
+# list - a deployment with GOOGLE_API_KEY configured has had a genuinely
+# unreachable premium candidate this whole time. Adding it now would be a
+# real, newly-ACTIVATED behavior change for any such deployment (a
+# previously-dead GOOGLE_API_KEY would suddenly become live), which is a
+# materially different risk than adding "gemini_ai_studio" (a brand new,
+# certainly-unconfigured setting). Left as an explicit, easy, separate
+# follow-up if plain "gemini" reachability via default routing is
+# actually wanted.
 CAPABILITY_PROVIDER_PREFERENCE: dict[str, list[str]] = {
-    _DEFAULT_CAPABILITY_KEY: ["local_ollama", "groq", "claude"],
+    _DEFAULT_CAPABILITY_KEY: ["local_ollama", "groq", "gemini_ai_studio", "claude"],
 }
 
 # TEST-ONLY override seam, kept from M7.2 under its original name for

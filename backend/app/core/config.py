@@ -299,6 +299,20 @@ class Settings(BaseSettings):
     GROQ_DEFAULT_MODEL: str | None = None
     GROQ_BASE_URL: str = "https://api.groq.com/openai/v1"
 
+    # Gemini AI Studio - M-AIGW-3 (Gemini Free-Tier Split, see
+    # docs/architecture/provider-neutral-ai-gateway-plan.md Section 7). A
+    # DISTINCT key/model pair from GOOGLE_API_KEY/GOOGLE_DEFAULT_MODEL
+    # above - GeminiAIStudioProviderClient (app/ai_gateway/providers/
+    # gemini_client.py) reads these, tiered FREE (see
+    # app.ai_gateway.tiers.PROVIDER_TIER_REGISTRY), while GOOGLE_API_KEY
+    # stays the paid-tier key (tiered PREMIUM, unchanged). Both share the
+    # same google-genai SDK integration (_GeminiProviderClientBase) - only
+    # the credentials/tier differ, never the request/response translation
+    # logic. Unset by default - zero effect on any deployment until an
+    # operator obtains and sets an actual AI Studio key.
+    GOOGLE_AI_STUDIO_API_KEY: str | None = None
+    GOOGLE_AI_STUDIO_DEFAULT_MODEL: str | None = None
+
     @property
     def sqlalchemy_database_uri(self) -> str:
         if self.DATABASE_URL:

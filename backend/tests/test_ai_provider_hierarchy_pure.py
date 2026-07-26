@@ -24,7 +24,7 @@ import unittest
 from app.ai_gateway.accounting import estimate_pre_call_cost_usd, register_price
 from app.ai_gateway.confidence import assess_complexity
 from app.ai_gateway.request import ResponseFormat, ResponseFormatType
-from app.ai_gateway.router import RoutingDecision, _build_decision
+from app.ai_gateway.router import CAPABILITY_PROVIDER_PREFERENCE, RoutingDecision, _build_decision
 from app.ai_gateway.tiers import PROVIDER_TIER_REGISTRY, ProviderTier, partition, tier_of
 
 
@@ -51,6 +51,53 @@ class TestProviderTiers(unittest.TestCase):
 
     def test_partition_of_empty_list(self):
         self.assertEqual(partition([]), ([], [], []))
+
+
+class TestGeminiFreeTierSplit(unittest.TestCase):
+    """M-AIGW-3 (Gemini Free-Tier Split - see
+    docs/architecture/provider-neutral-ai-gateway-plan.md Section 7). Two
+    distinct provider_keys, one shared client implementation
+    (gemini_client.py's _GeminiProviderClientBase) - these tests cover the
+    two pure, settings-free registries that make the split actually
+    reachable: tiers.py's classification and router.py's default
+    preference list. The provider client's own request/response
+    translation logic is unchanged from before the split (still only
+    e2e-testable - needs `google-genai` - per this file's own header
+    disclosure), so it isn't re-tested here."""
+
+    def test_gemini_ai_studio_is_free_gemini_stays_premium(self):
+        self.assertEqual(tier_of("gemini_ai_studio"), ProviderTier.FREE)
+        self.assertEqual(tier_of("gemini"), ProviderTier.PREMIUM)
+
+    def test_both_gemini_keys_registered_in_tier_registry(self):
+        self.assertIn("gemini_ai_studio", PROVIDER_TIER_REGISTRY)
+        self.assertIn("gemini", PROVIDER_TIER_REGISTRY)
+
+    def test_partition_places_gemini_ai_studio_with_free_and_gemini_with_premium(self):
+        local, free, premium = partition(["local_ollama", "gemini_ai_studio", "groq", "gemini", "claude"])
+        self.assertEqual(local, ["local_ollama"])
+        self.assertEqual(free, ["gemini_ai_studio", "groq"])
+        self.assertEqual(premium, ["gemini", "claude"])
+
+    def test_default_preference_list_includes_gemini_ai_studio(self):
+        # gemini_ai_studio is safe to auto-attempt by default (brand-new,
+        # certainly-unconfigured setting for every existing deployment).
+        self.assertIn("gemini_ai_studio", CAPABILITY_PROVIDER_PREFERENCE["default"])
+
+    def test_default_preference_list_deliberately_excludes_plain_gemini(self):
+        # Disclosed, deliberate M-AIGW-3 decision (see router.py's own
+        # comment): "gemini" (the paid key) was never in this list even
+        # before this split, and adding it now would be a real,
+        # newly-activated behavior change for any deployment that already
+        # has GOOGLE_API_KEY configured. Not fixed in this pass.
+        self.assertNotIn("gemini", CAPABILITY_PROVIDER_PREFERENCE["default"])
+
+    def test_gemini_ai_studio_ordered_before_claude_after_local_and_groq(self):
+        preference = CAPABILITY_PROVIDER_PREFERENCE["default"]
+        self.assertEqual(
+            [p for p in preference if p in ("local_ollama", "groq", "gemini_ai_studio", "claude")],
+            ["local_ollama", "groq", "gemini_ai_studio", "claude"],
+        )
 
 
 class TestRoutingDecisionChain(unittest.TestCase):

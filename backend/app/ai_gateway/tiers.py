@@ -11,6 +11,14 @@ registered as "premium" - the client code (GeminiProviderClient) never
 knows or cares which.
 
 See docs/architecture/m11-ai-provider-hierarchy-plan.md Section 4.1.
+
+M-AIGW-3 (Gemini Free-Tier Split - see
+docs/architecture/provider-neutral-ai-gateway-plan.md Section 7) makes the
+"or, in a later phase, register it a second time" option below real:
+`gemini_ai_studio` (a distinct provider_key, same underlying
+GeminiProviderClient-family class - see gemini_client.py's own
+`_GeminiProviderClientBase`) is classified FREE here, while the
+pre-existing `gemini` (a paid key) stays PREMIUM, completely unchanged.
 """
 import enum
 
@@ -30,15 +38,17 @@ class ProviderTier(str, enum.Enum):
 # Day-1 values: the three pre-existing cloud SDKs stay "premium" (matches
 # today's actual behavior exactly - see AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL's
 # own docstring for how this interacts with backward compatibility). The
-# two new M11 provider clients are classified per the spec's own hierarchy.
-# An operator who obtains a Gemini AI Studio (free-tier) key can re-classify
-# "gemini" to FREE here - or, in a later phase, register it a second time
-# under a distinct provider_key (e.g. "gemini_free" vs "gemini_paid") if
-# they want to run both simultaneously; that's a config change, not a code
-# change either way.
+# two M11 provider clients are classified per the spec's own hierarchy.
+# M-AIGW-3 adds "gemini_ai_studio" (FREE) alongside the pre-existing
+# "gemini" (PREMIUM, unchanged) - see gemini_client.py's own docstring for
+# why these are two distinct provider_keys sharing one implementation
+# rather than one key silently reclassified (a paid key and a free-tier
+# key are genuinely different credentials/quotas, not the same
+# configuration under two names).
 PROVIDER_TIER_REGISTRY: dict[str, ProviderTier] = {
     "local_ollama": ProviderTier.LOCAL,
     "groq": ProviderTier.FREE,
+    "gemini_ai_studio": ProviderTier.FREE,
     "claude": ProviderTier.PREMIUM,
     "openai": ProviderTier.PREMIUM,
     "gemini": ProviderTier.PREMIUM,
