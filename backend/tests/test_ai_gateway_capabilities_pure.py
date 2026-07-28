@@ -21,6 +21,7 @@ from app.ai_gateway.capabilities import (
     ProviderCapabilities,
     RequiredCapabilities,
     derive_required_capabilities,
+    diff_capabilities,
     filter_capable,
     register_capability_override,
     resolve_capabilities,
@@ -129,6 +130,58 @@ class TestFilterCapable(unittest.TestCase):
         )
         self.assertEqual(capable, [])
         self.assertEqual(excluded, ["nobody_declared_this"])
+
+
+class TestDiffCapabilities(unittest.TestCase):
+    """M8.3 Step 5 (Provider Capability Viewer) - diff_capabilities() is
+    what lets ui_query.list_provider_capabilities() honestly distinguish
+    a provider-level default from a specific model's effective (possibly
+    overridden) capabilities."""
+
+    def test_identical_capabilities_produce_empty_diff(self):
+        base = ProviderCapabilities(structured_output=True, tool_calling=True, max_context_tokens=128_000)
+        other = ProviderCapabilities(structured_output=True, tool_calling=True, max_context_tokens=128_000)
+        self.assertEqual(diff_capabilities(base, other), [])
+
+    def test_two_defaults_produce_empty_diff(self):
+        # Today's true state for every real provider: _CAPABILITY_OVERRIDES
+        # has zero registered entries, so provider-level and effective are
+        # always identical - list_provider_capabilities() must be able to
+        # say so honestly rather than fabricating an override.
+        self.assertEqual(diff_capabilities(ProviderCapabilities(), ProviderCapabilities()), [])
+
+    def test_single_field_difference_is_reported(self):
+        base = ProviderCapabilities(reasoning_support=False)
+        other = ProviderCapabilities(reasoning_support=True)
+        self.assertEqual(diff_capabilities(base, other), ["reasoning_support"])
+
+    def test_multiple_field_differences_preserve_dataclass_field_order(self):
+        base = ProviderCapabilities()
+        other = ProviderCapabilities(tool_calling=True, max_context_tokens=1_000_000, reasoning_support=True)
+        # Order must match ProviderCapabilities' own declared field order
+        # (structured_output, tool_calling, streaming, vision, embeddings,
+        # max_context_tokens, max_output_tokens, reasoning_support) -
+        # derived via dataclasses.fields(), not hand-maintained.
+        self.assertEqual(
+            diff_capabilities(base, other),
+            ["tool_calling", "max_context_tokens", "reasoning_support"],
+        )
+
+    def test_real_override_via_resolve_capabilities_is_detected(self):
+        provider_level = {"claude": ProviderCapabilities(structured_output=True, reasoning_support=False)}
+        register_capability_override(
+            "claude", "diff-test-reasoning-model", reasoning_support=True, max_context_tokens=1_000_000
+        )
+        base = provider_level["claude"]
+        effective = resolve_capabilities("claude", "diff-test-reasoning-model", provider_level=provider_level)
+        overridden_fields = diff_capabilities(base, effective)
+        self.assertEqual(set(overridden_fields), {"reasoning_support", "max_context_tokens"})
+
+    def test_model_with_no_registered_override_diffs_to_empty(self):
+        provider_level = {"claude": ProviderCapabilities(structured_output=True)}
+        base = provider_level["claude"]
+        effective = resolve_capabilities("claude", "some-model-nobody-registered", provider_level=provider_level)
+        self.assertEqual(diff_capabilities(base, effective), [])
 
 
 class TestApplyCapabilityFilterInRouter(unittest.TestCase):

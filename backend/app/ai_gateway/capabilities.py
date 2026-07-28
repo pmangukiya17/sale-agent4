@@ -58,7 +58,7 @@ at all (a different response shape entirely). Declared now for future-
 readiness, per CEO decision; wiring up real vision/embeddings request
 support is explicitly out of scope for M-AIGW-1.
 """
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field, fields, replace
 
 
 @dataclass(frozen=True)
@@ -166,6 +166,34 @@ def resolve_capabilities(
     if not override:
         return base
     return replace(base, **override)
+
+
+_CAPABILITY_FIELD_NAMES: tuple[str, ...] = tuple(f.name for f in fields(ProviderCapabilities))
+
+
+def diff_capabilities(base: ProviderCapabilities, other: ProviderCapabilities) -> list[str]:
+    """M8.3 (AI Gateway Management & Control, Step 5 - Provider Capability
+    Viewer). Returns every `ProviderCapabilities` field name whose value
+    differs between `base` (typically a provider's own class-level
+    default) and `other` (typically the same provider's EFFECTIVE
+    capabilities for one specific, currently-configured model, i.e.
+    `resolve_capabilities(key, model, ...)`'s own return value) - order
+    matches `ProviderCapabilities`' own field declaration order, derived
+    via `dataclasses.fields()` rather than a separately hand-maintained
+    list, so a future field added to `ProviderCapabilities` is
+    automatically covered here with no second edit required (the same
+    "centralized, future providers/fields inherit it for free" property
+    every other policy table in this package already has).
+
+    This is what lets a caller (`ui_query.list_provider_capabilities()`)
+    honestly answer "does this provider's currently-configured model have
+    any per-model override at all" - an empty list means no override
+    exists for that model (today's true state for every provider, since
+    `_CAPABILITY_OVERRIDES` has zero real entries registered yet - see
+    this module's own docstring); this function itself doesn't know or
+    care whether that's the reason, it just diffs two already-resolved
+    values."""
+    return [name for name in _CAPABILITY_FIELD_NAMES if getattr(base, name) != getattr(other, name)]
 
 
 def filter_capable(

@@ -8,6 +8,8 @@ import type {
   GatewaySettings,
   ModelRole,
   ModelRoleWrite,
+  CapabilityValues,
+  ProviderCapability,
   ProviderConfig,
   ProviderConfigAuditEntry,
   ProviderConfigWrite,
@@ -333,6 +335,54 @@ function toRoutingSimulationResult(raw: RawRoutingSimulationResult): RoutingSimu
   };
 }
 
+interface RawCapabilityValues {
+  structured_output: boolean;
+  tool_calling: boolean;
+  streaming: boolean;
+  vision: boolean;
+  embeddings: boolean;
+  reasoning_support: boolean;
+  max_context_tokens: number | null;
+  max_output_tokens: number | null;
+}
+
+interface RawProviderCapability {
+  provider_key: string;
+  label: string;
+  tier: string;
+  default_model: string | null;
+  provider_level: RawCapabilityValues;
+  effective: RawCapabilityValues;
+  has_model_override: boolean;
+  overridden_fields: string[];
+}
+
+function toCapabilityValues(raw: RawCapabilityValues): CapabilityValues {
+  return {
+    structuredOutput: raw.structured_output,
+    toolCalling: raw.tool_calling,
+    streaming: raw.streaming,
+    vision: raw.vision,
+    embeddings: raw.embeddings,
+    reasoningSupport: raw.reasoning_support,
+    maxContextTokens: raw.max_context_tokens,
+    maxOutputTokens: raw.max_output_tokens,
+  };
+}
+
+function toProviderCapability(raw: RawProviderCapability): ProviderCapability {
+  return {
+    providerKey: raw.provider_key,
+    label: raw.label,
+    tier: raw.tier as ProviderTier,
+    defaultModel: raw.default_model,
+    providerLevel: toCapabilityValues(raw.provider_level),
+    effective: toCapabilityValues(raw.effective),
+    hasModelOverride: raw.has_model_override,
+    overriddenFields: raw.overridden_fields,
+  };
+}
+
 function toGatewaySettings(raw: RawGatewaySettings): GatewaySettings {
   return {
     aiMode: raw.ai_mode,
@@ -454,6 +504,11 @@ export class ApiGatewayProvider implements GatewayDataProvider {
     };
     const res = await this.http.post<RawRoutingSimulationResult>("/ai-gateway/routing/simulate", body);
     return toRoutingSimulationResult(res.data);
+  }
+
+  async listProviderCapabilities(): Promise<ProviderCapability[]> {
+    const res = await this.http.get<RawProviderCapability[]>("/ai-gateway/capabilities");
+    return res.data.map(toProviderCapability);
   }
 }
 

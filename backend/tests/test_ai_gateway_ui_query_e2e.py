@@ -194,6 +194,50 @@ class TestProviderAndRoutingReads(AIGatewayUIQueryTestBase):
             self.assertIn(decision.outcome, ("success", "waiting", "failed"))
 
 
+class TestProviderCapabilities(AIGatewayUIQueryTestBase):
+    """M8.3 Step 5 (Provider Capability Viewer). list_provider_capabilities()
+    is a pure registry read (no AIRequestLog rows involved) - grouped here
+    rather than in the pure test suite only because importing
+    app.ai_gateway.ui_query itself needs sqlalchemy-backed models at import
+    time, same rationale TestProviderAndRoutingReads above already states
+    for list_providers()/list_routing_decisions()."""
+
+    def test_covers_full_provider_registry(self):
+        entries = ui_query.list_provider_capabilities()
+        self.assertEqual({e.provider_key for e in entries}, set(PROVIDER_CLIENT_REGISTRY.keys()))
+
+    def test_every_entry_has_a_valid_tier_and_label(self):
+        entries = ui_query.list_provider_capabilities()
+        for e in entries:
+            self.assertIn(e.tier, ("local", "free", "premium"))
+            self.assertTrue(e.label)
+
+    def test_no_registered_overrides_means_no_entry_reports_a_model_override(self):
+        # Today's true state: _CAPABILITY_OVERRIDES (capabilities.py) has
+        # zero real entries registered anywhere in the codebase, so every
+        # provider's effective capabilities must equal its provider-level
+        # default - has_model_override must be False and overridden_fields
+        # empty for all of them. If this ever fails, it means a real
+        # per-model override got registered somewhere - update this test
+        # deliberately rather than treating it as a regression.
+        entries = ui_query.list_provider_capabilities()
+        for e in entries:
+            self.assertFalse(e.has_model_override, msg=f"{e.provider_key} unexpectedly reports a model override")
+            self.assertEqual(e.overridden_fields, [])
+            self.assertEqual(e.provider_level, e.effective)
+
+    def test_provider_level_matches_registry_classvar(self):
+        entries = {e.provider_key: e for e in ui_query.list_provider_capabilities()}
+        for key, cls in PROVIDER_CLIENT_REGISTRY.items():
+            entry = entries[key]
+            self.assertEqual(entry.provider_level.structured_output, cls.capabilities.structured_output)
+            self.assertEqual(entry.provider_level.tool_calling, cls.capabilities.tool_calling)
+            self.assertEqual(entry.provider_level.vision, cls.capabilities.vision)
+            self.assertEqual(entry.provider_level.embeddings, cls.capabilities.embeddings)
+            self.assertEqual(entry.provider_level.streaming, cls.capabilities.streaming)
+            self.assertEqual(entry.provider_level.reasoning_support, cls.capabilities.reasoning_support)
+
+
 class TestSettings(AIGatewayUIQueryTestBase):
     def test_reflects_real_config_values(self):
         from app.core.config import settings as real_settings

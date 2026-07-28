@@ -17,6 +17,7 @@ from app.schemas.ai_gateway import (
     GatewaySettingsRead,
     ModelRoleRead,
     ModelRoleWrite,
+    ProviderCapabilityRead,
     ProviderConfigRead,
     ProviderConfigWrite,
     ProviderSummaryRead,
@@ -79,6 +80,17 @@ def get_provider(
     if summary is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown provider")
     return summary
+
+
+@router.get("/ai-gateway/capabilities", response_model=list[ProviderCapabilityRead])
+def list_provider_capabilities(
+    current_user: User = Depends(get_current_user),
+) -> list[ProviderCapabilityRead]:
+    """M8.3 Step 5 (Provider Capability Viewer). READ-ONLY, not admin-
+    gated - same trust level as GET /ai-gateway/providers (no credential
+    exposure, purely structural/registry information). See
+    ui_query.list_provider_capabilities()'s own docstring."""
+    return ui_query.list_provider_capabilities()
 
 
 @router.get("/ai-gateway/activity", response_model=list[ActivityLogEntryRead])

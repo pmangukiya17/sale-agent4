@@ -259,3 +259,50 @@ export interface RoutingSimulationResult {
   outcome: ActivityStatus;
   outcomeDetail: string;
 }
+
+/**
+ * CapabilityValues / ProviderCapability — M8.3 Step 5 (AI Gateway
+ * Management & Control, Provider Capability Viewer). Mirror
+ * backend/app/schemas/ai_gateway.py's CapabilityValuesRead/
+ * ProviderCapabilityRead field-for-field.
+ *
+ * Two-level granularity, matching app/ai_gateway/capabilities.py's own
+ * design (see that module's docstring): `providerLevel` is the fixed,
+ * protocol-level fact about a provider's SDK/wire-format integration
+ * (declared once per `ProviderClient` subclass); `effective` is the same
+ * shape resolved for that provider's CURRENTLY CONFIGURED default model -
+ * identical to `providerLevel` unless a real per-model override has been
+ * registered for that model (`hasModelOverride`/`overriddenFields` make
+ * this distinction explicit rather than leaving a caller to diff the two
+ * objects itself). `maxContextTokens`/`maxOutputTokens` are informational
+ * per-model numbers (not a supported/unsupported boolean) - `null` means
+ * "not declared," never "zero."
+ *
+ * Today, with zero real entries in `_CAPABILITY_OVERRIDES`, every provider
+ * in this app honestly reports `hasModelOverride: false` and
+ * `providerLevel` === `effective` - this type exists so the UI can keep
+ * telling that truth instead of fabricating a difference, while already
+ * being ready to show one the moment a real per-model override is
+ * registered.
+ */
+export interface CapabilityValues {
+  structuredOutput: boolean;
+  toolCalling: boolean;
+  streaming: boolean;
+  vision: boolean;
+  embeddings: boolean;
+  reasoningSupport: boolean;
+  maxContextTokens: number | null;
+  maxOutputTokens: number | null;
+}
+
+export interface ProviderCapability {
+  providerKey: string;
+  label: string;
+  tier: ProviderTier;
+  defaultModel: string | null;
+  providerLevel: CapabilityValues;
+  effective: CapabilityValues;
+  hasModelOverride: boolean;
+  overriddenFields: string[];
+}

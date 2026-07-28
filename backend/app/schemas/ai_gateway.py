@@ -298,6 +298,62 @@ class RoutingSimulationRead(BaseModel):
     outcome_detail: str
 
 
+class CapabilityValuesRead(BaseModel):
+    """M8.3 (AI Gateway Management & Control, Step 5 - Provider
+    Capability Viewer). Mirrors `app.ai_gateway.capabilities.ProviderCapabilities`
+    field-for-field - the SAME dataclass every routing/capability-
+    filtering decision already reads through
+    (`router.ProviderRouter.select()`, `capabilities.filter_capable()`),
+    never a second, independently-maintained capability description.
+    `structured_output`/`tool_calling`/`streaming`/`vision`/`embeddings`/
+    `reasoning_support` are booleans (unsupported is an explicit `false`,
+    never an absent key); `max_context_tokens`/`max_output_tokens` are
+    informational token limits, `None` when not yet disclosed for that
+    provider/model - see `ProviderCapabilities`' own docstring for why
+    these two are advisory rather than a pass/fail gate this milestone."""
+
+    structured_output: bool
+    tool_calling: bool
+    streaming: bool
+    vision: bool
+    embeddings: bool
+    reasoning_support: bool
+    max_context_tokens: int | None
+    max_output_tokens: int | None
+
+
+class ProviderCapabilityRead(BaseModel):
+    """M8.3 Step 5. One row of `GET /ai-gateway/capabilities` - one
+    registered provider_key's full capability picture, built entirely
+    from `PROVIDER_CLIENT_REGISTRY`/`capabilities.py` (the same
+    centralized source every routing decision already reads) - a future
+    seventh provider that registers itself in `PROVIDER_CLIENT_REGISTRY`
+    with its own `capabilities: ClassVar[ProviderCapabilities]` appears
+    here automatically, no new code in this schema or its route.
+
+    `provider_level` is the provider's class-level default - a fixed fact
+    about its wire-format/SDK integration, true regardless of which model
+    is configured. `effective` is `provider_level` merged with any
+    per-model override registered for `default_model` specifically (via
+    `capabilities.register_capability_override()`) - identical to
+    `provider_level` whenever no such override exists (true for every
+    provider today - see `ProviderCapabilityRead`'s own module-level
+    disclosure). `has_model_override`/`overridden_fields` are the
+    explicit signal a UI needs to visually distinguish "this capability
+    is a fixed provider-level fact" from "this specific model's real
+    behavior differs from its provider's own default" - never left for a
+    caller to infer by diffing the two objects itself."""
+
+    provider_key: str
+    label: str
+    tier: str
+    default_model: str | None
+    provider_level: CapabilityValuesRead
+    effective: CapabilityValuesRead
+    has_model_override: bool
+    overridden_fields: list[str]
+
+
 class GatewaySettingsRead(BaseModel):
     """M8.2. GET /ai-gateway/settings - read-only. A direct, live
     projection of the actual settings AIGateway/ProviderRouter read at

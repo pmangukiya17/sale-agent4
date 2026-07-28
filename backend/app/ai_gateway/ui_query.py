@@ -52,9 +52,11 @@ from app.schemas.ai_gateway import (
     ActivityLogEntryRead,
     AIProviderConfigAuditRead,
     ApprovalRequestRead,
+    CapabilityValuesRead,
     GatewayOverviewRead,
     GatewaySettingsRead,
     ModelRoleRead,
+    ProviderCapabilityRead,
     ProviderConfigRead,
     ProviderSummaryRead,
     RoutingDecisionRead,
@@ -185,6 +187,58 @@ def list_providers(db: Session) -> list[ProviderSummaryRead]:
 
 def get_provider(db: Session, provider_key: str) -> ProviderSummaryRead | None:
     return _provider_summary(db, provider_key)
+
+
+def _to_capability_values(caps) -> CapabilityValuesRead:
+    return CapabilityValuesRead(
+        structured_output=caps.structured_output,
+        tool_calling=caps.tool_calling,
+        streaming=caps.streaming,
+        vision=caps.vision,
+        embeddings=caps.embeddings,
+        reasoning_support=caps.reasoning_support,
+        max_context_tokens=caps.max_context_tokens,
+        max_output_tokens=caps.max_output_tokens,
+    )
+
+
+def list_provider_capabilities() -> list[ProviderCapabilityRead]:
+    """M8.3 Step 5 (Provider Capability Viewer). GET /ai-gateway/capabilities's
+    read projection - every registered provider_key's full capability
+    picture, built entirely from `PROVIDER_CLIENT_REGISTRY`/`capabilities.py`
+    (the SAME centralized source `router.py`/`capabilities.filter_capable()`
+    already read for real routing decisions - never a second,
+    independently-maintained capability description). No DB read; a plain
+    registry/settings projection, same convention `list_providers()` one
+    function up already uses.
+
+    Iterates `PROVIDER_CLIENT_REGISTRY` generically - a future provider
+    that registers itself there with its own `capabilities` ClassVar
+    appears here automatically, no new branch in this function (the CEO's
+    own Step 5 "future providers inherit the same system" requirement)."""
+    from app.ai_gateway.capabilities import diff_capabilities, resolve_capabilities
+
+    provider_level_map = {key: cls.capabilities for key, cls in PROVIDER_CLIENT_REGISTRY.items()}
+
+    entries = []
+    for key, cls in PROVIDER_CLIENT_REGISTRY.items():
+        provider_level = cls.capabilities
+        default_model = _default_model_safe(key)
+        effective = resolve_capabilities(key, default_model, provider_level=provider_level_map)
+        overridden_fields = diff_capabilities(provider_level, effective)
+        entries.append(
+            ProviderCapabilityRead(
+                provider_key=key,
+                label=_PROVIDER_LABELS.get(key, key),
+                tier=tier_of(key).value,
+                default_model=default_model,
+                provider_level=_to_capability_values(provider_level),
+                effective=_to_capability_values(effective),
+                has_model_override=bool(overridden_fields),
+                overridden_fields=overridden_fields,
+            )
+        )
+    return entries
 
 
 def get_overview(db: Session, user: User) -> GatewayOverviewRead:

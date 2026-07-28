@@ -6,6 +6,7 @@ import type {
   GatewaySettings,
   ModelRole,
   ModelRoleWrite,
+  ProviderCapability,
   ProviderConfig,
   ProviderConfigAuditEntry,
   ProviderConfigWrite,
@@ -343,6 +344,190 @@ const MODEL_ROLES = new Map<string, ModelRole>([
   ["writing", { roleName: "writing", model: "llama3.1:8b", enabled: true, updatedAt: null, updatedByUserEmail: null }],
 ]);
 
+// M8.3 Step 5 (Provider Capability Viewer) addition - a fresh, deliberately
+// honest fixture rather than reusing PROVIDERS[].capabilities (that flat
+// string list predates this milestone and was never meant to distinguish
+// provider-level facts from per-model overrides - see CapabilityMatrix.tsx's
+// own docstring). `streaming` is false for every provider here, matching
+// the real backend's own disclosed limitation (AIGateway.stream() itself
+// raises NotImplementedError unconditionally - see
+// app/ai_gateway/capabilities.py's module docstring) rather than the SDK's
+// real streaming support. `providerLevel` and `effective` are identical for
+// every provider - `hasModelOverride: false` everywhere - because the real
+// backend's `_CAPABILITY_OVERRIDES` table has zero registered entries
+// today; this fixture stays honest about that rather than inventing a
+// demo override, exactly like the real endpoint does.
+const PROVIDER_CAPABILITIES: Record<ProviderKey, ProviderCapability> = {
+  local_ollama: {
+    providerKey: "local_ollama",
+    label: "Ollama",
+    tier: "local",
+    defaultModel: "llama3.1:8b",
+    providerLevel: {
+      structuredOutput: true,
+      toolCalling: true,
+      streaming: false,
+      vision: false,
+      embeddings: false,
+      reasoningSupport: false,
+      maxContextTokens: 128000,
+      maxOutputTokens: 4096,
+    },
+    effective: {
+      structuredOutput: true,
+      toolCalling: true,
+      streaming: false,
+      vision: false,
+      embeddings: false,
+      reasoningSupport: false,
+      maxContextTokens: 128000,
+      maxOutputTokens: 4096,
+    },
+    hasModelOverride: false,
+    overriddenFields: [],
+  },
+  groq: {
+    providerKey: "groq",
+    label: "Groq",
+    tier: "free",
+    defaultModel: "llama-3.3-70b-versatile",
+    providerLevel: {
+      structuredOutput: true,
+      toolCalling: true,
+      streaming: false,
+      vision: false,
+      embeddings: false,
+      reasoningSupport: false,
+      maxContextTokens: 131072,
+      maxOutputTokens: 8192,
+    },
+    effective: {
+      structuredOutput: true,
+      toolCalling: true,
+      streaming: false,
+      vision: false,
+      embeddings: false,
+      reasoningSupport: false,
+      maxContextTokens: 131072,
+      maxOutputTokens: 8192,
+    },
+    hasModelOverride: false,
+    overriddenFields: [],
+  },
+  gemini_ai_studio: {
+    providerKey: "gemini_ai_studio",
+    label: "Gemini AI Studio",
+    tier: "free",
+    defaultModel: null,
+    providerLevel: {
+      structuredOutput: true,
+      toolCalling: false,
+      streaming: false,
+      vision: true,
+      embeddings: false,
+      reasoningSupport: false,
+      maxContextTokens: null,
+      maxOutputTokens: null,
+    },
+    effective: {
+      structuredOutput: true,
+      toolCalling: false,
+      streaming: false,
+      vision: true,
+      embeddings: false,
+      reasoningSupport: false,
+      maxContextTokens: null,
+      maxOutputTokens: null,
+    },
+    hasModelOverride: false,
+    overriddenFields: [],
+  },
+  gemini: {
+    providerKey: "gemini",
+    label: "Gemini",
+    tier: "premium",
+    defaultModel: "gemini-3.6-flash",
+    providerLevel: {
+      structuredOutput: true,
+      toolCalling: true,
+      streaming: false,
+      vision: true,
+      embeddings: true,
+      reasoningSupport: true,
+      maxContextTokens: 1000000,
+      maxOutputTokens: 8192,
+    },
+    effective: {
+      structuredOutput: true,
+      toolCalling: true,
+      streaming: false,
+      vision: true,
+      embeddings: true,
+      reasoningSupport: true,
+      maxContextTokens: 1000000,
+      maxOutputTokens: 8192,
+    },
+    hasModelOverride: false,
+    overriddenFields: [],
+  },
+  claude: {
+    providerKey: "claude",
+    label: "Claude",
+    tier: "premium",
+    defaultModel: "claude-sonnet-4-5",
+    providerLevel: {
+      structuredOutput: true,
+      toolCalling: true,
+      streaming: false,
+      vision: false,
+      embeddings: false,
+      reasoningSupport: true,
+      maxContextTokens: 200000,
+      maxOutputTokens: 8192,
+    },
+    effective: {
+      structuredOutput: true,
+      toolCalling: true,
+      streaming: false,
+      vision: false,
+      embeddings: false,
+      reasoningSupport: true,
+      maxContextTokens: 200000,
+      maxOutputTokens: 8192,
+    },
+    hasModelOverride: false,
+    overriddenFields: [],
+  },
+  openai: {
+    providerKey: "openai",
+    label: "OpenAI",
+    tier: "premium",
+    defaultModel: null,
+    providerLevel: {
+      structuredOutput: true,
+      toolCalling: true,
+      streaming: false,
+      vision: true,
+      embeddings: true,
+      reasoningSupport: false,
+      maxContextTokens: null,
+      maxOutputTokens: null,
+    },
+    effective: {
+      structuredOutput: true,
+      toolCalling: true,
+      streaming: false,
+      vision: true,
+      embeddings: true,
+      reasoningSupport: false,
+      maxContextTokens: null,
+      maxOutputTokens: null,
+    },
+    hasModelOverride: false,
+    overriddenFields: [],
+  },
+};
+
 export class MockGatewayProvider implements GatewayDataProvider {
   getOverview(): Promise<GatewayOverview> {
     return delay(OVERVIEW);
@@ -588,5 +773,9 @@ export class MockGatewayProvider implements GatewayDataProvider {
       outcome,
       outcomeDetail,
     });
+  }
+
+  listProviderCapabilities(): Promise<ProviderCapability[]> {
+    return delay(PROVIDERS.map((p) => PROVIDER_CAPABILITIES[p.key]));
   }
 }

@@ -6,6 +6,7 @@ import type {
   GatewaySettings,
   ModelRole,
   ModelRoleWrite,
+  ProviderCapability,
   ProviderConfig,
   ProviderConfigAuditEntry,
   ProviderConfigWrite,
@@ -72,4 +73,9 @@ export interface GatewayDataProvider {
    * any setting, never attempts a real provider call. See
    * RoutingSimulationResult's own docstring in ../types.ts. */
   simulateRouting(request: RoutingSimulationRequestInput): Promise<RoutingSimulationResult>;
+  /** M8.3 Step 5 (Provider Capability Viewer) addition. READ-ONLY, no
+   * admin gate server-side (same as listProviders/getSettings) - every
+   * signed-in user can see what a provider does/doesn't support. See
+   * ProviderCapability's own docstring in ../types.ts. */
+  listProviderCapabilities(): Promise<ProviderCapability[]>;
 }
