@@ -70,7 +70,7 @@ from app.ai_gateway.errors import (
     ProviderUnavailableError,
 )
 from app.ai_gateway.provider_config import resolve_provider_config
-from app.ai_gateway.providers.base import ProviderClient
+from app.ai_gateway.providers.base import ConnectionTestResult, ProviderClient
 from app.ai_gateway.request import GatewayRequest, GatewayResponse, ResponseFormatType, ToolCall
 from app.core.config import settings
 
@@ -154,6 +154,36 @@ class _GeminiProviderClientBase(ProviderClient):
     def is_configured(self) -> bool:
         config = self._resolved_config()
         return config.enabled and bool(config.api_key)
+
+    def test_connection(self) -> ConnectionTestResult:
+        """M8.3 Step 2 (Provider Management). `client.models.list()` - a
+        real connectivity + authentication check, free (no
+        generateContent call, no tokens billed). Confidence note,
+        disclosed rather than glossed over (same discipline this file's
+        own module docstring already established for this SDK's broader
+        exception-handling uncertainty): model objects are read via
+        `getattr(m, "name", ...)` rather than assumed, since this project
+        has no live Gemini API key to confirm the exact returned shape
+        against a real call."""
+        config = self._resolved_config()
+        if not config.enabled:
+            return ConnectionTestResult(success=False, message=f"{self.key} is disabled in AI Gateway provider configuration")
+        if not config.api_key:
+            return ConnectionTestResult(success=False, message=f"{self.key}'s API key is not configured")
+
+        client = genai.Client(api_key=config.api_key)
+        started_at = time.monotonic()
+        try:
+            models = [getattr(m, "name", None) or str(m) for m in client.models.list()]
+        except genai_errors.ClientError as exc:
+            status = getattr(exc, "code", None)
+            if status in (401, 403):
+                return ConnectionTestResult(success=False, message=f"Authentication failed: {exc}")
+            return ConnectionTestResult(success=False, message=str(exc))
+        except Exception as exc:  # noqa: BLE001 - safety net for this SDK specifically, see module docstring
+            return ConnectionTestResult(success=False, message=str(exc))
+        latency_ms = (time.monotonic() - started_at) * 1000
+        return ConnectionTestResult(success=True, message="Connected", latency_ms=latency_ms, available_models=models[:50])
 
     def complete(self, request: GatewayRequest) -> GatewayResponse:
         config = self._resolved_config()

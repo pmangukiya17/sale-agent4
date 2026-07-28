@@ -1,8 +1,12 @@
 import type {
   ActivityLogEntry,
   ApprovalRequest,
+  ConnectionTestResult,
   GatewayOverview,
   GatewaySettings,
+  ProviderConfig,
+  ProviderConfigAuditEntry,
+  ProviderConfigWrite,
   ProviderKey,
   ProviderSummary,
   RoutingDecision,
@@ -43,4 +47,14 @@ export interface GatewayDataProvider {
   listApprovals(): Promise<ApprovalRequest[]>;
   listRoutingDecisions(): Promise<RoutingDecision[]>;
   getSettings(): Promise<GatewaySettings>;
+  /** M8.3 Step 2 (Provider Management) additions - see ../types.ts's own
+   * docstring for each shape. Admin-only server-side (403 for a
+   * non-admin caller) - callers should gate rendering the write form on
+   * the caller's own role (useAuth()'s user.role), but every method here
+   * still just propagates whatever the backend returns/throws; this
+   * interface itself has no notion of roles. */
+  getProviderConfig(key: ProviderKey): Promise<ProviderConfig | null>;
+  saveProviderConfig(key: ProviderKey, patch: ProviderConfigWrite): Promise<ProviderConfig>;
+  listProviderConfigAudit(key: ProviderKey, limit?: number): Promise<ProviderConfigAuditEntry[]>;
+  testConnection(key: ProviderKey): Promise<ConnectionTestResult>;
 }

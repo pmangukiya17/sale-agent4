@@ -125,6 +125,83 @@ class RoutingDecisionRead(BaseModel):
     outcome: str
 
 
+class ProviderConfigWrite(BaseModel):
+    """M8.3 (AI Gateway Management & Control, Step 2 - Provider
+    Management). Request body for `PUT /ai-gateway/providers/{provider_key}/config`.
+    Field-for-field mirrors `app.ai_gateway.provider_config.save_provider_config()`'s
+    own signature - every field left as `None` (the default) means
+    "leave this field alone," never "clear it." `clear_api_key`/
+    `clear_base_url`/`clear_default_model` are how a caller distinguishes
+    "leave alone" from "clear back to deferring to `.env`" - see that
+    function's own docstring for why `None` alone is ambiguous for those
+    three fields specifically.
+
+    `api_key`, once accepted here, is NEVER echoed back by any read
+    response - see `ProviderConfigRead.has_api_key` for the only signal
+    a caller gets back about whether one is stored."""
+
+    enabled: bool | None = None
+    api_key: str | None = None
+    clear_api_key: bool = False
+    base_url: str | None = None
+    clear_base_url: bool = False
+    default_model: str | None = None
+    clear_default_model: bool = False
+    extra_settings: dict | None = None
+
+
+class ProviderConfigRead(BaseModel):
+    """M8.3 Step 2. GET/PUT response for one provider's DB-backed
+    configuration override state - distinct from `ProviderSummaryRead`
+    (which reflects the EFFECTIVE, resolved value - DB override merged
+    over `.env` fallback). This schema reflects the override ROW itself:
+    a provider with no saved override at all still returns a row here
+    (`enabled=True`, everything else `None`/empty), mirroring
+    `resolve_provider_config()`'s own "no row = pure fallback" behavior,
+    so the Provider Management form has something to render even before
+    an operator has ever saved anything.
+
+    `has_api_key` is the only signal about credential state - the actual
+    decrypted value is never returned by any read endpoint."""
+
+    provider_key: str
+    enabled: bool
+    has_api_key: bool
+    base_url: str | None
+    default_model: str | None
+    extra_settings: dict
+    updated_at: datetime | None
+    updated_by_user_email: str | None
+
+
+class AIProviderConfigAuditRead(BaseModel):
+    """M8.3 Step 2. GET /ai-gateway/providers/{provider_key}/config/audit -
+    the CEO's explicit "lightweight configuration audit history"
+    requirement, exposed read-only. One row per
+    `app.models.ai_provider_config_audit.AIProviderConfigAudit` - see that
+    model's own docstring for why `field_changes` never contains a
+    plaintext `api_key` value."""
+
+    id: uuid.UUID
+    provider_key: str
+    changed_at: datetime
+    changed_by_user_email: str | None
+    field_changes: dict
+
+
+class ConnectionTestResultRead(BaseModel):
+    """M8.3 Step 2. POST /ai-gateway/providers/{provider_key}/test-connection
+    response - mirrors `app.ai_gateway.providers.base.ConnectionTestResult`
+    field for field, plus the `provider_key` itself (the dataclass doesn't
+    carry it, the caller already knows which provider it asked about)."""
+
+    provider_key: str
+    success: bool
+    message: str
+    latency_ms: float | None
+    available_models: list[str] | None
+
+
 class GatewaySettingsRead(BaseModel):
     """M8.2. GET /ai-gateway/settings - read-only. A direct, live
     projection of the actual settings AIGateway/ProviderRouter read at

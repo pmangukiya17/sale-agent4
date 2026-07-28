@@ -3,8 +3,12 @@ import type {
   ActivityLogEntry,
   ActivityStatus,
   ApprovalRequest,
+  ConnectionTestResult,
   GatewayOverview,
   GatewaySettings,
+  ProviderConfig,
+  ProviderConfigAuditEntry,
+  ProviderConfigWrite,
   ProviderKey,
   ProviderSummary,
   ProviderTier,
@@ -190,6 +194,66 @@ function toRoutingDecision(raw: RawRoutingDecision): RoutingDecision {
   };
 }
 
+interface RawProviderConfig {
+  provider_key: string;
+  enabled: boolean;
+  has_api_key: boolean;
+  base_url: string | null;
+  default_model: string | null;
+  extra_settings: Record<string, unknown>;
+  updated_at: string | null;
+  updated_by_user_email: string | null;
+}
+
+interface RawProviderConfigAuditEntry {
+  id: string;
+  provider_key: string;
+  changed_at: string;
+  changed_by_user_email: string | null;
+  field_changes: Record<string, { old: unknown; new: unknown }>;
+}
+
+interface RawConnectionTestResult {
+  provider_key: string;
+  success: boolean;
+  message: string;
+  latency_ms: number | null;
+  available_models: string[] | null;
+}
+
+function toProviderConfig(raw: RawProviderConfig): ProviderConfig {
+  return {
+    providerKey: raw.provider_key as ProviderKey,
+    enabled: raw.enabled,
+    hasApiKey: raw.has_api_key,
+    baseUrl: raw.base_url,
+    defaultModel: raw.default_model,
+    extraSettings: raw.extra_settings,
+    updatedAt: raw.updated_at,
+    updatedByUserEmail: raw.updated_by_user_email,
+  };
+}
+
+function toProviderConfigAuditEntry(raw: RawProviderConfigAuditEntry): ProviderConfigAuditEntry {
+  return {
+    id: raw.id,
+    providerKey: raw.provider_key as ProviderKey,
+    changedAt: raw.changed_at,
+    changedByUserEmail: raw.changed_by_user_email,
+    fieldChanges: raw.field_changes,
+  };
+}
+
+function toConnectionTestResult(raw: RawConnectionTestResult): ConnectionTestResult {
+  return {
+    providerKey: raw.provider_key as ProviderKey,
+    success: raw.success,
+    message: raw.message,
+    latencyMs: raw.latency_ms,
+    availableModels: raw.available_models,
+  };
+}
+
 function toGatewaySettings(raw: RawGatewaySettings): GatewaySettings {
   return {
     aiMode: raw.ai_mode,
@@ -243,6 +307,49 @@ export class ApiGatewayProvider implements GatewayDataProvider {
   async getSettings(): Promise<GatewaySettings> {
     const res = await this.http.get<RawGatewaySettings>("/ai-gateway/settings");
     return toGatewaySettings(res.data);
+  }
+
+  async getProviderConfig(key: ProviderKey): Promise<ProviderConfig | null> {
+    try {
+      const res = await this.http.get<RawProviderConfig>(`/ai-gateway/providers/${key}/config`);
+      return toProviderConfig(res.data);
+    } catch (error: unknown) {
+      if (isNotFound(error)) return null;
+      throw error;
+    }
+  }
+
+  async saveProviderConfig(key: ProviderKey, patch: ProviderConfigWrite): Promise<ProviderConfig> {
+    // camelCase -> snake_case, field-for-field mirroring
+    // backend/app/schemas/ai_gateway.py's ProviderConfigWrite - every
+    // field left `undefined` here is simply omitted from the body, which
+    // axios/FastAPI/pydantic already treat as "not provided" (same as the
+    // schema's own `None` default), so "leave alone" requires no special
+    // handling on this side.
+    const body = {
+      enabled: patch.enabled,
+      api_key: patch.apiKey,
+      clear_api_key: patch.clearApiKey,
+      base_url: patch.baseUrl,
+      clear_base_url: patch.clearBaseUrl,
+      default_model: patch.defaultModel,
+      clear_default_model: patch.clearDefaultModel,
+      extra_settings: patch.extraSettings,
+    };
+    const res = await this.http.put<RawProviderConfig>(`/ai-gateway/providers/${key}/config`, body);
+    return toProviderConfig(res.data);
+  }
+
+  async listProviderConfigAudit(key: ProviderKey, limit = 20): Promise<ProviderConfigAuditEntry[]> {
+    const res = await this.http.get<RawProviderConfigAuditEntry[]>(`/ai-gateway/providers/${key}/config/audit`, {
+      params: { limit },
+    });
+    return res.data.map(toProviderConfigAuditEntry);
+  }
+
+  async testConnection(key: ProviderKey): Promise<ConnectionTestResult> {
+    const res = await this.http.post<RawConnectionTestResult>(`/ai-gateway/providers/${key}/test-connection`);
+    return toConnectionTestResult(res.data);
   }
 }
 

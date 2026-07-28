@@ -39,7 +39,7 @@ from app.ai_gateway.errors import (
     ProviderUnavailableError,
 )
 from app.ai_gateway.provider_config import resolve_provider_config
-from app.ai_gateway.providers.base import ProviderClient
+from app.ai_gateway.providers.base import ConnectionTestResult, ProviderClient
 from app.ai_gateway.request import GatewayRequest, GatewayResponse, ResponseFormatType, ToolCall
 from app.core.config import settings
 
@@ -111,6 +111,34 @@ class OpenAICompatibleProviderClient(ProviderClient):
     def is_configured(self) -> bool:
         config = self._resolved_config()
         return config.enabled and bool(config.base_url)
+
+    def test_connection(self) -> ConnectionTestResult:
+        """M8.3 Step 2 (Provider Management). Shared by
+        LocalOllamaProviderClient/GroqProviderClient - `client.models.list()`
+        against `base_url` (Ollama's own `/v1/models`, or Groq's, both
+        OpenAI-compatible) is a real connectivity check that costs
+        nothing and, for a local server, doubles as exactly the
+        "available models" list Live Provider Health wants - for free,
+        from the same one call."""
+        config = self._resolved_config()
+        if not config.enabled:
+            return ConnectionTestResult(success=False, message=f"{self.key} is disabled in AI Gateway provider configuration")
+        if not config.base_url:
+            return ConnectionTestResult(success=False, message=f"{self.key}'s base_url is not configured")
+
+        client = openai.OpenAI(base_url=config.base_url, api_key=config.api_key or "not-required", timeout=10.0)
+        started_at = time.monotonic()
+        try:
+            page = client.models.list()
+            models = [getattr(m, "id", None) or str(m) for m in page.data] if hasattr(page, "data") else []
+        except openai.AuthenticationError as exc:
+            return ConnectionTestResult(success=False, message=f"Authentication failed: {exc}")
+        except (openai.APIConnectionError, openai.InternalServerError) as exc:
+            return ConnectionTestResult(success=False, message=f"Could not reach {self.key}: {exc}")
+        except Exception as exc:  # noqa: BLE001 - a connection test must never raise, only report
+            return ConnectionTestResult(success=False, message=str(exc))
+        latency_ms = (time.monotonic() - started_at) * 1000
+        return ConnectionTestResult(success=True, message="Connected", latency_ms=latency_ms, available_models=models[:50])
 
     def _resolve_model(self, request: GatewayRequest) -> str | None:
         """M8.2 addendum. The one seam a subclass overrides to make model

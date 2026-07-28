@@ -2,15 +2,20 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.ai_gateway import ui_query
+from app.ai_gateway.provider_config import save_provider_config
 from app.ai_gateway.providers.registry import PROVIDER_CLIENT_REGISTRY
-from app.api.deps import get_current_user
+from app.api.deps import get_current_active_admin, get_current_user
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.ai_gateway import (
     ActivityLogEntryRead,
+    AIProviderConfigAuditRead,
     ApprovalRequestRead,
+    ConnectionTestResultRead,
     GatewayOverviewRead,
     GatewaySettingsRead,
+    ProviderConfigRead,
+    ProviderConfigWrite,
     ProviderSummaryRead,
     RoutingDecisionRead,
 )
@@ -25,14 +30,20 @@ router = APIRouter()
 # and the same top-level-route precedent workspace_settings.py already
 # establishes for a workspace-scoped resource.
 #
-# Explicitly NOT implemented in this milestone (see M8.2 approved scope):
-# provider configuration (no POST/PUT to change a provider's credentials -
-# those remain deployment-level app.core.config.settings env vars),
+# M8.2 was read-only end to end. M8.3 Step 2 (Provider Management) adds
+# the first WRITE surface this router has ever had: PUT .../config (admin-
+# gated, see get_current_active_admin) saves a DB-backed override via
+# app.ai_gateway.provider_config.save_provider_config(); GET .../config and
+# GET .../config/audit (both admin-gated) expose the override row and its
+# lightweight change history; POST .../test-connection (any authenticated
+# user, NOT admin-gated - it never mutates anything, it's a read-only
+# connectivity probe) calls the real ProviderClient.test_connection().
+#
+# Still explicitly NOT implemented (see M8.2/M8.3 approved scope):
 # settings persistence (GET /settings only - no PUT), approval ACTIONS (no
 # POST to approve/reject - Approvals is read-only, see
 # ApprovalRequestRead's own docstring for why there is nothing to action
-# against), charts, live updates, polling, or WebSockets - every route
-# below is a plain, synchronous GET computed fresh on each call.
+# against), charts, live updates, polling, or WebSockets.
 
 
 @router.get("/ai-gateway/overview", response_model=GatewayOverviewRead)
@@ -95,3 +106,101 @@ def get_settings(
     current_user: User = Depends(get_current_user),
 ) -> GatewaySettingsRead:
     return ui_query.get_settings()
+
+
+@router.get("/ai-gateway/providers/{provider_key}/config", response_model=ProviderConfigRead)
+def get_provider_config(
+    provider_key: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_admin),
+) -> ProviderConfigRead:
+    config = ui_query.get_provider_config(db, provider_key)
+    if config is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown provider")
+    return config
+
+
+@router.put("/ai-gateway/providers/{provider_key}/config", response_model=ProviderConfigRead)
+def put_provider_config(
+    provider_key: str,
+    body: ProviderConfigWrite,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_admin),
+) -> ProviderConfigRead:
+    """M8.3 Step 2 (Provider Management). Admin-gated (see
+    get_current_active_admin - same precedent as POST /auth/register) -
+    this is the first endpoint in this codebase that lets an operator
+    change an AI provider's credentials/settings at runtime, without a
+    backend restart (resolve_provider_config() takes no caching, so the
+    very next AI Gateway call already sees this write - see that module's
+    own docstring). Delegates entirely to
+    app.ai_gateway.provider_config.save_provider_config() for the actual
+    encrypt/merge/audit-row logic; this route's only job is translating
+    the request body and committing the transaction."""
+    if provider_key not in PROVIDER_CLIENT_REGISTRY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown provider")
+
+    try:
+        save_provider_config(
+            db,
+            provider_key,
+            changed_by_user_id=current_user.id,
+            enabled=body.enabled,
+            api_key=body.api_key,
+            clear_api_key=body.clear_api_key,
+            base_url=body.base_url,
+            clear_base_url=body.clear_base_url,
+            default_model=body.default_model,
+            clear_default_model=body.clear_default_model,
+            extra_settings=body.extra_settings,
+        )
+        db.commit()
+    except ValueError as exc:
+        # e.g. CREDENTIAL_ENCRYPTION_KEY unset - see
+        # provider_config._encrypt_api_key()'s own docstring.
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return ui_query.get_provider_config(db, provider_key)
+
+
+@router.get("/ai-gateway/providers/{provider_key}/config/audit", response_model=list[AIProviderConfigAuditRead])
+def list_provider_config_audit(
+    provider_key: str,
+    limit: int = Query(50, le=200),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_admin),
+) -> list[AIProviderConfigAuditRead]:
+    if provider_key not in PROVIDER_CLIENT_REGISTRY:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown provider")
+    return ui_query.list_provider_config_audit(db, provider_key, limit=limit)
+
+
+@router.post("/ai-gateway/providers/{provider_key}/test-connection", response_model=ConnectionTestResultRead)
+def test_provider_connection(
+    provider_key: str,
+    current_user: User = Depends(get_current_user),
+) -> ConnectionTestResultRead:
+    """M8.3 Step 2. Deliberately NOT admin-gated - unlike the config
+    read/write routes above, this never mutates anything and never
+    exposes a credential (ConnectionTestResultRead carries no api_key
+    field at all) - any authenticated user can check whether a provider
+    is currently reachable, same trust level as the existing read-only
+    GET /ai-gateway/providers/{provider_key}. Constructs a fresh
+    ProviderClient instance (PROVIDER_CLIENT_REGISTRY[provider_key]())
+    and calls its real test_connection() - see
+    app.ai_gateway.providers.base.ProviderClient's own docstring for the
+    contract every client implements (a cheap models-list call, never a
+    real completion)."""
+    provider_cls = PROVIDER_CLIENT_REGISTRY.get(provider_key)
+    if provider_cls is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown provider")
+
+    result = provider_cls().test_connection()
+    return ConnectionTestResultRead(
+        provider_key=provider_key,
+        success=result.success,
+        message=result.message,
+        latency_ms=result.latency_ms,
+        available_models=result.available_models,
+    )

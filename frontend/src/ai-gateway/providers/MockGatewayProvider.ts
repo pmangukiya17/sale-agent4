@@ -1,8 +1,12 @@
 import type {
   ActivityLogEntry,
   ApprovalRequest,
+  ConnectionTestResult,
   GatewayOverview,
   GatewaySettings,
+  ProviderConfig,
+  ProviderConfigAuditEntry,
+  ProviderConfigWrite,
   ProviderKey,
   ProviderSummary,
   RoutingDecision,
@@ -295,6 +299,33 @@ const GATEWAY_SETTINGS: GatewaySettings = {
   },
 };
 
+// M8.3 Step 2 (Provider Management) addition - kept internally consistent
+// with PROVIDERS above (a provider that's "connected" already has an
+// implied credential; "not_configured" has none) even though this class
+// is no longer instantiated by default - same disclosed-fixture
+// discipline GATEWAY_SETTINGS already established. A mutable module-level
+// map (not a fresh object per call) so saveProviderConfig()'s in-memory
+// mutation is visible to a subsequent getProviderConfig() call, mirroring
+// the real backend's own persisted-row behavior closely enough for
+// offline dev.
+const PROVIDER_CONFIGS = new Map<ProviderKey, ProviderConfig>(
+  PROVIDERS.map((p) => [
+    p.key,
+    {
+      providerKey: p.key,
+      enabled: true,
+      hasApiKey: p.status === "connected",
+      baseUrl: p.key === "local_ollama" ? "http://localhost:11434/v1" : null,
+      defaultModel: p.defaultModel,
+      extraSettings: {},
+      updatedAt: null,
+      updatedByUserEmail: null,
+    },
+  ])
+);
+
+const PROVIDER_CONFIG_AUDIT = new Map<ProviderKey, ProviderConfigAuditEntry[]>();
+
 export class MockGatewayProvider implements GatewayDataProvider {
   getOverview(): Promise<GatewayOverview> {
     return delay(OVERVIEW);
@@ -322,5 +353,103 @@ export class MockGatewayProvider implements GatewayDataProvider {
 
   getSettings(): Promise<GatewaySettings> {
     return delay(GATEWAY_SETTINGS);
+  }
+
+  getProviderConfig(key: ProviderKey): Promise<ProviderConfig | null> {
+    return delay(PROVIDER_CONFIGS.get(key) ?? null);
+  }
+
+  saveProviderConfig(key: ProviderKey, patch: ProviderConfigWrite): Promise<ProviderConfig> {
+    const current = PROVIDER_CONFIGS.get(key) ?? {
+      providerKey: key,
+      enabled: true,
+      hasApiKey: false,
+      baseUrl: null,
+      defaultModel: null,
+      extraSettings: {},
+      updatedAt: null,
+      updatedByUserEmail: null,
+    };
+    const fieldChanges: ProviderConfigAuditEntry["fieldChanges"] = {};
+    const updated: ProviderConfig = { ...current };
+
+    if (patch.enabled !== undefined && patch.enabled !== current.enabled) {
+      fieldChanges.enabled = { old: current.enabled, new: patch.enabled };
+      updated.enabled = patch.enabled;
+    }
+    if (patch.clearApiKey) {
+      if (current.hasApiKey) fieldChanges.api_key = { old: "set", new: "unset" };
+      updated.hasApiKey = false;
+    } else if (patch.apiKey) {
+      fieldChanges.api_key = { old: current.hasApiKey ? "set" : "unset", new: "set" };
+      updated.hasApiKey = true;
+    }
+    if (patch.clearBaseUrl) {
+      if (current.baseUrl !== null) fieldChanges.base_url = { old: current.baseUrl, new: null };
+      updated.baseUrl = null;
+    } else if (patch.baseUrl !== undefined && patch.baseUrl !== current.baseUrl) {
+      fieldChanges.base_url = { old: current.baseUrl, new: patch.baseUrl };
+      updated.baseUrl = patch.baseUrl;
+    }
+    if (patch.clearDefaultModel) {
+      if (current.defaultModel !== null) fieldChanges.default_model = { old: current.defaultModel, new: null };
+      updated.defaultModel = null;
+    } else if (patch.defaultModel !== undefined && patch.defaultModel !== current.defaultModel) {
+      fieldChanges.default_model = { old: current.defaultModel, new: patch.defaultModel };
+      updated.defaultModel = patch.defaultModel;
+    }
+    if (patch.extraSettings !== undefined) {
+      fieldChanges.extra_settings = { old: current.extraSettings, new: patch.extraSettings };
+      updated.extraSettings = patch.extraSettings;
+    }
+
+    updated.updatedAt = new Date().toISOString();
+    updated.updatedByUserEmail = "you@example.com";
+    PROVIDER_CONFIGS.set(key, updated);
+
+    if (Object.keys(fieldChanges).length > 0) {
+      const entry: ProviderConfigAuditEntry = {
+        id: `audit-${key}-${Date.now()}`,
+        providerKey: key,
+        changedAt: updated.updatedAt,
+        changedByUserEmail: updated.updatedByUserEmail,
+        fieldChanges,
+      };
+      PROVIDER_CONFIG_AUDIT.set(key, [entry, ...(PROVIDER_CONFIG_AUDIT.get(key) ?? [])]);
+    }
+
+    return delay(updated);
+  }
+
+  listProviderConfigAudit(key: ProviderKey, limit = 20): Promise<ProviderConfigAuditEntry[]> {
+    return delay((PROVIDER_CONFIG_AUDIT.get(key) ?? []).slice(0, limit));
+  }
+
+  testConnection(key: ProviderKey): Promise<ConnectionTestResult> {
+    const config = PROVIDER_CONFIGS.get(key);
+    const provider = PROVIDERS.find((p) => p.key === key);
+    if (!config || !provider) {
+      return delay({ providerKey: key, success: false, message: `Unknown provider "${key}".`, latencyMs: null, availableModels: null });
+    }
+    if (!config.enabled) {
+      return delay({ providerKey: key, success: false, message: `${provider.label} is disabled.`, latencyMs: null, availableModels: null });
+    }
+    const requiresKey = provider.tier !== "local";
+    if (requiresKey && !config.hasApiKey) {
+      return delay({
+        providerKey: key,
+        success: false,
+        message: `${provider.label} has no API key configured.`,
+        latencyMs: null,
+        availableModels: null,
+      });
+    }
+    return delay({
+      providerKey: key,
+      success: true,
+      message: "Connected",
+      latencyMs: provider.avgLatencyMs ?? 250,
+      availableModels: provider.defaultModel ? [provider.defaultModel] : [],
+    });
   }
 }

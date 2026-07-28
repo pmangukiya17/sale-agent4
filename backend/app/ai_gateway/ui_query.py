@@ -50,9 +50,11 @@ from app.models.user import User
 from app.models.workflow_instance import WorkflowInstance
 from app.schemas.ai_gateway import (
     ActivityLogEntryRead,
+    AIProviderConfigAuditRead,
     ApprovalRequestRead,
     GatewayOverviewRead,
     GatewaySettingsRead,
+    ProviderConfigRead,
     ProviderSummaryRead,
     RoutingDecisionRead,
     RoutingNodeRead,
@@ -358,6 +360,77 @@ def _routing_preview_for_capability(capability: str) -> RoutingDecisionRead:
 
 def list_routing_decisions() -> list[RoutingDecisionRead]:
     return [_routing_preview_for_capability(capability) for capability in _LIVE_ROUTING_CAPABILITIES]
+
+
+def get_provider_config(db: Session, provider_key: str) -> ProviderConfigRead | None:
+    """M8.3 Step 2 (Provider Management). GET/PUT
+    /ai-gateway/providers/{provider_key}/config's read projection - the
+    override ROW itself (see ProviderConfigRead's own docstring for why
+    this differs from ProviderSummaryRead's EFFECTIVE/resolved view).
+    Returns None only if `provider_key` isn't a real registered provider
+    at all (the route below 404s in that case, mirroring
+    get_provider()'s own existing precedent) - a real provider_key with
+    no saved row yet still gets a row here, synthesized as "no override"
+    (`enabled=True`, everything else empty), exactly matching what
+    `resolve_provider_config()` itself falls back to."""
+    if provider_key not in PROVIDER_CLIENT_REGISTRY:
+        return None
+
+    from app.models.ai_provider_config import AIProviderConfig
+
+    row = db.query(AIProviderConfig).filter(AIProviderConfig.provider_key == provider_key).first()
+    if row is None:
+        return ProviderConfigRead(
+            provider_key=provider_key,
+            enabled=True,
+            has_api_key=False,
+            base_url=None,
+            default_model=None,
+            extra_settings={},
+            updated_at=None,
+            updated_by_user_email=None,
+        )
+
+    return ProviderConfigRead(
+        provider_key=row.provider_key,
+        enabled=row.enabled,
+        has_api_key=row.encrypted_api_key is not None,
+        base_url=row.base_url,
+        default_model=row.default_model,
+        extra_settings=dict(row.extra_settings or {}),
+        updated_at=row.updated_at,
+        updated_by_user_email=row.updated_by_user.email if row.updated_by_user else None,
+    )
+
+
+def list_provider_config_audit(db: Session, provider_key: str, *, limit: int = 50) -> list[AIProviderConfigAuditRead]:
+    """M8.3 Step 2. GET /ai-gateway/providers/{provider_key}/config/audit -
+    the CEO's "lightweight configuration audit history" requirement,
+    read-only, most-recent-first. Not scoped to the calling user - a
+    provider's configuration is instance-wide infrastructure (same
+    reasoning ProviderSummaryRead's own module docstring already gives
+    for provider-level stats being global, not per-company), so its
+    change history is too; the admin gate on the route itself (not this
+    function) is what restricts who can call this at all."""
+    from app.models.ai_provider_config_audit import AIProviderConfigAudit
+
+    rows = (
+        db.query(AIProviderConfigAudit)
+        .filter(AIProviderConfigAudit.provider_key == provider_key)
+        .order_by(AIProviderConfigAudit.changed_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        AIProviderConfigAuditRead(
+            id=row.id,
+            provider_key=row.provider_key,
+            changed_at=row.changed_at,
+            changed_by_user_email=row.changed_by_user.email if row.changed_by_user else None,
+            field_changes=row.field_changes,
+        )
+        for row in rows
+    ]
 
 
 def get_settings() -> GatewaySettingsRead:

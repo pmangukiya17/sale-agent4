@@ -44,10 +44,30 @@ docs/architecture/provider-neutral-ai-gateway-plan.md):
     doesn't care about it.
 """
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 from typing import ClassVar
 
 from app.ai_gateway.capabilities import ProviderCapabilities
 from app.ai_gateway.request import GatewayRequest, GatewayResponse
+
+
+@dataclass(frozen=True)
+class ConnectionTestResult:
+    """M8.3 (AI Gateway Management & Control, Step 2 - Provider
+    Management). The result of a real, human-triggered "Test Connection"
+    action - deliberately NOT part of is_configured() (which never makes
+    a network call, see that method's own docstring) or of any automatic/
+    background check. `available_models` is populated only where the
+    underlying probe call happens to return one for free (every concrete
+    client's real implementation uses a models-list call specifically so
+    this comes along at zero extra cost/risk, never a real chat
+    completion) - `None` when a provider's probe genuinely can't produce
+    one, never fabricated."""
+
+    success: bool
+    message: str
+    latency_ms: float | None = None
+    available_models: list[str] | None = None
 
 
 class ProviderClient(ABC):
@@ -83,3 +103,25 @@ class ProviderClient(ABC):
         class's own docstring for why the base default is a concrete
         `None`, not `@abstractmethod`."""
         return None
+
+    def test_connection(self) -> ConnectionTestResult:
+        """M8.3 (AI Gateway Management & Control, Step 2 - Provider
+        Management). A real, human-triggered connectivity probe -
+        deliberately separate from `is_configured()`, which never makes a
+        network call by design (see that method's own docstring). Every
+        real concrete client overrides this with an actual, CHEAP probe
+        (a models-list call, never a real chat completion, so this never
+        bills real usage or burns a meaningful rate-limit budget) - this
+        base default only ever fires for a not-yet-configured provider
+        (reported honestly, no network attempt needed) or a fake/test
+        subclass that hasn't implemented one (same backward-compatibility
+        reasoning as `default_model` above - NOT `@abstractmethod` for
+        the same reason).
+
+        Never raises - a connection-test FAILURE is data for the caller
+        to display (`ConnectionTestResult(success=False, message=...)`),
+        never an exception that would turn a routine "is this provider
+        reachable" check into a 500 at the API layer."""
+        if not self.is_configured():
+            return ConnectionTestResult(success=False, message=f"{self.key} is not configured.")
+        raise NotImplementedError(f"{self.key} has not implemented test_connection()")

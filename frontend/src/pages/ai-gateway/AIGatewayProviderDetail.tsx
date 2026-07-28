@@ -4,6 +4,7 @@ import type { StatusKind } from "../../design-system";
 import { useProvider } from "../../ai-gateway/hooks/useProviders";
 import { TierBadge } from "../../ai-gateway/components/TierBadge";
 import { CostPill } from "../../ai-gateway/components/CostPill";
+import { ProviderConfigPanel } from "../../ai-gateway/components/ProviderConfigPanel";
 import { getProviderIdentity, PROVIDER_IDENTITIES } from "../../ai-gateway/identity/providerIdentity";
 import type { ProviderKey, ProviderSummary } from "../../ai-gateway/types";
 
@@ -23,16 +24,15 @@ const CAPABILITY_LABELS: Record<string, string> = {
 };
 
 /**
- * AIGatewayProviderDetail — /ai-gateway/providers/:providerKey. A single
- * summary card (Connection + Capabilities + Models/Pricing collapsed into
- * one view) rather than the approved architecture doc's full 6-tab layout
- * (Connection/Capabilities/Models & Pricing/Usage/Failures/Configuration)
- * - that richer breakdown depends on capabilities this milestone
- * explicitly excludes (provider configuration, usage history, live
- * failure logs), so building the tab shell now would mostly be empty
- * tabs. What's real (status, tier, default model, capabilities, cost,
- * latency) renders here; everything else is one honest PlaceholderNotice
- * rather than five empty ones.
+ * AIGatewayProviderDetail — /ai-gateway/providers/:providerKey. A summary
+ * card (status, tier, default model, capabilities, cost, latency - all
+ * M8.2, read-only) plus, as of M8.3 Step 2, a real Provider Configuration
+ * panel (ProviderConfigPanel - enable/disable, API key, base URL, default
+ * model, Test Connection, and admin-only configuration history). Usage
+ * history and a live failure log remain out of scope (see
+ * PlaceholderNotice below) - those depend on capabilities this milestone
+ * still doesn't have (persisted per-attempt chain history, live failure
+ * streaming).
  */
 export default function AIGatewayProviderDetail() {
   const { providerKey } = useParams<{ providerKey: string }>();
@@ -108,9 +108,11 @@ export default function AIGatewayProviderDetail() {
             </div>
           </Card>
 
+          <ProviderConfigPanel providerKey={providerKey as ProviderKey} />
+
           <PlaceholderNotice
             kind="not-implemented"
-            reason="Usage history, failure log, and connection configuration are designed but not yet implemented in this foundation milestone."
+            reason="Usage history and a live failure log are not yet implemented in this milestone."
           />
         </>
       )}

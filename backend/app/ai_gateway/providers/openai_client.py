@@ -29,7 +29,7 @@ from app.ai_gateway.errors import (
     ProviderUnavailableError,
 )
 from app.ai_gateway.provider_config import resolve_provider_config
-from app.ai_gateway.providers.base import ProviderClient
+from app.ai_gateway.providers.base import ConnectionTestResult, ProviderClient
 from app.ai_gateway.request import GatewayRequest, GatewayResponse, ResponseFormatType, ToolCall
 from app.core.config import settings
 
@@ -73,6 +73,28 @@ class OpenAIProviderClient(ProviderClient):
     @property
     def default_model(self) -> str | None:
         return self._resolved_config().default_model
+
+    def test_connection(self) -> ConnectionTestResult:
+        """M8.3 Step 2 (Provider Management). `client.models.list()` - a
+        real connectivity + authentication check, free (no completion
+        tokens billed)."""
+        config = self._resolved_config()
+        if not config.enabled:
+            return ConnectionTestResult(success=False, message=f"{self.key} is disabled in AI Gateway provider configuration")
+        if not config.api_key:
+            return ConnectionTestResult(success=False, message="OPENAI_API_KEY is not configured")
+
+        client = openai.OpenAI(api_key=config.api_key, timeout=10.0)
+        started_at = time.monotonic()
+        try:
+            page = client.models.list()
+            models = [m.id for m in page.data]
+        except openai.AuthenticationError as exc:
+            return ConnectionTestResult(success=False, message=f"Authentication failed: {exc}")
+        except Exception as exc:  # noqa: BLE001 - a connection test must never raise, only report
+            return ConnectionTestResult(success=False, message=str(exc))
+        latency_ms = (time.monotonic() - started_at) * 1000
+        return ConnectionTestResult(success=True, message="Connected", latency_ms=latency_ms, available_models=models[:50])
 
     def complete(self, request: GatewayRequest) -> GatewayResponse:
         config = self._resolved_config()

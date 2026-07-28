@@ -110,3 +110,64 @@ export interface GatewaySettings {
   localModelRoles: Record<string, string | null>;
   capabilityLocalModelRole: Record<string, string[]>;
 }
+
+/**
+ * ProviderConfig / ProviderConfigWrite / ProviderConfigAuditEntry /
+ * ConnectionTestResult — M8.3 Step 2 (AI Gateway Management & Control,
+ * Provider Management) additions. Mirror
+ * backend/app/schemas/ai_gateway.py's ProviderConfigRead/
+ * ProviderConfigWrite/AIProviderConfigAuditRead/ConnectionTestResultRead
+ * field-for-field (camelCase here, snake_case there - see
+ * ApiGatewayProvider.ts for the translation layer, same convention every
+ * other type in this file already follows).
+ *
+ * `ProviderConfig` is the override ROW itself - the DB-backed value an
+ * operator has (or hasn't) saved - distinct from `ProviderSummary` (the
+ * EFFECTIVE, resolved value the AI Gateway actually uses right now, merged
+ * with `.env` fallback). `hasApiKey` is the only signal about credential
+ * state this app ever receives; the real key is never returned by any
+ * read.
+ */
+export interface ProviderConfig {
+  providerKey: ProviderKey;
+  enabled: boolean;
+  hasApiKey: boolean;
+  baseUrl: string | null;
+  defaultModel: string | null;
+  extraSettings: Record<string, unknown>;
+  updatedAt: string | null;
+  updatedByUserEmail: string | null;
+}
+
+/**
+ * Every field left `undefined` means "leave this field alone" - the
+ * `clear*` flags exist because `undefined`/empty-string is itself
+ * ambiguous for api_key/base_url/default_model (see the backend
+ * `ProviderConfigWrite` schema's own docstring for why).
+ */
+export interface ProviderConfigWrite {
+  enabled?: boolean;
+  apiKey?: string;
+  clearApiKey?: boolean;
+  baseUrl?: string;
+  clearBaseUrl?: boolean;
+  defaultModel?: string;
+  clearDefaultModel?: boolean;
+  extraSettings?: Record<string, unknown>;
+}
+
+export interface ProviderConfigAuditEntry {
+  id: string;
+  providerKey: ProviderKey;
+  changedAt: string;
+  changedByUserEmail: string | null;
+  fieldChanges: Record<string, { old: unknown; new: unknown }>;
+}
+
+export interface ConnectionTestResult {
+  providerKey: ProviderKey;
+  success: boolean;
+  message: string;
+  latencyMs: number | null;
+  availableModels: string[] | null;
+}

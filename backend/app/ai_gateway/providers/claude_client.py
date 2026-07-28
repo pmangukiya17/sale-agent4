@@ -39,7 +39,7 @@ from app.ai_gateway.errors import (
     ProviderUnavailableError,
 )
 from app.ai_gateway.provider_config import resolve_provider_config
-from app.ai_gateway.providers.base import ProviderClient
+from app.ai_gateway.providers.base import ConnectionTestResult, ProviderClient
 from app.ai_gateway.request import GatewayRequest, GatewayResponse, ResponseFormatType, ToolCall
 from app.core.config import settings
 
@@ -109,6 +109,36 @@ class ClaudeProviderClient(ProviderClient):
     @property
     def default_model(self) -> str | None:
         return self._resolved_config().default_model
+
+    def test_connection(self) -> ConnectionTestResult:
+        """M8.3 Step 2 (Provider Management). Uses the Anthropic SDK's
+        Models API (`client.models.list()`, GET /v1/models) - a real
+        connectivity + authentication check that costs nothing and burns
+        no completion tokens, unlike a real Messages call. Confidence
+        note, disclosed rather than glossed over (same discipline
+        gemini_client.py's own module docstring already established for
+        this SDK family): the exact attribute a returned model object
+        exposes its id under (`.id` vs `.display_name`) is read
+        defensively via `getattr` rather than assumed, since this project
+        has no live Anthropic API key to confirm the exact shape against
+        a real call."""
+        config = self._resolved_config()
+        if not config.enabled:
+            return ConnectionTestResult(success=False, message=f"{self.key} is disabled in AI Gateway provider configuration")
+        if not config.api_key:
+            return ConnectionTestResult(success=False, message="ANTHROPIC_API_KEY is not configured")
+
+        client = anthropic.Anthropic(api_key=config.api_key, timeout=10.0)
+        started_at = time.monotonic()
+        try:
+            page = client.models.list(limit=20)
+            models = [getattr(m, "id", None) or getattr(m, "display_name", None) or str(m) for m in page]
+        except anthropic.AuthenticationError as exc:
+            return ConnectionTestResult(success=False, message=f"Authentication failed: {exc}")
+        except Exception as exc:  # noqa: BLE001 - a connection test must never raise, only report
+            return ConnectionTestResult(success=False, message=str(exc))
+        latency_ms = (time.monotonic() - started_at) * 1000
+        return ConnectionTestResult(success=True, message="Connected", latency_ms=latency_ms, available_models=models[:50])
 
     def complete(self, request: GatewayRequest) -> GatewayResponse:
         config = self._resolved_config()
