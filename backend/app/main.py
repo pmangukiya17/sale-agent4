@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import (
+    ai_gateway,
     ai_workforce,
     auth,
     brand_email_signatures,
@@ -189,6 +190,7 @@ app.include_router(auth.router, prefix=API_PREFIX)
 # discovery/research/etc.) since it isn't its own pipeline domain; it's a
 # read-only view over the M7 Workflow Engine's own tables.
 app.include_router(ai_workforce.router, prefix=API_PREFIX)
+app.include_router(ai_gateway.router, prefix=API_PREFIX)
 # M8.5 Event Backbone: the platform Event stream's read API, and the
 # Notification Center that consumes it. See app/notifications/__init__.py
 # for the worker that's the only thing that ever creates a Notification.

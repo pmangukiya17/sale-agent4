@@ -1,18 +1,24 @@
 import {
+  Activity,
   Bot,
   Building2,
   ClipboardList,
+  Cpu,
   FileBarChart,
   FileSearch,
+  Gauge,
   GitBranch,
+  History,
   LayoutDashboard,
   Mail,
   MailCheck,
   MessagesSquare,
   Package,
   Radar,
+  Route,
   Send,
   Settings as SettingsIcon,
+  ShieldCheck,
   SlidersHorizontal,
   Users,
   type LucideIcon,
@@ -86,6 +92,31 @@ export function getNavZones(activeCompanyId: string | null): NavZone[] {
           to: activeCompanyId ? `/businesses/${activeCompanyId}/delivery` : "#",
           requiresCompany: true,
         },
+      ],
+    },
+    {
+      // AI Gateway UI Foundation (M8.1) — infrastructure zone, deliberately
+      // separate from "AI Workforce" above: AI Workforce is what the AI is
+      // doing for one business right now (company-scoped); AI Gateway is
+      // how the provider-neutral routing/cost/approval infrastructure
+      // underneath is working (workspace-scoped, not company-scoped - no
+      // `requiresCompany`/activeCompanyId gate on any item here, unlike
+      // every company-scoped item above). See
+      // docs/architecture/ai-gateway-ux-architecture.md Section 1 for the
+      // full IA rationale. No dynamic badge on "Approvals" yet - `badge`
+      // is a static string today (see NavItem's own docstring); a live
+      // pending-count pill is explicitly deferred until this zone has a
+      // real backend to subscribe to.
+      label: "AI Gateway",
+      items: [
+        { label: "Overview", icon: Gauge, to: "/ai-gateway" },
+        { label: "Providers", icon: Cpu, to: "/ai-gateway/providers" },
+        { label: "Routing", icon: Route, to: "/ai-gateway/routing" },
+        { label: "Activity", icon: History, to: "/ai-gateway/activity" },
+        { label: "Usage & Cost", icon: FileBarChart, to: "/ai-gateway/usage" },
+        { label: "Approvals", icon: ShieldCheck, to: "/ai-gateway/approvals" },
+        { label: "Health", icon: Activity, to: "/ai-gateway/health" },
+        { label: "Settings", icon: SlidersHorizontal, to: "/ai-gateway/settings" },
       ],
     },
     {

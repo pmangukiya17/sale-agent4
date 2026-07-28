@@ -23,21 +23,39 @@ ROUTING_POLICY test-only override (that bypasses capability-filtering
 entirely by design - see router.py's own docstring) or a fake
 provider_lookup for routing itself - it exercises ProviderRouter.select()
 against the REAL PROVIDER_CLIENT_REGISTRY/CAPABILITY_PROVIDER_PREFERENCE
-default list (["local_ollama", "groq", "claude"]) and each real client's
-own declared _CAPABILITIES, which is why it needs Docker (importing the
-real registry needs anthropic/openai/google.genai installed) even more
-directly than the tests above. TestPreflight below DOES use the same fake
-provider_lookup DI seam as the rest of this file, since preflight() only
-calls `is_configured()` (never `complete()`) on whatever the DI seam
-resolves.
+default list and each real client's own declared _CAPABILITIES, which is
+why it needs Docker (importing the real registry needs
+anthropic/openai/google.genai installed) even more directly than the
+tests above. TestPreflight below DOES use the same fake provider_lookup DI
+seam as the rest of this file, since preflight() only calls
+`is_configured()` (never `complete()`) on whatever the DI seam resolves.
+
+M8.2 regression-sweep fix (see verify_m8_2_ai_gateway_backend.sh step 4):
+this class used to hardcode the expected default preference list
+(["local_ollama", "groq", "claude"]) and the resulting chain/premium/
+excluded sets directly in each assertion. That was accurate the day
+TestCapabilityAwareRouting was written, but went stale the moment
+M-AIGW-3 added "gemini_ai_studio" to CAPABILITY_PROVIDER_PREFERENCE's
+"default" entry - this test file was only py_compile-checked in every
+sandbox between M-AIGW-3 and M8.2, so nothing ever caught the drift until
+a real Docker run finally executed it. Per the CEO's explicit direction
+("avoid brittle hardcoded provider lists... derive the expected provider
+chain from the routing policy or registry"), the assertions below now
+derive their expectations live from CAPABILITY_PROVIDER_PREFERENCE,
+tiers.partition(), and each registered provider's own declared
+capabilities - so a future provider addition to the default preference
+list changes what this test expects automatically, instead of silently
+breaking it again.
 """
 import unittest
 
 from app.ai_gateway.client import AIGateway
 from app.ai_gateway.errors import NoCapableProviderError, PremiumApprovalRequiredError
 from app.ai_gateway.providers.base import ProviderClient
+from app.ai_gateway.providers.registry import PROVIDER_CLIENT_REGISTRY
 from app.ai_gateway.request import GatewayRequest, GatewayResponse, TokenUsage
-from app.ai_gateway.router import ROUTING_POLICY, ProviderRouter, RoutingDecision
+from app.ai_gateway.router import CAPABILITY_PROVIDER_PREFERENCE, ROUTING_POLICY, ProviderRouter, RoutingDecision
+from app.ai_gateway.tiers import partition
 from app.core.config import settings
 
 
@@ -170,12 +188,15 @@ class TestPremiumApprovalGate(unittest.TestCase):
 
 
 class TestCapabilityAwareRouting(unittest.TestCase):
-    """M-AIGW-1. Real registry, real default CAPABILITY_PROVIDER_PREFERENCE
-    (["local_ollama", "groq", "claude"]) - both local_ollama and groq
-    declare reasoning_support=False (see openai_compatible_client.py's own
-    _CAPABILITIES), claude declares reasoning_support=True (see
-    claude_client.py's own _CAPABILITIES) - a real, disclosed-in-the-plan-
-    doc fact about today's actual declarations, not a fake for this test."""
+    """M-AIGW-1. Real registry, real default CAPABILITY_PROVIDER_PREFERENCE,
+    real per-provider _CAPABILITIES declarations - nothing about this test
+    class fakes routing policy or capability data.
+
+    Expectations below are DERIVED from that real data (see the two helper
+    methods), not hardcoded provider-name lists - see this file's module
+    docstring for why (M8.2 regression-sweep: a hardcoded list here already
+    went stale once, silently, when M-AIGW-3 added "gemini_ai_studio" to
+    the default preference list)."""
 
     CAPABILITY = "test_m_aigw_1_capability"
 
@@ -187,21 +208,44 @@ class TestCapabilityAwareRouting(unittest.TestCase):
         settings.AI_MODE = self._original_mode
         ROUTING_POLICY.pop(self.CAPABILITY, None)
 
+    @staticmethod
+    def _default_preference() -> list[str]:
+        """The real, live "default" preference list this capability
+        actually falls back to (self.CAPABILITY has no specific entry) -
+        read fresh each time so an added/removed/reordered provider is
+        picked up automatically rather than needing this test updated too."""
+        return list(CAPABILITY_PROVIDER_PREFERENCE["default"])
+
+    @staticmethod
+    def _reasoning_capable(provider_key: str) -> bool:
+        """Real declared reasoning_support for provider_key, read straight
+        off PROVIDER_CLIENT_REGISTRY - never assumed/hardcoded per name."""
+        return PROVIDER_CLIENT_REGISTRY[provider_key].capabilities.reasoning_support
+
     def test_requires_deep_reasoning_excludes_non_reasoning_providers(self):
         request = GatewayRequest(capability=self.CAPABILITY, requires_deep_reasoning=True)
         decision = ProviderRouter.select(request)
-        # local_ollama/groq excluded (reasoning_support=False) - only
-        # claude (reasoning_support=True) remains, and it's premium-tier,
-        # so chain() is empty and premium carries it instead.
-        self.assertEqual(decision.chain(), [])
-        self.assertEqual(decision.premium, ["claude"])
-        self.assertEqual(set(decision.capability_excluded), {"local_ollama", "groq"})
+
+        preference = self._default_preference()
+        local, free, premium = partition(preference)
+        chain_candidates = [*local, *free]  # hybrid_recommended folds local+free
+        expected_chain = [key for key in chain_candidates if self._reasoning_capable(key)]
+        expected_premium = [key for key in premium if self._reasoning_capable(key)]
+        expected_excluded = {key for key in preference if not self._reasoning_capable(key)}
+
+        self.assertEqual(decision.chain(), expected_chain)
+        self.assertEqual(decision.premium, expected_premium)
+        self.assertEqual(set(decision.capability_excluded), expected_excluded)
 
     def test_no_special_requirements_is_unaffected_by_capability_filtering(self):
         request = GatewayRequest(capability=self.CAPABILITY)
         decision = ProviderRouter.select(request)
-        self.assertEqual(decision.chain(), ["local_ollama", "groq"])
-        self.assertEqual(decision.premium, ["claude"])
+
+        preference = self._default_preference()
+        local, free, premium = partition(preference)
+
+        self.assertEqual(decision.chain(), [*local, *free])
+        self.assertEqual(decision.premium, premium)
         self.assertEqual(decision.capability_excluded, [])
 
     def test_no_capable_provider_at_all_raises_no_capable_provider_error(self):
@@ -252,8 +296,23 @@ class TestPreflight(unittest.TestCase):
         self.assertFalse(result.approval_required)
 
     def test_nothing_configured_in_chain_reports_approval_required_with_estimate(self):
+        # Fixture fix (M8.2 regression sweep): this test's premise is
+        # "nothing in the chain is configured." preflight() only ever
+        # calls is_configured() - never complete() - so the fixture must
+        # represent that with is_configured() -> False on BOTH chain
+        # entries. _AlwaysUnavailableProviderClient (is_configured() ->
+        # True, complete() raises) simulates a DIFFERENT scenario -
+        # "configured, attempted, fails at call time" - correct for
+        # TestPremiumApprovalGate's complete()-driven tests above, but it
+        # silently satisfied chain_has_configured_candidate here, making
+        # this test pass for the wrong reason (True == True) until it was
+        # ever actually run - see this file's module docstring. Both
+        # entries are now _UnconfiguredProviderClient so the fixture
+        # genuinely matches "nothing configured," with no change to
+        # preflight()/approval logic and no change to this test's own
+        # assertions.
         gateway = _make_gateway(
-            {"fake_local_down": _AlwaysUnavailableProviderClient(), "fake_free_unconfigured": _UnconfiguredProviderClient()}
+            {"fake_local_down": _UnconfiguredProviderClient(), "fake_free_unconfigured": _UnconfiguredProviderClient()}
         )
         result = gateway.preflight(GatewayRequest(capability=self.CAPABILITY), prompt_char_length=5_000)
         self.assertTrue(result.approval_required)

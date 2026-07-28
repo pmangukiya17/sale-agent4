@@ -20,6 +20,10 @@ export { Table } from "./Table";
 export type { TableColumn, TableProps } from "./Table";
 export { Modal } from "./Modal";
 export type { ModalProps } from "./Modal";
+// AI Gateway UI Foundation (M8.1) — right-edge inspector primitive, kept
+// deliberately separate from Modal (see SlideOver.tsx's own docstring).
+export { SlideOver } from "./SlideOver";
+export type { SlideOverProps } from "./SlideOver";
 // M8.17 — Global Delete System's shared confirmation surface.
 export { ConfirmDialog } from "./ConfirmDialog";
 export type { ConfirmDialogProps } from "./ConfirmDialog";

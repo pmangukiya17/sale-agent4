@@ -84,11 +84,22 @@ class OpenAICompatibleProviderClient(ProviderClient):
     def is_configured(self) -> bool:
         return bool(self.base_url)
 
+    def _resolve_model(self, request: GatewayRequest) -> str | None:
+        """M8.2 addendum. The one seam a subclass overrides to make model
+        selection capability-aware - see
+        `app.ai_gateway.local_model_policy`'s own docstring for why this
+        lives here (a hook on the shared base) rather than duplicated
+        inline in `complete()`. Base behavior is exactly M11's original,
+        unextended `request.model or self.default_model` - `GroqProviderClient`
+        inherits this unchanged (Groq has no task-based model policy;
+        only `LocalOllamaProviderClient` overrides this method)."""
+        return request.model or self.default_model
+
     def complete(self, request: GatewayRequest) -> GatewayResponse:
         if not self.is_configured():
             raise ProviderAuthError(f"{self.key}'s base_url is not configured", provider_key=self.key)
 
-        model = request.model or self.default_model
+        model = self._resolve_model(request)
         if not model:
             raise InvalidRequestError(f"No model specified and no default model is configured for '{self.key}'", provider_key=self.key)
 

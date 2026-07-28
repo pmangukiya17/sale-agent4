@@ -303,6 +303,19 @@ class Settings(BaseSettings):
     LOCAL_MODEL_BASE_URL: str | None = None
     LOCAL_MODEL_API_KEY: str | None = None
     LOCAL_MODEL_DEFAULT_MODEL: str | None = None
+    # M8.2 addendum (approved 2026-07-28): a second locally-hosted model,
+    # same server (LOCAL_MODEL_BASE_URL) - e.g. LOCAL_MODEL_DEFAULT_MODEL=
+    # "qwen3:8b" (general/research/structured-JSON work) and
+    # LOCAL_MODEL_SECONDARY_MODEL="llama3.1:8b" (writing/email-drafting
+    # style tasks). Never read directly by LocalOllamaProviderClient or
+    # any other call site - see app.ai_gateway.local_model_policy's own
+    # docstring for the one place that maps a capability to a semantic
+    # role ("research"/"writing"/...) and that role to whichever of these
+    # two (or a future third/fourth) settings is actually configured.
+    # Unset by default - if empty, LOCAL_MODEL_DEFAULT_MODEL is used for
+    # every capability unchanged, same "unconfigured is normal" precedent
+    # as every other optional setting in this section.
+    LOCAL_MODEL_SECONDARY_MODEL: str | None = None
 
     # Groq - also an OpenAI-compatible endpoint (see GroqProviderClient).
     # BASE_URL has a real default since it's Groq's own fixed, documented

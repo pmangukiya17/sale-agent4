@@ -37,6 +37,16 @@ import Analytics from "./pages/Analytics";
 import Reports from "./pages/Reports";
 import Conversations from "./pages/Conversations";
 import MailboxBriefPage from "./pages/MailboxBriefPage";
+import { AIGatewayLayout } from "./ai-gateway/AIGatewayLayout";
+import AIGatewayOverview from "./pages/ai-gateway/AIGatewayOverview";
+import AIGatewayProviders from "./pages/ai-gateway/AIGatewayProviders";
+import AIGatewayProviderDetail from "./pages/ai-gateway/AIGatewayProviderDetail";
+import AIGatewayRouting from "./pages/ai-gateway/AIGatewayRouting";
+import AIGatewayActivity from "./pages/ai-gateway/AIGatewayActivity";
+import AIGatewayUsage from "./pages/ai-gateway/AIGatewayUsage";
+import AIGatewayApprovals from "./pages/ai-gateway/AIGatewayApprovals";
+import AIGatewayHealth from "./pages/ai-gateway/AIGatewayHealth";
+import AIGatewaySettings from "./pages/ai-gateway/AIGatewaySettings";
 
 export default function App() {
   return (
@@ -431,6 +441,36 @@ export default function App() {
           </ProtectedRoute>
         }
       />
+      {/* M8.1: AI Gateway UI Foundation. Workspace-scoped (not
+          /businesses/:companyId/...) - same top-level precedent as
+          /command-center and /ai-workforce, since routing/cost/approval
+          infrastructure spans every business, not just the active one.
+          AIGatewayLayout owns breadcrumb/title/subtitle/page-nav and
+          renders <Outlet/>, matching DeliveryLayout's nested-route
+          shape below it. Provider detail is a child route (not a
+          sibling) so it still renders inside the same layout shell -
+          pageMeta.ts's prefix-match fallback keeps "Providers"
+          highlighted in the strip while on a provider's detail page. */}
+      <Route
+        path="/ai-gateway"
+        element={
+          <ProtectedRoute>
+            <DashboardLayout>
+              <AIGatewayLayout />
+            </DashboardLayout>
+          </ProtectedRoute>
+        }
+      >
+        <Route index element={<AIGatewayOverview />} />
+        <Route path="providers" element={<AIGatewayProviders />} />
+        <Route path="providers/:providerKey" element={<AIGatewayProviderDetail />} />
+        <Route path="routing" element={<AIGatewayRouting />} />
+        <Route path="activity" element={<AIGatewayActivity />} />
+        <Route path="usage" element={<AIGatewayUsage />} />
+        <Route path="approvals" element={<AIGatewayApprovals />} />
+        <Route path="health" element={<AIGatewayHealth />} />
+        <Route path="settings" element={<AIGatewaySettings />} />
+      </Route>
     </Routes>
   );
 }
