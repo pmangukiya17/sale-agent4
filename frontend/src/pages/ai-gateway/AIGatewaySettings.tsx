@@ -1,4 +1,5 @@
 import { Card, PlaceholderNotice, StatusIndicator } from "../../design-system";
+import { ModelRoleManagementPanel } from "../../ai-gateway/components/ModelRoleManagementPanel";
 import { useGatewaySettings } from "../../ai-gateway/hooks/useGatewaySettings";
 
 /**
@@ -89,9 +90,11 @@ export default function AIGatewaySettings() {
         </div>
       </Card>
 
+      <ModelRoleManagementPanel />
+
       <PlaceholderNotice
         kind="not-implemented"
-        reason="Editing these settings (routing mode, provider priority, cost limits) is designed (see docs/architecture/ai-gateway-ux-architecture.md Section 4.9) but not yet implemented — this page is read-only."
+        reason="Editing routing mode, provider priority, and cost limits is designed (see docs/architecture/ai-gateway-ux-architecture.md Section 4.9) but not yet implemented. Model Role overrides above (M8.3 Step 3) and Provider Configuration (see each provider's detail page, M8.3 Step 2) are the two settings surfaces implemented so far."
       />
     </div>
   );

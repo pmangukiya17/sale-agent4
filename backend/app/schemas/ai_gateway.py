@@ -202,6 +202,36 @@ class ConnectionTestResultRead(BaseModel):
     available_models: list[str] | None
 
 
+class ModelRoleWrite(BaseModel):
+    """M8.3 (AI Gateway Management & Control, Step 3 - Model Role
+    Management). Request body for
+    `PUT /ai-gateway/model-roles/{role_name}`. Field-for-field mirrors
+    `app.ai_gateway.local_model_policy.save_model_role()`'s own signature.
+    `model` is required when creating a brand-new role (see that
+    function's own docstring); optional on an update, where `None` means
+    "leave the currently-stored model alone." """
+
+    model: str | None = None
+    enabled: bool | None = None
+
+
+class ModelRoleRead(BaseModel):
+    """M8.3 Step 3. GET/PUT response for one semantic role's DB-backed
+    override row - distinct from the CODE-level `LOCAL_MODEL_ROLES`/
+    `CAPABILITY_LOCAL_MODEL_ROLE` tables (still exposed read-only via
+    `GatewaySettingsRead`). A role with no saved DB row is simply absent
+    from `GET /ai-gateway/model-roles` - unlike Provider Management,
+    there's no "one row per possible role" to synthesize, since role
+    names themselves are open-ended (an admin creating "coding" for the
+    first time IS the act of adding a new row)."""
+
+    role_name: str
+    model: str
+    enabled: bool
+    updated_at: datetime | None
+    updated_by_user_email: str | None
+
+
 class GatewaySettingsRead(BaseModel):
     """M8.2. GET /ai-gateway/settings - read-only. A direct, live
     projection of the actual settings AIGateway/ProviderRouter read at

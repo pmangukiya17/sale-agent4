@@ -54,6 +54,7 @@ from app.schemas.ai_gateway import (
     ApprovalRequestRead,
     GatewayOverviewRead,
     GatewaySettingsRead,
+    ModelRoleRead,
     ProviderConfigRead,
     ProviderSummaryRead,
     RoutingDecisionRead,
@@ -428,6 +429,54 @@ def list_provider_config_audit(db: Session, provider_key: str, *, limit: int = 5
             changed_at=row.changed_at,
             changed_by_user_email=row.changed_by_user.email if row.changed_by_user else None,
             field_changes=row.field_changes,
+        )
+        for row in rows
+    ]
+
+
+def get_model_role(db: Session, role_name: str) -> ModelRoleRead | None:
+    """M8.3 Step 3. Single-row read used by the PUT/GET-by-name routes -
+    returns None if `role_name` has no saved `AIModelRole` row (unlike
+    Provider Management's `get_provider_config()`, there is no "no row
+    yet -> synthesized default" here - see `list_model_roles()`'s own
+    docstring for why role names are open-ended, not a fixed universe)."""
+    from app.models.ai_model_role import AIModelRole
+
+    row = db.query(AIModelRole).filter(AIModelRole.role_name == role_name).first()
+    if row is None:
+        return None
+    return ModelRoleRead(
+        role_name=row.role_name,
+        model=row.model,
+        enabled=row.enabled,
+        updated_at=row.updated_at,
+        updated_by_user_email=row.updated_by_user.email if row.updated_by_user else None,
+    )
+
+
+def list_model_roles(db: Session) -> list[ModelRoleRead]:
+    """M8.3 Step 3 (Model Role Management). GET /ai-gateway/model-roles's
+    read projection - every `AIModelRole` row that actually exists,
+    ordered by role_name, via `local_model_policy.list_model_roles()`.
+    Unlike Provider Management, there's no fixed universe of role names to
+    synthesize a "no override yet" placeholder for - role names are
+    open-ended (a brand-new role IS created by the first save), so an
+    empty DB table simply returns an empty list here; the CODE-level
+    `LOCAL_MODEL_ROLES`/`CAPABILITY_LOCAL_MODEL_ROLE` tables remain visible
+    read-only via `GatewaySettingsRead` regardless of what's in this
+    table. Takes the request-scoped `db: Session` FastAPI already resolved
+    - same convention `get_provider_config()`/`list_provider_config_audit()`
+    already use - rather than opening a second connection per call."""
+    from app.ai_gateway.local_model_policy import list_model_roles as _list_model_roles
+
+    rows = _list_model_roles(db)
+    return [
+        ModelRoleRead(
+            role_name=row.role_name,
+            model=row.model,
+            enabled=row.enabled,
+            updated_at=row.updated_at,
+            updated_by_user_email=row.updated_by_user.email if row.updated_by_user else None,
         )
         for row in rows
     ]

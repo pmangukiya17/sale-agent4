@@ -4,6 +4,8 @@ import type {
   ConnectionTestResult,
   GatewayOverview,
   GatewaySettings,
+  ModelRole,
+  ModelRoleWrite,
   ProviderConfig,
   ProviderConfigAuditEntry,
   ProviderConfigWrite,
@@ -57,4 +59,11 @@ export interface GatewayDataProvider {
   saveProviderConfig(key: ProviderKey, patch: ProviderConfigWrite): Promise<ProviderConfig>;
   listProviderConfigAudit(key: ProviderKey, limit?: number): Promise<ProviderConfigAuditEntry[]>;
   testConnection(key: ProviderKey): Promise<ConnectionTestResult>;
+  /** M8.3 Step 3 (Model Role Management) additions. Admin-only
+   * server-side (403 for a non-admin caller), same convention as the
+   * Step 2 methods above. Local-tier only - see ModelRole's own
+   * docstring in ../types.ts. */
+  listModelRoles(): Promise<ModelRole[]>;
+  saveModelRole(roleName: string, patch: ModelRoleWrite): Promise<ModelRole>;
+  deleteModelRole(roleName: string): Promise<void>;
 }

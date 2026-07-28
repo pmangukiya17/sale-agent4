@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from app.ai_gateway import ui_query
+from app.ai_gateway.local_model_policy import delete_model_role, save_model_role
 from app.ai_gateway.provider_config import save_provider_config
 from app.ai_gateway.providers.registry import PROVIDER_CLIENT_REGISTRY
 from app.api.deps import get_current_active_admin, get_current_user
@@ -14,6 +15,8 @@ from app.schemas.ai_gateway import (
     ConnectionTestResultRead,
     GatewayOverviewRead,
     GatewaySettingsRead,
+    ModelRoleRead,
+    ModelRoleWrite,
     ProviderConfigRead,
     ProviderConfigWrite,
     ProviderSummaryRead,
@@ -174,6 +177,72 @@ def list_provider_config_audit(
     if provider_key not in PROVIDER_CLIENT_REGISTRY:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown provider")
     return ui_query.list_provider_config_audit(db, provider_key, limit=limit)
+
+
+@router.get("/ai-gateway/model-roles", response_model=list[ModelRoleRead])
+def list_model_roles(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_admin),
+) -> list[ModelRoleRead]:
+    """M8.3 Step 3 (Model Role Management). Admin-gated, same precedent as
+    Provider Management's config routes - a role -> model assignment is
+    instance-wide infrastructure configuration, not a per-user preference.
+    Returns only roles that actually have a saved DB row - see
+    `ui_query.list_model_roles()`'s own docstring for why there's no
+    fixed universe to synthesize placeholders for."""
+    return ui_query.list_model_roles(db)
+
+
+@router.put("/ai-gateway/model-roles/{role_name}", response_model=ModelRoleRead)
+def put_model_role(
+    role_name: str,
+    body: ModelRoleWrite,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_admin),
+) -> ModelRoleRead:
+    """M8.3 Step 3. Creates a brand-new role (requires `body.model`) or
+    updates an existing one. Per CEO decision #2, this ONLY ever affects
+    `LocalOllamaProviderClient._resolve_model()` (via
+    `app.ai_gateway.local_model_policy.resolve_local_model()`'s DB-lookup
+    layer) - it can never change which PROVIDER a capability routes to,
+    and it never touches any cloud ProviderClient. Delegates entirely to
+    `local_model_policy.save_model_role()` for the actual create/update
+    logic; this route's only job is translating the request body and
+    committing the transaction."""
+    try:
+        save_model_role(
+            db,
+            role_name,
+            model=body.model,
+            enabled=body.enabled,
+            changed_by_user_id=current_user.id,
+        )
+        db.commit()
+    except ValueError as exc:
+        # e.g. a brand-new role_name saved without a `model` value.
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return ui_query.get_model_role(db, role_name)
+
+
+@router.delete("/ai-gateway/model-roles/{role_name}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_model_role_route(
+    role_name: str,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_admin),
+) -> None:
+    """M8.3 Step 3. Deletes the DB override for `role_name`, if one
+    exists - reversible-by-recreating, never a hard data-loss risk (see
+    `AIModelRole`'s own docstring); the role simply resolves via the
+    `LOCAL_MODEL_ROLES` settings fallback again, exactly as it did before
+    any DB row for it ever existed. 404s if there was nothing to delete,
+    same "delete of a nonexistent resource is an error, not a silent
+    success" convention this codebase's other DELETE routes already use."""
+    deleted = delete_model_role(db, role_name)
+    if not deleted:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No saved model role with that name")
+    db.commit()
 
 
 @router.post("/ai-gateway/providers/{provider_key}/test-connection", response_model=ConnectionTestResultRead)

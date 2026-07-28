@@ -4,6 +4,8 @@ import type {
   ConnectionTestResult,
   GatewayOverview,
   GatewaySettings,
+  ModelRole,
+  ModelRoleWrite,
   ProviderConfig,
   ProviderConfigAuditEntry,
   ProviderConfigWrite,
@@ -326,6 +328,18 @@ const PROVIDER_CONFIGS = new Map<ProviderKey, ProviderConfig>(
 
 const PROVIDER_CONFIG_AUDIT = new Map<ProviderKey, ProviderConfigAuditEntry[]>();
 
+// M8.3 Step 3 (Model Role Management) addition - kept internally
+// consistent with GATEWAY_SETTINGS.localModelRoles above (same two
+// starting roles, same fixture models) even though this class is no
+// longer instantiated by default. A mutable module-level map so
+// saveModelRole()/deleteModelRole()'s in-memory mutation is visible to a
+// subsequent listModelRoles() call, mirroring the real backend's own
+// persisted-row behavior closely enough for offline dev.
+const MODEL_ROLES = new Map<string, ModelRole>([
+  ["research", { roleName: "research", model: "qwen3:8b", enabled: true, updatedAt: null, updatedByUserEmail: null }],
+  ["writing", { roleName: "writing", model: "llama3.1:8b", enabled: true, updatedAt: null, updatedByUserEmail: null }],
+]);
+
 export class MockGatewayProvider implements GatewayDataProvider {
   getOverview(): Promise<GatewayOverview> {
     return delay(OVERVIEW);
@@ -451,5 +465,30 @@ export class MockGatewayProvider implements GatewayDataProvider {
       latencyMs: provider.avgLatencyMs ?? 250,
       availableModels: provider.defaultModel ? [provider.defaultModel] : [],
     });
+  }
+
+  listModelRoles(): Promise<ModelRole[]> {
+    return delay([...MODEL_ROLES.values()].sort((a, b) => a.roleName.localeCompare(b.roleName)));
+  }
+
+  saveModelRole(roleName: string, patch: ModelRoleWrite): Promise<ModelRole> {
+    const current = MODEL_ROLES.get(roleName);
+    if (!current && !patch.model) {
+      return Promise.reject(new Error(`Cannot create model role "${roleName}" without a model value.`));
+    }
+    const updated: ModelRole = {
+      roleName,
+      model: patch.model ?? current?.model ?? "",
+      enabled: patch.enabled ?? current?.enabled ?? true,
+      updatedAt: new Date().toISOString(),
+      updatedByUserEmail: "you@example.com",
+    };
+    MODEL_ROLES.set(roleName, updated);
+    return delay(updated);
+  }
+
+  deleteModelRole(roleName: string): Promise<void> {
+    MODEL_ROLES.delete(roleName);
+    return delay(undefined);
   }
 }

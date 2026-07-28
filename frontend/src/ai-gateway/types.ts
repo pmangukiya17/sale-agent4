@@ -171,3 +171,33 @@ export interface ConnectionTestResult {
   latencyMs: number | null;
   availableModels: string[] | null;
 }
+
+/**
+ * ModelRole / ModelRoleWrite — M8.3 Step 3 (AI Gateway Management &
+ * Control, Model Role Management) additions. Mirror
+ * backend/app/schemas/ai_gateway.py's ModelRoleRead/ModelRoleWrite
+ * field-for-field. Per CEO decision #2 (local-tier only), a "role"
+ * assigns a MODEL to a SEMANTIC ROLE NAME consumed exclusively by
+ * `LocalOllamaProviderClient._resolve_model()` - it never affects which
+ * PROVIDER (local/free/premium) a capability routes to, and it never
+ * touches Claude/OpenAI/Gemini/Groq. See `GatewaySettings.capabilityLocalModelRole`
+ * for the (still code-level, read-only) capability -> role preference
+ * order - this type is only the role -> model assignment half.
+ *
+ * Unlike `ProviderConfig`, there is no fixed universe of role names to
+ * synthesize a placeholder for - `GET /ai-gateway/model-roles` returns
+ * only roles that actually have a saved row; creating a role with a new
+ * name IS how a new semantic role (e.g. "coding") gets added.
+ */
+export interface ModelRole {
+  roleName: string;
+  model: string;
+  enabled: boolean;
+  updatedAt: string | null;
+  updatedByUserEmail: string | null;
+}
+
+export interface ModelRoleWrite {
+  model?: string;
+  enabled?: boolean;
+}

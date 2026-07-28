@@ -6,6 +6,8 @@ import type {
   ConnectionTestResult,
   GatewayOverview,
   GatewaySettings,
+  ModelRole,
+  ModelRoleWrite,
   ProviderConfig,
   ProviderConfigAuditEntry,
   ProviderConfigWrite,
@@ -254,6 +256,24 @@ function toConnectionTestResult(raw: RawConnectionTestResult): ConnectionTestRes
   };
 }
 
+interface RawModelRole {
+  role_name: string;
+  model: string;
+  enabled: boolean;
+  updated_at: string | null;
+  updated_by_user_email: string | null;
+}
+
+function toModelRole(raw: RawModelRole): ModelRole {
+  return {
+    roleName: raw.role_name,
+    model: raw.model,
+    enabled: raw.enabled,
+    updatedAt: raw.updated_at,
+    updatedByUserEmail: raw.updated_by_user_email,
+  };
+}
+
 function toGatewaySettings(raw: RawGatewaySettings): GatewaySettings {
   return {
     aiMode: raw.ai_mode,
@@ -350,6 +370,21 @@ export class ApiGatewayProvider implements GatewayDataProvider {
   async testConnection(key: ProviderKey): Promise<ConnectionTestResult> {
     const res = await this.http.post<RawConnectionTestResult>(`/ai-gateway/providers/${key}/test-connection`);
     return toConnectionTestResult(res.data);
+  }
+
+  async listModelRoles(): Promise<ModelRole[]> {
+    const res = await this.http.get<RawModelRole[]>("/ai-gateway/model-roles");
+    return res.data.map(toModelRole);
+  }
+
+  async saveModelRole(roleName: string, patch: ModelRoleWrite): Promise<ModelRole> {
+    const body = { model: patch.model, enabled: patch.enabled };
+    const res = await this.http.put<RawModelRole>(`/ai-gateway/model-roles/${roleName}`, body);
+    return toModelRole(res.data);
+  }
+
+  async deleteModelRole(roleName: string): Promise<void> {
+    await this.http.delete(`/ai-gateway/model-roles/${roleName}`);
   }
 }
 
