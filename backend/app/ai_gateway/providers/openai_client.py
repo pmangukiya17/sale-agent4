@@ -28,6 +28,7 @@ from app.ai_gateway.errors import (
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
+from app.ai_gateway.provider_config import resolve_provider_config
 from app.ai_gateway.providers.base import ProviderClient
 from app.ai_gateway.request import GatewayRequest, GatewayResponse, ResponseFormatType, ToolCall
 from app.core.config import settings
@@ -54,23 +55,38 @@ class OpenAIProviderClient(ProviderClient):
     key = _PROVIDER_KEY
     capabilities = _CAPABILITIES
 
+    def _resolved_config(self):
+        """M8.3 Step 1 - see claude_client.py's identical helper for the
+        full rationale (fresh DB-backed override, settings fallback, zero
+        behavior change for a deployment that never uses Provider
+        Management)."""
+        return resolve_provider_config(
+            self.key,
+            fallback_api_key=settings.OPENAI_API_KEY,
+            fallback_default_model=settings.OPENAI_DEFAULT_MODEL,
+        )
+
     def is_configured(self) -> bool:
-        return bool(settings.OPENAI_API_KEY)
+        config = self._resolved_config()
+        return config.enabled and bool(config.api_key)
 
     @property
     def default_model(self) -> str | None:
-        return settings.OPENAI_DEFAULT_MODEL
+        return self._resolved_config().default_model
 
     def complete(self, request: GatewayRequest) -> GatewayResponse:
-        if not self.is_configured():
+        config = self._resolved_config()
+        if not config.enabled:
+            raise ProviderAuthError(f"{self.key} is disabled in AI Gateway provider configuration", provider_key=self.key)
+        if not config.api_key:
             raise ProviderAuthError("OPENAI_API_KEY is not configured", provider_key=self.key)
 
-        model = request.model or self.default_model
+        model = request.model or config.default_model
         if not model:
             raise InvalidRequestError("No model specified and settings.OPENAI_DEFAULT_MODEL is unset", provider_key=self.key)
 
         client = openai.OpenAI(
-            api_key=settings.OPENAI_API_KEY, timeout=request.timeout_seconds or settings.AI_GATEWAY_DEFAULT_TIMEOUT_SECONDS
+            api_key=config.api_key, timeout=request.timeout_seconds or settings.AI_GATEWAY_DEFAULT_TIMEOUT_SECONDS
         )
 
         kwargs: dict = {"model": model, "messages": request.messages}

@@ -93,3 +93,5 @@ from app.models.opportunity import Opportunity  # noqa
 from app.models.opportunity_stage_history import OpportunityStageHistory  # noqa
 from app.models.mailbox_brief import MailboxBrief  # noqa
 from app.models.ai_request_log import AIRequestLog  # noqa
+from app.models.ai_provider_config import AIProviderConfig  # noqa
+from app.models.ai_provider_config_audit import AIProviderConfigAudit  # noqa

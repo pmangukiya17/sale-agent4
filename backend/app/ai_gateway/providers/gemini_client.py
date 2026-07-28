@@ -69,6 +69,7 @@ from app.ai_gateway.errors import (
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
+from app.ai_gateway.provider_config import resolve_provider_config
 from app.ai_gateway.providers.base import ProviderClient
 from app.ai_gateway.request import GatewayRequest, GatewayResponse, ResponseFormatType, ToolCall
 from app.core.config import settings
@@ -123,21 +124,45 @@ class _GeminiProviderClientBase(ProviderClient):
     capabilities = _CAPABILITIES
 
     @property
-    def api_key(self) -> str | None:
+    def _fallback_api_key(self) -> str | None:
         raise NotImplementedError
 
     @property
-    def default_model(self) -> str | None:
+    def _fallback_default_model(self) -> str | None:
         raise NotImplementedError
 
+    def _resolved_config(self):
+        """M8.3 Step 1 - see claude_client.py's identical helper for the
+        full rationale. Each subclass supplies its own settings-derived
+        fallback (`_fallback_api_key`/`_fallback_default_model`) since
+        `gemini`/`gemini_ai_studio` read entirely distinct settings
+        attributes despite sharing this base class - see module docstring."""
+        return resolve_provider_config(
+            self.key,
+            fallback_api_key=self._fallback_api_key,
+            fallback_default_model=self._fallback_default_model,
+        )
+
+    @property
+    def api_key(self) -> str | None:
+        return self._resolved_config().api_key
+
+    @property
+    def default_model(self) -> str | None:
+        return self._resolved_config().default_model
+
     def is_configured(self) -> bool:
-        return bool(self.api_key)
+        config = self._resolved_config()
+        return config.enabled and bool(config.api_key)
 
     def complete(self, request: GatewayRequest) -> GatewayResponse:
-        if not self.is_configured():
+        config = self._resolved_config()
+        if not config.enabled:
+            raise ProviderAuthError(f"{self.key} is disabled in AI Gateway provider configuration", provider_key=self.key)
+        if not config.api_key:
             raise ProviderAuthError(f"{self.key}'s API key is not configured", provider_key=self.key)
 
-        model = request.model or self.default_model
+        model = request.model or config.default_model
         if not model:
             raise InvalidRequestError(f"No model specified and no default model is configured for '{self.key}'", provider_key=self.key)
 
@@ -167,7 +192,7 @@ class _GeminiProviderClientBase(ProviderClient):
                 )
             ]
 
-        client = genai.Client(api_key=self.api_key)
+        client = genai.Client(api_key=config.api_key)
 
         started_at = time.monotonic()
         try:
@@ -235,11 +260,11 @@ class GeminiProviderClient(_GeminiProviderClientBase):
     key = _PREMIUM_PROVIDER_KEY
 
     @property
-    def api_key(self) -> str | None:
+    def _fallback_api_key(self) -> str | None:
         return settings.GOOGLE_API_KEY
 
     @property
-    def default_model(self) -> str | None:
+    def _fallback_default_model(self) -> str | None:
         return settings.GOOGLE_DEFAULT_MODEL
 
 
@@ -256,9 +281,9 @@ class GeminiAIStudioProviderClient(_GeminiProviderClientBase):
     key = _AI_STUDIO_PROVIDER_KEY
 
     @property
-    def api_key(self) -> str | None:
+    def _fallback_api_key(self) -> str | None:
         return settings.GOOGLE_AI_STUDIO_API_KEY
 
     @property
-    def default_model(self) -> str | None:
+    def _fallback_default_model(self) -> str | None:
         return settings.GOOGLE_AI_STUDIO_DEFAULT_MODEL

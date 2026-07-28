@@ -45,15 +45,15 @@ class LocalOllamaProviderClient(OpenAICompatibleProviderClient):
     key = _PROVIDER_KEY
 
     @property
-    def base_url(self) -> str | None:
+    def _fallback_base_url(self) -> str | None:
         return settings.LOCAL_MODEL_BASE_URL
 
     @property
-    def api_key(self) -> str | None:
+    def _fallback_api_key(self) -> str | None:
         return settings.LOCAL_MODEL_API_KEY
 
     @property
-    def default_model(self) -> str | None:
+    def _fallback_default_model(self) -> str | None:
         return settings.LOCAL_MODEL_DEFAULT_MODEL
 
     def _resolve_model(self, request: GatewayRequest) -> str | None:

@@ -38,6 +38,7 @@ from app.ai_gateway.errors import (
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
+from app.ai_gateway.provider_config import resolve_provider_config
 from app.ai_gateway.providers.base import ProviderClient
 from app.ai_gateway.request import GatewayRequest, GatewayResponse, ResponseFormatType, ToolCall
 from app.core.config import settings
@@ -70,19 +71,46 @@ class OpenAICompatibleProviderClient(ProviderClient):
     capabilities = _CAPABILITIES
 
     @property
-    def base_url(self) -> str | None:
+    def _fallback_base_url(self) -> str | None:
         raise NotImplementedError
+
+    @property
+    def _fallback_api_key(self) -> str | None:
+        raise NotImplementedError
+
+    @property
+    def _fallback_default_model(self) -> str | None:
+        raise NotImplementedError
+
+    def _resolved_config(self):
+        """M8.3 (AI Gateway Management & Control, Step 1) - see
+        claude_client.py's identical helper for the full rationale. Each
+        subclass (LocalOllamaProviderClient/GroqProviderClient) supplies
+        its own settings-derived `_fallback_*` values; this base class's
+        job is only the DB-override-or-fallback merge, shared once here
+        rather than duplicated per subclass."""
+        return resolve_provider_config(
+            self.key,
+            fallback_api_key=self._fallback_api_key,
+            fallback_base_url=self._fallback_base_url,
+            fallback_default_model=self._fallback_default_model,
+        )
+
+    @property
+    def base_url(self) -> str | None:
+        return self._resolved_config().base_url
 
     @property
     def api_key(self) -> str | None:
-        raise NotImplementedError
+        return self._resolved_config().api_key
 
     @property
     def default_model(self) -> str | None:
-        raise NotImplementedError
+        return self._resolved_config().default_model
 
     def is_configured(self) -> bool:
-        return bool(self.base_url)
+        config = self._resolved_config()
+        return config.enabled and bool(config.base_url)
 
     def _resolve_model(self, request: GatewayRequest) -> str | None:
         """M8.2 addendum. The one seam a subclass overrides to make model
@@ -96,7 +124,10 @@ class OpenAICompatibleProviderClient(ProviderClient):
         return request.model or self.default_model
 
     def complete(self, request: GatewayRequest) -> GatewayResponse:
-        if not self.is_configured():
+        config = self._resolved_config()
+        if not config.enabled:
+            raise ProviderAuthError(f"{self.key} is disabled in AI Gateway provider configuration", provider_key=self.key)
+        if not config.base_url:
             raise ProviderAuthError(f"{self.key}'s base_url is not configured", provider_key=self.key)
 
         model = self._resolve_model(request)
@@ -104,10 +135,10 @@ class OpenAICompatibleProviderClient(ProviderClient):
             raise InvalidRequestError(f"No model specified and no default model is configured for '{self.key}'", provider_key=self.key)
 
         client = openai.OpenAI(
-            base_url=self.base_url,
+            base_url=config.base_url,
             # Most local servers ignore this entirely; the SDK still
             # requires a non-empty string to construct the client.
-            api_key=self.api_key or "not-required",
+            api_key=config.api_key or "not-required",
             timeout=request.timeout_seconds or settings.AI_GATEWAY_DEFAULT_TIMEOUT_SECONDS,
         )
 

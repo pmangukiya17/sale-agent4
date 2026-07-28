@@ -20,18 +20,21 @@ class GroqProviderClient(OpenAICompatibleProviderClient):
     key = _PROVIDER_KEY
 
     @property
-    def base_url(self) -> str | None:
+    def _fallback_base_url(self) -> str | None:
         return settings.GROQ_BASE_URL
 
     @property
-    def api_key(self) -> str | None:
+    def _fallback_api_key(self) -> str | None:
         return settings.GROQ_API_KEY
 
     @property
-    def default_model(self) -> str | None:
+    def _fallback_default_model(self) -> str | None:
         return settings.GROQ_DEFAULT_MODEL
 
     def is_configured(self) -> bool:
         # Unlike the local client, Groq is a real hosted cloud service - an
-        # API key is required, not optional.
-        return bool(self.api_key) and bool(self.base_url)
+        # API key is required, not optional. M8.3 Step 1: also honors a
+        # DB-backed `enabled=False` override (see
+        # OpenAICompatibleProviderClient._resolved_config()).
+        config = self._resolved_config()
+        return config.enabled and bool(config.api_key) and bool(config.base_url)

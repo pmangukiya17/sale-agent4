@@ -38,6 +38,7 @@ from app.ai_gateway.errors import (
     ProviderTimeoutError,
     ProviderUnavailableError,
 )
+from app.ai_gateway.provider_config import resolve_provider_config
 from app.ai_gateway.providers.base import ProviderClient
 from app.ai_gateway.request import GatewayRequest, GatewayResponse, ResponseFormatType, ToolCall
 from app.core.config import settings
@@ -87,18 +88,36 @@ class ClaudeProviderClient(ProviderClient):
     key = _PROVIDER_KEY
     capabilities = _CAPABILITIES
 
+    def _resolved_config(self):
+        """M8.3 (AI Gateway Management & Control, Step 1). Every read of
+        this provider's effective API key/default model goes through
+        `resolve_provider_config()` - a fresh DB read every call (see that
+        module's own docstring for why) merged over this file's own
+        `settings.ANTHROPIC_*` fallback values, so a deployment that never
+        touches the (future) Provider Management UI behaves byte-for-byte
+        as it did before this milestone."""
+        return resolve_provider_config(
+            self.key,
+            fallback_api_key=settings.ANTHROPIC_API_KEY,
+            fallback_default_model=settings.ANTHROPIC_DEFAULT_MODEL,
+        )
+
     def is_configured(self) -> bool:
-        return bool(settings.ANTHROPIC_API_KEY)
+        config = self._resolved_config()
+        return config.enabled and bool(config.api_key)
 
     @property
     def default_model(self) -> str | None:
-        return settings.ANTHROPIC_DEFAULT_MODEL
+        return self._resolved_config().default_model
 
     def complete(self, request: GatewayRequest) -> GatewayResponse:
-        if not self.is_configured():
+        config = self._resolved_config()
+        if not config.enabled:
+            raise ProviderAuthError(f"{self.key} is disabled in AI Gateway provider configuration", provider_key=self.key)
+        if not config.api_key:
             raise ProviderAuthError("ANTHROPIC_API_KEY is not configured", provider_key=self.key)
 
-        model = request.model or self.default_model
+        model = request.model or config.default_model
         if not model:
             raise InvalidRequestError(
                 "No model specified and settings.ANTHROPIC_DEFAULT_MODEL is unset", provider_key=self.key
@@ -112,7 +131,7 @@ class ClaudeProviderClient(ProviderClient):
             system = f"{system}\n\n{instruction}" if system else instruction
 
         client = anthropic.Anthropic(
-            api_key=settings.ANTHROPIC_API_KEY, timeout=request.timeout_seconds or settings.AI_GATEWAY_DEFAULT_TIMEOUT_SECONDS
+            api_key=config.api_key, timeout=request.timeout_seconds or settings.AI_GATEWAY_DEFAULT_TIMEOUT_SECONDS
         )
 
         kwargs: dict = {
