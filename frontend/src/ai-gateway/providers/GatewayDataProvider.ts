@@ -12,6 +12,8 @@ import type {
   ProviderKey,
   ProviderSummary,
   RoutingDecision,
+  RoutingSimulationRequestInput,
+  RoutingSimulationResult,
 } from "../types";
 
 /**
@@ -66,4 +68,8 @@ export interface GatewayDataProvider {
   listModelRoles(): Promise<ModelRole[]>;
   saveModelRole(roleName: string, patch: ModelRoleWrite): Promise<ModelRole>;
   deleteModelRole(roleName: string): Promise<void>;
+  /** M8.3 Step 4 (Routing Simulator) addition. READ-ONLY - never mutates
+   * any setting, never attempts a real provider call. See
+   * RoutingSimulationResult's own docstring in ../types.ts. */
+  simulateRouting(request: RoutingSimulationRequestInput): Promise<RoutingSimulationResult>;
 }

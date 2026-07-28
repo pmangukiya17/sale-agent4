@@ -12,6 +12,9 @@ import type {
   ProviderKey,
   ProviderSummary,
   RoutingDecision,
+  RoutingSimulationNode,
+  RoutingSimulationRequestInput,
+  RoutingSimulationResult,
 } from "../types";
 import type { GatewayDataProvider } from "./GatewayDataProvider";
 
@@ -490,5 +493,100 @@ export class MockGatewayProvider implements GatewayDataProvider {
   deleteModelRole(roleName: string): Promise<void> {
     MODEL_ROLES.delete(roleName);
     return delay(undefined);
+  }
+
+  simulateRouting(request: RoutingSimulationRequestInput): Promise<RoutingSimulationResult> {
+    // M8.3 Step 4 (Routing Simulator) fixture - a simplified, client-side
+    // approximation of the real backend's build_simulation() logic, kept
+    // internally consistent with PROVIDERS above (same default preference
+    // order: local_ollama -> groq -> gemini_ai_studio -> claude(premium)).
+    // Good enough for offline dev; the real decision logic lives entirely
+    // server-side (app.ai_gateway.routing_simulator.build_simulation()).
+    const aiMode = request.aiModeOverride ?? GATEWAY_SETTINGS.aiMode;
+    const overrides = request.providerEnabledOverrides ?? {};
+    const preferenceOrder: ProviderKey[] = ["local_ollama", "groq", "gemini_ai_studio", "claude"];
+
+    const effectiveConfigured = (key: ProviderKey): boolean => {
+      const config = PROVIDER_CONFIGS.get(key);
+      if (key in overrides) return overrides[key];
+      return Boolean(config?.enabled && (PROVIDERS.find((p) => p.key === key)?.status === "connected"));
+    };
+
+    let chainKeys: ProviderKey[];
+    let premiumKeys: ProviderKey[];
+    if (aiMode === "local_only") {
+      chainKeys = preferenceOrder.filter((k) => PROVIDERS.find((p) => p.key === k)?.tier === "local");
+      premiumKeys = [];
+    } else if (aiMode === "premium_only") {
+      chainKeys = [];
+      premiumKeys = preferenceOrder.filter((k) => PROVIDERS.find((p) => p.key === k)?.tier === "premium");
+    } else if (aiMode === "automatic_premium") {
+      chainKeys = preferenceOrder;
+      premiumKeys = [];
+    } else {
+      chainKeys = preferenceOrder.filter((k) => PROVIDERS.find((p) => p.key === k)?.tier !== "premium");
+      premiumKeys = preferenceOrder.filter((k) => PROVIDERS.find((p) => p.key === k)?.tier === "premium");
+    }
+
+    const nodes: RoutingSimulationNode[] = [];
+    let reached = false;
+    let outcome: RoutingSimulationResult["outcome"] = "failed";
+    let outcomeDetail = "No configured provider is available for this capability.";
+
+    const pushNode = (key: ProviderKey, role: RoutingSimulationNode["role"], position: number) => {
+      const provider = PROVIDERS.find((p) => p.key === key);
+      const label = provider?.label ?? key;
+      const tier = provider?.tier ?? "premium";
+      const overridden = key in overrides;
+      const base = {
+        providerKey: key,
+        label,
+        tier,
+        role,
+        position,
+        configured: Boolean(PROVIDER_CONFIGS.get(key)?.enabled && provider?.status === "connected"),
+        overridden,
+        costPer1kInputUsd: provider?.costPer1kInputUsd ?? null,
+        costPer1kOutputUsd: provider?.costPer1kOutputUsd ?? null,
+      };
+
+      if (reached) {
+        nodes.push({ ...base, state: "skipped_not_reached", reason: `An earlier provider already satisfied this request; ${label} would not be reached.`, estimatedCostUsd: null });
+        return;
+      }
+      if (!effectiveConfigured(key)) {
+        nodes.push({ ...base, state: "skipped_not_configured", reason: `${label} is not configured${overridden ? " (simulated override)" : ""}.`, estimatedCostUsd: null });
+        return;
+      }
+      const estimatedCostUsd = provider ? (provider.costPer1kInputUsd ?? 0) * 4 : null;
+      if (role === "premium" && GATEWAY_SETTINGS.requirePremiumApproval) {
+        reached = true;
+        outcome = "waiting";
+        outcomeDetail = `${label} would require your explicit premium approval before use.`;
+        nodes.push({ ...base, state: "requires_approval", reason: `Local/free tier exhausted for this capability${overridden ? " (simulated override)" : ""}. ${label} would require your explicit approval before use.`, estimatedCostUsd });
+      } else {
+        reached = true;
+        outcome = "success";
+        outcomeDetail = `${label} is configured${overridden ? " (simulated override)" : ""} and would serve this request.`;
+        nodes.push({ ...base, state: "would_call", reason: `${label} is configured${overridden ? " (simulated override)" : ""} and next in the chain - this is the provider that would actually be used.`, estimatedCostUsd });
+      }
+    };
+
+    let position = 0;
+    chainKeys.forEach((key, i) => pushNode(key, i === 0 ? "primary" : "fallback", position++));
+    premiumKeys.forEach((key) => pushNode(key, "premium", position++));
+
+    const featureLabel = request.capability === "research_analysis" ? "Prospect Research" : request.capability === "outreach_email_generation" ? "Email Drafting" : "General";
+
+    return delay({
+      capability: request.capability,
+      featureLabel,
+      aiModeUsed: aiMode,
+      requestedCapabilities: request.capability === "research_analysis" || request.capability === "outreach_email_generation" ? ["structured_output"] : [],
+      capabilityExcluded: [],
+      nodes,
+      outcome,
+      outcomeDetail,
+    });
   }
 }

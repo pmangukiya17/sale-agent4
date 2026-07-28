@@ -1,6 +1,7 @@
 import { Card, PlaceholderNotice } from "../../design-system";
 import { useRouting } from "../../ai-gateway/hooks/useRouting";
 import { RoutingChainVisualizer } from "../../ai-gateway/components/RoutingChainVisualizer";
+import { RoutingSimulatorPanel } from "../../ai-gateway/components/RoutingSimulatorPanel";
 
 /**
  * AIGatewayRouting — /ai-gateway/routing. Replays the last real (mock)
@@ -16,6 +17,8 @@ export default function AIGatewayRouting() {
 
   return (
     <div className="flex flex-col gap-4">
+      <RoutingSimulatorPanel />
+
       {isLoading ? (
         <p className="text-xs text-slate-500">Loading…</p>
       ) : decisions.length === 0 ? (

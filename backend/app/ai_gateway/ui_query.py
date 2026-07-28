@@ -59,7 +59,20 @@ from app.schemas.ai_gateway import (
     ProviderSummaryRead,
     RoutingDecisionRead,
     RoutingNodeRead,
+    RoutingSimulationNodeRead,
+    RoutingSimulationRead,
 )
+
+# M8.3 Step 4 (Routing Simulator). The AI_MODE values router._build_decision()
+# actually recognizes - anything else is treated as "hybrid_recommended"
+# by that function's own safe-fallback branch (see its docstring). Kept
+# here (not in router.py or config.py) since this is purely an INPUT
+# VALIDATION concern for the simulator's own request body - router.py
+# itself deliberately never validates AI_MODE, it just falls back safely,
+# and this module is the one place a caller-supplied (as opposed to
+# settings-sourced) AI_MODE string first needs a clear 400 instead of a
+# silently-remapped value.
+VALID_AI_MODES = frozenset({"local_only", "hybrid_recommended", "automatic_premium", "premium_only"})
 
 # Cosmetic display labels only - never read by any routing/capability
 # decision (that stays entirely inside router.py/tiers.py/capabilities.py).
@@ -361,6 +374,150 @@ def _routing_preview_for_capability(capability: str) -> RoutingDecisionRead:
 
 def list_routing_decisions() -> list[RoutingDecisionRead]:
     return [_routing_preview_for_capability(capability) for capability in _LIVE_ROUTING_CAPABILITIES]
+
+
+# M8.3 Step 4 (Routing Simulator). Rough, disclosed placeholder prompt
+# length used ONLY for a hypothetical premium cost estimate (via
+# accounting.estimate_pre_call_cost_usd()'s own "~4 chars/token" heuristic
+# - see that function's own docstring) - the simulator has no real prompt
+# to measure (unlike a genuine pre-submission ai_preflight check, which
+# has a caller-supplied document count/char length). ~4000 chars is
+# ~1,000 input tokens - a reasonable single-request order of magnitude,
+# clearly caveated in RoutingSimulationRead's own docstring as an
+# estimate, never presented as exact.
+_SIMULATION_PLACEHOLDER_PROMPT_CHAR_LENGTH = 4000
+
+
+def _simulated_request_for_capability(capability: str) -> GatewayRequest:
+    """Builds the SAME shape of GatewayRequest the two live capabilities'
+    own real callers actually construct (see
+    app.research.ai_preflight.compute_ai_preflight()/
+    app.outreach.channels.llm_agent's own ExecutionPolicy) - specifically
+    so the simulator's capability-filter panel reflects a REAL requirement
+    (both currently require structured_output via a JSON response_format),
+    not an always-empty one. Any other capability (including "default")
+    gets a plain GatewayRequest with no special requirements - honest,
+    since this module has no other real capability's shape to reuse yet
+    (mirrors _capability_display()'s own "unknown capability, degrade
+    gracefully" convention one function up)."""
+    if capability == "research_analysis":
+        from app.research.analysis.llm_agent import RESPONSE_FORMAT
+
+        return GatewayRequest(capability=capability, response_format=RESPONSE_FORMAT)
+    if capability == "outreach_email_generation":
+        from app.outreach.channels.llm_agent import RESPONSE_FORMAT
+
+        return GatewayRequest(capability=capability, response_format=RESPONSE_FORMAT)
+    return GatewayRequest(capability=capability)
+
+
+def _default_model_safe(provider_key: str) -> str | None:
+    provider_cls = PROVIDER_CLIENT_REGISTRY.get(provider_key)
+    if provider_cls is None:
+        return None
+    try:
+        return provider_cls().default_model
+    except Exception:  # noqa: BLE001 - a simulator must never 500 because one provider's constructor is picky
+        return None
+
+
+def simulate_routing(
+    capability: str,
+    *,
+    ai_mode_override: str | None = None,
+    provider_enabled_overrides: dict[str, bool] | None = None,
+) -> RoutingSimulationRead:
+    """M8.3 Step 4 (Routing Simulator). READ-ONLY - never attempts a real
+    provider call, never writes to any table, never changes
+    `settings.AI_MODE` or any provider's real `enabled` flag.
+    `ai_mode_override`/`provider_enabled_overrides` are purely
+    hypothetical inputs to a pure computation
+    (`app.ai_gateway.routing_simulator.build_simulation()` - see that
+    module's own docstring for the full "pure core, impure shell" split
+    this function is the impure half of).
+
+    Reuses `router._build_decision()` directly (the exact function real
+    routing calls, tier/AI_MODE-partitioned, already fully pure/tested by
+    `tests/test_ai_provider_hierarchy_pure.py`) rather than
+    `router.ProviderRouter.select()` - this function needs the
+    PRE-capability-filter decision so `build_simulation()` can attach a
+    capability-mismatch exclusion to its own node (see that function's
+    own docstring for why `ProviderRouter.select()`'s already-filtered
+    result wouldn't work for this).
+
+    `capability` may be any string, including one not in
+    `CAPABILITY_PROVIDER_PREFERENCE` - falls back to the "default"
+    preference entry, exactly like real routing does."""
+    from app.ai_gateway.accounting import estimate_pre_call_cost_usd
+    from app.ai_gateway.capabilities import derive_required_capabilities
+    from app.ai_gateway.router import _DEFAULT_CAPABILITY_KEY, _build_decision
+    from app.ai_gateway.routing_simulator import build_simulation
+    from app.core.config import settings  # lazy - matches router.py's own discipline
+
+    ai_mode = ai_mode_override or settings.AI_MODE
+    preference = CAPABILITY_PROVIDER_PREFERENCE.get(capability, CAPABILITY_PROVIDER_PREFERENCE[_DEFAULT_CAPABILITY_KEY])
+    decision = _build_decision(preference, ai_mode)
+
+    request = _simulated_request_for_capability(capability)
+    required = derive_required_capabilities(request)
+    provider_level = {key: cls.capabilities for key, cls in PROVIDER_CLIENT_REGISTRY.items()}
+
+    def _estimate_cost(provider_key: str) -> float | None:
+        model = _default_model_safe(provider_key)
+        if model is None:
+            return None
+        return estimate_pre_call_cost_usd(
+            provider_key=provider_key, model=model, prompt_char_length=_SIMULATION_PLACEHOLDER_PROMPT_CHAR_LENGTH
+        )
+
+    result = build_simulation(
+        decision,
+        required,
+        provider_level=provider_level,
+        is_configured=_is_configured_safe,
+        overrides=provider_enabled_overrides,
+        require_premium_approval=settings.AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL,
+        tier_of=lambda key: tier_of(key).value,
+        label_of=lambda key: _PROVIDER_LABELS.get(key, key),
+        price_of=_provider_default_prices,
+        estimate_cost=_estimate_cost,
+    )
+
+    feature_label, _agent = _capability_display(capability)
+    requested_capabilities = []
+    if required.structured_output:
+        requested_capabilities.append("structured_output")
+    if required.tool_calling:
+        requested_capabilities.append("tool_calling")
+    if required.reasoning_support:
+        requested_capabilities.append("reasoning_support")
+
+    return RoutingSimulationRead(
+        capability=capability,
+        feature_label=feature_label,
+        ai_mode_used=ai_mode,
+        requested_capabilities=requested_capabilities,
+        capability_excluded=result.capability_excluded,
+        nodes=[
+            RoutingSimulationNodeRead(
+                provider_key=n.provider_key,
+                label=_PROVIDER_LABELS.get(n.provider_key, n.provider_key),
+                tier=n.tier,
+                role=n.role,
+                position=n.position,
+                state=n.state,
+                reason=n.reason,
+                configured=n.configured,
+                overridden=n.overridden,
+                cost_per_1k_input_usd=n.cost_per_1k_input_usd,
+                cost_per_1k_output_usd=n.cost_per_1k_output_usd,
+                estimated_cost_usd=n.estimated_cost_usd,
+            )
+            for n in result.nodes
+        ],
+        outcome=result.outcome,
+        outcome_detail=result.outcome_detail,
+    )
 
 
 def get_provider_config(db: Session, provider_key: str) -> ProviderConfigRead | None:

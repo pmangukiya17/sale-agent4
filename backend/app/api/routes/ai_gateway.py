@@ -21,6 +21,8 @@ from app.schemas.ai_gateway import (
     ProviderConfigWrite,
     ProviderSummaryRead,
     RoutingDecisionRead,
+    RoutingSimulationRead,
+    RoutingSimulationRequest,
 )
 
 router = APIRouter()
@@ -102,6 +104,38 @@ def list_routing_decisions(
     current_user: User = Depends(get_current_user),
 ) -> list[RoutingDecisionRead]:
     return ui_query.list_routing_decisions()
+
+
+@router.post("/ai-gateway/routing/simulate", response_model=RoutingSimulationRead)
+def simulate_routing(
+    body: RoutingSimulationRequest,
+    current_user: User = Depends(get_current_user),
+) -> RoutingSimulationRead:
+    """M8.3 Step 4 (Routing Simulator). READ-ONLY, same trust level as the
+    pre-existing GET /ai-gateway/routing "live preview" above - not
+    admin-gated, since this never mutates anything and never exposes a
+    credential (no api_key/base_url field anywhere in
+    RoutingSimulationRead). `ai_mode_override`/`provider_enabled_overrides`
+    are purely hypothetical, never persisted - see
+    ui_query.simulate_routing()'s own docstring. POST (not GET) because
+    `provider_enabled_overrides` is a nested dict, which doesn't have a
+    clean query-string shape - same reasoning `test-connection` above
+    uses POST despite also being read-only."""
+    if body.ai_mode_override is not None and body.ai_mode_override not in ui_query.VALID_AI_MODES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Unrecognized ai_mode_override '{body.ai_mode_override}'. Must be one of: {sorted(ui_query.VALID_AI_MODES)}",
+        )
+    if body.provider_enabled_overrides:
+        unknown = [key for key in body.provider_enabled_overrides if key not in PROVIDER_CLIENT_REGISTRY]
+        if unknown:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unknown provider_key(s) in provider_enabled_overrides: {unknown}")
+
+    return ui_query.simulate_routing(
+        body.capability,
+        ai_mode_override=body.ai_mode_override,
+        provider_enabled_overrides=body.provider_enabled_overrides,
+    )
 
 
 @router.get("/ai-gateway/settings", response_model=GatewaySettingsRead)

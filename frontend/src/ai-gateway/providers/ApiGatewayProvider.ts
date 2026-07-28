@@ -16,6 +16,9 @@ import type {
   ProviderTier,
   RoutingDecision,
   RoutingNode,
+  RoutingSimulationNode,
+  RoutingSimulationRequestInput,
+  RoutingSimulationResult,
 } from "../types";
 import type { GatewayDataProvider } from "./GatewayDataProvider";
 
@@ -274,6 +277,62 @@ function toModelRole(raw: RawModelRole): ModelRole {
   };
 }
 
+interface RawRoutingSimulationNode {
+  provider_key: string;
+  label: string;
+  tier: string;
+  role: string;
+  position: number;
+  state: string;
+  reason: string;
+  configured: boolean;
+  overridden: boolean;
+  cost_per_1k_input_usd: number | null;
+  cost_per_1k_output_usd: number | null;
+  estimated_cost_usd: number | null;
+}
+
+interface RawRoutingSimulationResult {
+  capability: string;
+  feature_label: string;
+  ai_mode_used: string;
+  requested_capabilities: string[];
+  capability_excluded: string[];
+  nodes: RawRoutingSimulationNode[];
+  outcome: string;
+  outcome_detail: string;
+}
+
+function toRoutingSimulationNode(raw: RawRoutingSimulationNode): RoutingSimulationNode {
+  return {
+    providerKey: raw.provider_key,
+    label: raw.label,
+    tier: raw.tier as ProviderTier,
+    role: raw.role as RoutingSimulationNode["role"],
+    position: raw.position,
+    state: raw.state as RoutingSimulationNode["state"],
+    reason: raw.reason,
+    configured: raw.configured,
+    overridden: raw.overridden,
+    costPer1kInputUsd: raw.cost_per_1k_input_usd,
+    costPer1kOutputUsd: raw.cost_per_1k_output_usd,
+    estimatedCostUsd: raw.estimated_cost_usd,
+  };
+}
+
+function toRoutingSimulationResult(raw: RawRoutingSimulationResult): RoutingSimulationResult {
+  return {
+    capability: raw.capability,
+    featureLabel: raw.feature_label,
+    aiModeUsed: raw.ai_mode_used,
+    requestedCapabilities: raw.requested_capabilities,
+    capabilityExcluded: raw.capability_excluded,
+    nodes: raw.nodes.map(toRoutingSimulationNode),
+    outcome: raw.outcome as ActivityStatus,
+    outcomeDetail: raw.outcome_detail,
+  };
+}
+
 function toGatewaySettings(raw: RawGatewaySettings): GatewaySettings {
   return {
     aiMode: raw.ai_mode,
@@ -385,6 +444,16 @@ export class ApiGatewayProvider implements GatewayDataProvider {
 
   async deleteModelRole(roleName: string): Promise<void> {
     await this.http.delete(`/ai-gateway/model-roles/${roleName}`);
+  }
+
+  async simulateRouting(request: RoutingSimulationRequestInput): Promise<RoutingSimulationResult> {
+    const body = {
+      capability: request.capability,
+      ai_mode_override: request.aiModeOverride,
+      provider_enabled_overrides: request.providerEnabledOverrides,
+    };
+    const res = await this.http.post<RawRoutingSimulationResult>("/ai-gateway/routing/simulate", body);
+    return toRoutingSimulationResult(res.data);
   }
 }
 

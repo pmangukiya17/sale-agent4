@@ -232,6 +232,72 @@ class ModelRoleRead(BaseModel):
     updated_by_user_email: str | None
 
 
+class RoutingSimulationRequest(BaseModel):
+    """M8.3 (AI Gateway Management & Control, Step 4 - Routing Simulator).
+    Request body for `POST /ai-gateway/routing/simulate`. READ-ONLY -
+    this endpoint never mutates any setting, never attempts a real
+    provider call; `ai_mode_override`/`provider_enabled_overrides` are
+    purely hypothetical inputs to a pure computation (see
+    `app.ai_gateway.routing_simulator.build_simulation()`'s own docstring),
+    never persisted anywhere. `ai_mode_override` left `None` uses the
+    real, live `settings.AI_MODE`. `provider_enabled_overrides` left
+    `None`/empty uses each provider's real, live `is_configured()` value
+    for every provider; a provider_key present in the dict has its
+    EFFECTIVE (simulated) enabled state taken from the override instead -
+    see `RoutingSimulationNodeRead.overridden` for how a caller can tell
+    which nodes reflect a hypothetical rather than a real fact."""
+
+    capability: str
+    ai_mode_override: str | None = None
+    provider_enabled_overrides: dict[str, bool] | None = None
+
+
+class RoutingSimulationNodeRead(BaseModel):
+    """M8.3 Step 4. One candidate provider_key in the FULL preference
+    order for this capability - see
+    `app.ai_gateway.routing_simulator.SimulationNode`'s own docstring for
+    field meanings. `state` is one of: "would_call" (this is the provider
+    that would actually serve the request), "requires_approval" (a
+    premium candidate gated behind the approval prompt),
+    "skipped_not_configured", "skipped_capability_mismatch", or
+    "skipped_not_reached" (an earlier candidate already satisfied the
+    request)."""
+
+    provider_key: str
+    label: str
+    tier: str
+    role: str
+    position: int
+    state: str
+    reason: str
+    configured: bool
+    overridden: bool
+    cost_per_1k_input_usd: float | None
+    cost_per_1k_output_usd: float | None
+    estimated_cost_usd: float | None
+
+
+class RoutingSimulationRead(BaseModel):
+    """M8.3 Step 4. Response for `POST /ai-gateway/routing/simulate` - the
+    full, explained routing decision for one capability, under whatever
+    real-or-hypothetical AI_MODE/provider-enabled inputs were given.
+    `requested_capabilities` is which of structured_output/tool_calling/
+    reasoning_support this (simulated) request actually needs -
+    `capability_excluded` is which candidate provider_keys were removed
+    from consideration because they don't support one of those (mirrors
+    `RoutingDecision.capability_excluded` - see router.py's own
+    docstring)."""
+
+    capability: str
+    feature_label: str
+    ai_mode_used: str
+    requested_capabilities: list[str]
+    capability_excluded: list[str]
+    nodes: list[RoutingSimulationNodeRead]
+    outcome: str
+    outcome_detail: str
+
+
 class GatewaySettingsRead(BaseModel):
     """M8.2. GET /ai-gateway/settings - read-only. A direct, live
     projection of the actual settings AIGateway/ProviderRouter read at

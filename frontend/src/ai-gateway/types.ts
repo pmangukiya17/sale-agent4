@@ -201,3 +201,61 @@ export interface ModelRoleWrite {
   model?: string;
   enabled?: boolean;
 }
+
+/**
+ * RoutingSimulation* — M8.3 Step 4 (AI Gateway Management & Control,
+ * Routing Simulator) additions. Mirror
+ * backend/app/schemas/ai_gateway.py's RoutingSimulationRequest/
+ * RoutingSimulationNodeRead/RoutingSimulationRead field-for-field.
+ *
+ * READ-ONLY end to end: `simulateRouting()` (see GatewayDataProvider.ts)
+ * never mutates any setting and never attempts a real provider call -
+ * `aiModeOverride`/`providerEnabledOverrides` are purely hypothetical
+ * inputs to a pure backend computation, never persisted. This is
+ * intentionally a DIFFERENT, richer node shape than `RoutingNode` above
+ * (which only ever replays a PAST/live decision with five generic
+ * states) - the simulator shows the FULL candidate chain (including
+ * providers that would never be reached) with a distinct state per
+ * candidate and a human-readable reason, per the CEO's own Step 4
+ * requirements.
+ */
+export type RoutingSimulationRole = "primary" | "fallback" | "premium";
+
+export type RoutingSimulationNodeState =
+  | "would_call"
+  | "requires_approval"
+  | "skipped_not_configured"
+  | "skipped_capability_mismatch"
+  | "skipped_not_reached";
+
+export interface RoutingSimulationNode {
+  providerKey: string;
+  label: string;
+  tier: ProviderTier;
+  role: RoutingSimulationRole;
+  position: number;
+  state: RoutingSimulationNodeState;
+  reason: string;
+  configured: boolean;
+  overridden: boolean;
+  costPer1kInputUsd: number | null;
+  costPer1kOutputUsd: number | null;
+  estimatedCostUsd: number | null;
+}
+
+export interface RoutingSimulationRequestInput {
+  capability: string;
+  aiModeOverride?: string;
+  providerEnabledOverrides?: Record<string, boolean>;
+}
+
+export interface RoutingSimulationResult {
+  capability: string;
+  featureLabel: string;
+  aiModeUsed: string;
+  requestedCapabilities: string[];
+  capabilityExcluded: string[];
+  nodes: RoutingSimulationNode[];
+  outcome: ActivityStatus;
+  outcomeDetail: string;
+}
