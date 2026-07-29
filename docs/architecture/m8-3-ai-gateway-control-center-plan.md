@@ -152,3 +152,43 @@ CEO-noted future recommendations (both explicitly NOT for this milestone, record
 4. **Retry/timeout → stay global for now.** No change to `AIGateway._walk()`'s single shared `AI_GATEWAY_MAX_ATTEMPTS_PER_PROVIDER`/`AI_GATEWAY_DEFAULT_TIMEOUT_SECONDS` this milestone. Provider Management ships API keys/base URL/default model/enable-per-provider only; per-provider retry/timeout is explicitly deferred.
 
 These narrow section 3's four challenges to a locked scope — updating the plan below accordingly.
+
+## 13. Step 7 (Premium Approval UI) — detailed architecture + implementation plan (DRAFT, pending CEO approval)
+
+Full detailed plan produced 2026-07-29, following Steps 1–6's own precedent of a dedicated per-step design pass before code. Builds on, does not re-open, Section 12 Decision 1 (pre-authorization, not pause/resume).
+
+Key findings that sharpen Decision 1 into a concrete design:
+
+- `AIRequestLog` has no linkage back to the originating business request (no `subject_type`/`subject_id`) — confirms pause/resume (option (a)) was correctly ruled out; there is nothing to resume even if wanted.
+- `GET /ai-gateway/approvals` (M8.2) already exists, read-only, not admin-gated, scoped to the caller's own companies.
+- The frontend Premium Approval Center (`AIGatewayApprovals.tsx`, `ApprovalCard`, `useApprovals`, nav entry, Overview preview) already exists end-to-end, built specifically anticipating this step — `ApprovalCard`'s own docstring says its `onApprove`/`onReject` props are "not wired to any backend mutation in this milestone." Step 7 is wiring plus one new History surface, not new frontend architecture.
+- A second, separate approval surface already exists in Research (`app/research/ai_preflight.py`'s pre-submission Yes/No dialog) — self-service, per-request, distinct from this step's centralized admin queue. Both are legitimate; the design states how they relate rather than colliding.
+- `AIGateway` is currently a deliberately DB-free class (`request_log.py`'s own docstring). The new pre-authorization check is its first DB read on the decision path — small, fail-safe by design (any DB error falls back to requiring approval, never bypasses it), but a real precedent worth naming rather than glossing over.
+- Pre-authorization scope `(company_profile_id, capability)` only takes effect for capabilities that thread `company_profile_id` into `GatewayRequest` — confirmed true for Research and Outreach, NOT yet true for Supervisor-invoked agents (`app/supervisor/runtime.py`) or Research's own pre-submission preflight call (`ai_preflight.py` omits it). Both are small, disclosed, one-field fast-follow gaps, not blockers.
+
+New backend surface (additive only): `AIPremiumPreauthorization` model/migration (company_profile_id, capability, decision, decided_by_user_id, source_request_log_id, decided_at, expires_at), `app/ai_gateway/premium_preauthorization.py` (`is_premium_preauthorized()` read + `grant_preauthorization()` write), one new condition ORed into `client.py`'s two existing gate checks, `POST /ai-gateway/approvals/{id}/approve|reject` + `GET /ai-gateway/approvals/history` (all three admin-gated, matching Steps 2/3's precedent), one new `status` field on `ApprovalRequestRead`.
+
+New frontend surface: `ApprovalConfirmDialog` (new — the one genuinely new interaction, since a real mutation now has real consequences), `ApprovalHistoryTable` (new), `ApprovalFilterBar` (new, client-side at current scale), plus wiring `ApprovalCard`'s existing callbacks, `useApprovals`, and `ApiGatewayProvider` to the new endpoints.
+
+Full plan (current architecture analysis, backend/frontend plans, sequence diagram, UX review, scalability review, self-critique, and testing plan) delivered to the CEO as a standalone document 2026-07-29; four open decisions flagged for explicit confirmation before implementation.
+
+### 13.1 CEO decisions (approved 2026-07-29) — supersedes the four open questions above
+
+1. **`AIPremiumPreauthorization.company_profile_id` → RESTRICT, not CASCADE.** Even though pre-authorizations are short-lived, they're governance/audit records, and this project has consistently moved toward protecting business data (Track A's own CASCADE→RESTRICT migration). Deleting a company while approval records still reference it must be an explicit administrative action, not a silent cascade. This is a reversal of this plan's own earlier recommendation (13.0/Section 2.2 above recommended CASCADE) — the CEO's reasoning is more consistent with this project's own established convention, so RESTRICT is correct and the earlier recommendation was the weaker call.
+2. **`AI_GATEWAY_PREMIUM_PREAUTH_MINUTES` = 120, not 60.** Realistic operational workflow (submit → admin unavailable → admin approves later → user retries) needs more slack than 60 minutes comfortably provides.
+3. **Permissions stay admin-only for Approve/Reject/History.** No company-owner permission tier introduced this step — confirms this plan's own recommendation (Section 2.6), keeping consistency with Provider Management/Model Role Management's existing admin boundary until a real RBAC/Organization milestone exists.
+4. **Notifications deferred entirely.** No `publish_event()`/Notification wiring this step, even though Section 6 called it out as a cheap, optional addition. Step 7 stays scoped exclusively to premium pre-authorization; notification workflows are explicitly pushed to a later milestone.
+5. **One required structural change: `PremiumApprovalResolver` abstraction.** The CEO does not want `AIGateway` directly coupled to database access (Section 2.1/7's own "first DB read on AIGateway's decision path" finding, called out as a real architectural wrinkle, was correct to flag — the CEO's response is to close the gap, not accept it as a disclosed limitation). Required shape:
+
+   ```
+   AIGateway
+       ↓
+   PremiumApprovalResolver   (abstract seam - AIGateway's only dependency)
+       ↓
+   Database implementation   (SQLAlchemy today, swappable later - cache, policy
+                               engine, distributed service, etc.)
+   ```
+
+   Implemented as a small ABC (`PremiumApprovalResolver`, one method: `is_preauthorized(*, company_profile_id, capability) -> bool`) plus one concrete `SQLAlchemyPremiumApprovalResolver`, injected into `AIGateway.__init__` via a new `premium_approval_resolver` constructor param — the exact same testability-seam shape `provider_lookup` already established (M7.2 precedent, `client.py`'s own docstring). `AIGateway` imports only the abstraction (lazily, inside a method, matching `_resolve_provider()`'s own existing lazy-import discipline that keeps `client.py` importable in the sqlalchemy-free pure test sandbox) — never SQLAlchemy, the model, or a session directly. Kept deliberately lightweight, not a large refactor: one new small file, one new constructor param, two one-line gate-check changes.
+
+All five incorporated into the implementation below. Proceeding to build per this plan, as approved.

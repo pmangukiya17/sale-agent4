@@ -63,8 +63,22 @@ export interface ActivityLogEntry {
   errorMessage: string | null;
 }
 
+/**
+ * `status` — M8.3 Step 7 (Premium Approval UI) addition. Mirrors backend
+ * `ApprovalRequestRead.status` field-for-field (see that schema's own
+ * docstring for the full semantics): whether an admin has already acted
+ * on the (company, capability) pair this flagged event belongs to.
+ * "approved" — a LIVE, non-expired pre-authorization exists right now.
+ * "rejected" — the most recent decision for that pair was a rejection, or
+ * an earlier approval has since expired with no later action.
+ * "pending" — no decision recorded yet, or the most recent one expired
+ * (an expired approval correctly reads as pending again).
+ */
+export type ApprovalStatus = "pending" | "approved" | "rejected";
+
 export interface ApprovalRequest {
   id: string;
+  status: ApprovalStatus;
   feature: string;
   reason: string;
   providerKey: ProviderKey;
@@ -73,6 +87,32 @@ export interface ApprovalRequest {
   requestedAt: string;
   waitingMinutes: number;
   companyName: string | null;
+}
+
+/**
+ * PremiumPreauthorization — M8.3 Step 7 (Premium Approval UI) addition.
+ * Mirrors backend/app/schemas/ai_gateway.py's PremiumPreauthorizationRead
+ * field-for-field. Returned by both `approveRequest()`/`rejectRequest()`
+ * (the row just written) and `listApprovalHistory()` (every past decision,
+ * most recent first) — see GatewayDataProvider.ts's own docstring for each
+ * method. This grants/records a PRE-AUTHORIZATION for the flagged event's
+ * own (company, capability) pair, NOT a resume of that specific request —
+ * there is nothing to resume (see ApprovalRequest's own "past EVENT, not a
+ * live blocking queue" framing above; the same honesty applies here).
+ * `decision` is `DECISION_APPROVED`/`DECISION_REJECTED`, never "pending" —
+ * a history row IS a decision, by definition.
+ */
+export interface PremiumPreauthorization {
+  id: string;
+  companyName: string | null;
+  capability: string;
+  feature: string;
+  decision: "approved" | "rejected";
+  decidedBy: string | null;
+  decidedAt: string;
+  expiresAt: string | null;
+  sourceReason: string | null;
+  sourceEstimatedCostUsd: number | null;
 }
 
 export type RoutingNodeState = "skipped" | "passed" | "terminal-success" | "terminal-waiting" | "terminal-failed";
@@ -305,4 +345,41 @@ export interface ProviderCapability {
   effective: CapabilityValues;
   hasModelOverride: boolean;
   overriddenFields: string[];
+}
+
+/**
+ * DiagnosticFinding / GatewayDiagnostics — M8.3 Step 6 (AI Gateway
+ * Management & Control, Gateway Diagnostics). Mirror
+ * backend/app/schemas/ai_gateway.py's DiagnosticFindingRead/
+ * GatewayDiagnosticsRead field-for-field.
+ *
+ * READ-ONLY end to end: `GET /ai-gateway/diagnostics` never mutates
+ * anything and there is no action to take against a finding here (same
+ * "nothing to action against" shape `ApprovalRequest`'s own docstring
+ * already established for Approvals). `severity` is the CEO's own
+ * "clearly separate warnings from errors" requirement made explicit -
+ * `"error"` (something is currently broken), `"warning"` (a real risk or
+ * silent gap), `"info"` (worth knowing, not a problem) - see
+ * `app.ai_gateway.diagnostics`'s own docstring for the full rationale
+ * behind each. `providerKey`/`capability` are `null` for a finding that
+ * isn't about one specific provider/capability.
+ */
+export type DiagnosticSeverity = "error" | "warning" | "info";
+
+export interface DiagnosticFinding {
+  category: string;
+  severity: DiagnosticSeverity;
+  title: string;
+  detail: string;
+  recommendation: string;
+  providerKey: string | null;
+  capability: string | null;
+}
+
+export interface GatewayDiagnostics {
+  generatedAt: string;
+  findings: DiagnosticFinding[];
+  errorCount: number;
+  warningCount: number;
+  infoCount: number;
 }

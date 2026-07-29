@@ -53,9 +53,12 @@ from app.schemas.ai_gateway import (
     AIProviderConfigAuditRead,
     ApprovalRequestRead,
     CapabilityValuesRead,
+    DiagnosticFindingRead,
+    GatewayDiagnosticsRead,
     GatewayOverviewRead,
     GatewaySettingsRead,
     ModelRoleRead,
+    PremiumPreauthorizationRead,
     ProviderCapabilityRead,
     ProviderConfigRead,
     ProviderSummaryRead,
@@ -91,6 +94,20 @@ _PROVIDER_LABELS: dict[str, str] = {
     "claude": "Claude",
     "openai": "OpenAI",
 }
+
+# The one error_type string that means "paused for an explicit premium
+# approval decision," never "a genuine execution failure" - a POLICY
+# outcome (the request never even reached a provider), not a broken call.
+# Centralized here (single source of truth) and reused by every function
+# below that needs to tell the two apart - `_status_of()`/`_chain_summary()`
+# (maps it to Activity's "waiting" status), `list_approvals()` (the ONLY
+# thing that actually filters FOR this error_type - Approvals is built
+# entirely from these rows), and `get_diagnostics()` (which must exclude
+# it from "observed failure" counting - see that function's own docstring
+# for why: a request awaiting approval is a normal, expected pause in the
+# premium-approval workflow, not a signal that a provider is broken, and
+# must never inflate a routing-failure finding's count).
+_PREMIUM_APPROVAL_ERROR_TYPE = "PremiumApprovalRequiredError"
 
 _CAPABILITY_DISPLAY: dict[str, tuple[str, str]] = {
     # capability -> (feature label, agent label) - cosmetic only.
@@ -289,13 +306,13 @@ def get_overview(db: Session, user: User) -> GatewayOverviewRead:
 
 
 def _status_of(entry: AIRequestLog) -> str:
-    if entry.error_type == "PremiumApprovalRequiredError":
+    if entry.error_type == _PREMIUM_APPROVAL_ERROR_TYPE:
         return "waiting"
     return "success" if entry.success else "failed"
 
 
 def _chain_summary(entry: AIRequestLog) -> str:
-    if entry.error_type == "PremiumApprovalRequiredError":
+    if entry.error_type == _PREMIUM_APPROVAL_ERROR_TYPE:
         return f"Awaiting premium approval ({entry.model or 'model unknown'})"
     if entry.success:
         provider_label = _PROVIDER_LABELS.get(entry.provider_key or "", entry.provider_key or "unknown provider")
@@ -347,7 +364,7 @@ def list_approvals(db: Session, user: User, *, limit: int = 50) -> list[Approval
         db.query(AIRequestLog)
         .filter(
             AIRequestLog.company_profile_id.in_(owned_ids),
-            AIRequestLog.error_type == "PremiumApprovalRequiredError",
+            AIRequestLog.error_type == _PREMIUM_APPROVAL_ERROR_TYPE,
         )
         .order_by(AIRequestLog.occurred_at.desc())
         .limit(limit)
@@ -362,6 +379,7 @@ def list_approvals(db: Session, user: User, *, limit: int = 50) -> list[Approval
         approvals.append(
             ApprovalRequestRead(
                 id=row.id,
+                status=_approval_status_for(db, row),
                 feature=feature,
                 reason=f"Local/free tier exhausted for '{row.capability}'; premium approval required.",
                 provider_key=row.provider_key or "unknown",
@@ -373,6 +391,97 @@ def list_approvals(db: Session, user: User, *, limit: int = 50) -> list[Approval
             )
         )
     return approvals
+
+
+def _approval_status_for(db: Session, row: AIRequestLog) -> str:
+    """M8.3 Step 7. Whether an admin has already acted on this row's own
+    (company_profile_id, capability) pair - see ApprovalRequestRead.status's
+    own docstring for the full three-state semantics. `row.company_profile_id`
+    can be None (see AIRequestLog's own docstring on why that's a normal
+    state) - `latest_decision_for()` needs a real id, so that case is
+    "pending" by construction, same safe default every other premium-
+    approval-adjacent function in this codebase already applies."""
+    if row.company_profile_id is None:
+        return "pending"
+    from app.ai_gateway.premium_preauthorization import DECISION_APPROVED, has_live_preauthorization, latest_decision_for
+
+    if has_live_preauthorization(db, company_profile_id=row.company_profile_id, capability=row.capability):
+        return "approved"
+    latest = latest_decision_for(db, company_profile_id=row.company_profile_id, capability=row.capability)
+    if latest is not None and latest.decision != DECISION_APPROVED:
+        return "rejected"
+    return "pending"
+
+
+def get_approval_request_log(db: Session, user: User, approval_id: uuid.UUID) -> AIRequestLog | None:
+    """M8.3 Step 7. Shared lookup+validation both `POST .../approve` and
+    `.../reject` (app/api/routes/ai_gateway.py) call before writing a
+    decision - `None` if the row doesn't exist, isn't actually a premium-
+    approval-required event, or doesn't belong to a company `user` can see
+    (the same `_owned_company_profile_ids()` isolation rule every other
+    query in this module already enforces) - the route layer turns `None`
+    into a 404, same "domain function returns None, route translates to
+    HTTP" shape `get_provider_config()`/`get_provider()` above already
+    use."""
+    row = db.get(AIRequestLog, approval_id)
+    if row is None or row.error_type != _PREMIUM_APPROVAL_ERROR_TYPE:
+        return None
+    if row.company_profile_id is None or row.company_profile_id not in _owned_company_profile_ids(db, user):
+        return None
+    return row
+
+
+def to_premium_preauthorization_read(db: Session, grant) -> PremiumPreauthorizationRead:
+    """M8.3 Step 7. Single-row conversion, shared by the approve/reject
+    routes (a freshly-written grant) and `list_approval_history()` below
+    (a batch of past ones) - one place this shape is ever assembled."""
+    feature, _agent = _capability_display(grant.capability)
+    company_name = None
+    if grant.company_profile_id is not None:
+        company = db.get(CompanyProfile, grant.company_profile_id)
+        company_name = company.name if company is not None else None
+    admin_name = None
+    if grant.decided_by_user_id is not None:
+        admin = db.get(User, grant.decided_by_user_id)
+        admin_name = (admin.full_name or admin.email) if admin is not None else None
+    source = db.get(AIRequestLog, grant.source_request_log_id) if grant.source_request_log_id else None
+    return PremiumPreauthorizationRead(
+        id=grant.id,
+        company_name=company_name,
+        capability=grant.capability,
+        feature=feature,
+        decision=grant.decision,
+        decided_by=admin_name,
+        decided_at=grant.decided_at,
+        expires_at=grant.expires_at,
+        source_reason=(
+            f"Local/free tier exhausted for '{grant.capability}'; premium approval required."
+            if source is not None
+            else None
+        ),
+        source_estimated_cost_usd=source.cost_usd if source is not None else None,
+    )
+
+
+def list_approval_history(db: Session, user: User, *, limit: int = 100) -> list[PremiumPreauthorizationRead]:
+    """M8.3 Step 7. GET /ai-gateway/approvals/history - every past Approve/
+    Reject decision for the caller's own companies, most recent first.
+    Admin-gated at the route layer (see app/api/routes/ai_gateway.py) - the
+    same "restrict the mutation, not the read" precedent doesn't apply
+    here since history IS the audit trail of a mutation, not a separate
+    read surface; kept admin-only for the same consistency reasoning
+    Approve/Reject themselves use (CEO decision, 2026-07-29). Reuses
+    `to_premium_preauthorization_read()` per-row (see that function's own
+    docstring) rather than a separate batch-shaped conversion - simpler,
+    and correct at this endpoint's own capped `limit` (<=500), not a
+    performance-sensitive hot path the way AIGateway's own gate check is."""
+    from app.ai_gateway.premium_preauthorization import list_preauthorization_history
+
+    owned_ids = _owned_company_profile_ids(db, user)
+    if not owned_ids:
+        return []
+    grants = list_preauthorization_history(db, company_profile_ids=owned_ids, limit=limit)
+    return [to_premium_preauthorization_read(db, grant) for grant in grants]
 
 
 _LIVE_ROUTING_CAPABILITIES = ["research_analysis", "outreach_email_generation"]
@@ -691,6 +800,114 @@ def list_model_roles(db: Session) -> list[ModelRoleRead]:
         )
         for row in rows
     ]
+
+
+def get_diagnostics(db: Session) -> GatewayDiagnosticsRead:
+    """M8.3 Step 6 (Gateway Diagnostics). GET /ai-gateway/diagnostics's
+    read projection - the impure shell over
+    `app.ai_gateway.diagnostics.build_diagnostics()`'s pure aggregation.
+    Every input handed to that function is built from an EXISTING function
+    this module already has, never a new, parallel source of truth:
+    `get_provider_config()` (per-provider `enabled`, already admin-gated
+    at its own route - this function just reads it directly here, not
+    through HTTP), `_is_configured_safe()`/`tier_of()` (the same provider-
+    health facts `list_providers()` itself reads), and
+    `list_routing_decisions()` (the SAME live routing preview the Routing
+    page already shows - this function does not build a second one).
+
+    Recent-failure aggregation is the one genuinely new query this
+    function adds: a GROUPED, GLOBAL (not user-scoped) count of failed
+    `AIRequestLog` rows in the last 24 hours, by (provider_key, error_type)
+    - global rather than per-user because a provider's health is instance-
+    wide infrastructure, same reasoning `ProviderSummaryRead.requests_today`
+    already documents for being aggregated globally. `PremiumApprovalRequiredError`
+    rows are excluded here (not a failure - see
+    `diagnostics.RoutingOutcomeInput`'s own "waiting" outcome for how that
+    state is surfaced instead)."""
+    from app.ai_gateway.diagnostics import (
+        FailureSummaryInput,
+        ProviderHealthInput,
+        RoutingOutcomeInput,
+        build_diagnostics,
+    )
+    from app.core.config import settings  # lazy - matches router.py's own discipline
+
+    providers_input: list[ProviderHealthInput] = []
+    for key in PROVIDER_CLIENT_REGISTRY:
+        config = get_provider_config(db, key)
+        if config is None:
+            continue
+        providers_input.append(
+            ProviderHealthInput(
+                provider_key=key,
+                label=_PROVIDER_LABELS.get(key, key),
+                tier=tier_of(key).value,
+                enabled=config.enabled,
+                configured=_is_configured_safe(key),
+            )
+        )
+
+    routing_outcomes = [
+        RoutingOutcomeInput(capability=d.id, feature_label=d.capability, outcome=d.outcome)
+        for d in list_routing_decisions()
+    ]
+
+    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    rows = (
+        db.query(AIRequestLog.provider_key, AIRequestLog.error_type, func.count(AIRequestLog.id))
+        .filter(
+            AIRequestLog.occurred_at >= since,
+            AIRequestLog.success.is_(False),
+            AIRequestLog.error_type.isnot(None),
+            # A row awaiting premium approval is a POLICY pause, not a
+            # genuine execution failure - see _PREMIUM_APPROVAL_ERROR_TYPE's
+            # own module-level docstring. It must never be grouped/counted
+            # here regardless of provider_key; it remains fully visible via
+            # list_approvals() above, which is the one place that
+            # deliberately filters FOR this exact error_type instead of
+            # against it.
+            AIRequestLog.error_type != _PREMIUM_APPROVAL_ERROR_TYPE,
+        )
+        .group_by(AIRequestLog.provider_key, AIRequestLog.error_type)
+        .all()
+    )
+    recent_failures = [
+        FailureSummaryInput(
+            provider_key=provider_key,
+            label=_PROVIDER_LABELS.get(provider_key or "", provider_key or "Unknown provider"),
+            error_type=error_type or "unknown_error",
+            count=int(count),
+        )
+        for provider_key, error_type, count in rows
+    ]
+
+    findings = build_diagnostics(
+        providers=providers_input,
+        ai_mode=settings.AI_MODE,
+        require_premium_approval=settings.AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL,
+        routing_outcomes=routing_outcomes,
+        recent_failures=recent_failures,
+    )
+
+    findings_read = [
+        DiagnosticFindingRead(
+            category=f.category,
+            severity=f.severity,
+            title=f.title,
+            detail=f.detail,
+            recommendation=f.recommendation,
+            provider_key=f.provider_key,
+            capability=f.capability,
+        )
+        for f in findings
+    ]
+    return GatewayDiagnosticsRead(
+        generated_at=datetime.now(timezone.utc),
+        findings=findings_read,
+        error_count=sum(1 for f in findings if f.severity == "error"),
+        warning_count=sum(1 for f in findings if f.severity == "warning"),
+        info_count=sum(1 for f in findings if f.severity == "info"),
+    )
 
 
 def get_settings() -> GatewaySettingsRead:

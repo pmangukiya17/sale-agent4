@@ -29,6 +29,7 @@ from app.models.workflow_event import Event
 from app.realtime import poller
 from app.realtime.broadcaster import BROADCASTER
 from app.workflow_engine.events import publish_event
+from tests.event_backbone_cleanup import delete_events_and_dependents
 
 
 def _now():
@@ -55,8 +56,14 @@ class TestRealtimePoller(unittest.IsolatedAsyncioTestCase):
 
     def tearDown(self):
         self.db.rollback()
-        self.db.query(Event).filter(Event.company_profile_id == self.company_profile.id).delete(synchronize_session=False)
-        self.db.commit()
+        # Generalized fix (CEO review, 2026-07-28 - see
+        # test_research_workflow_e2e.py's own tearDown for the full
+        # writeup): NotificationDispatch/Notification are intentionally
+        # independent, RESTRICT-FK'd consumers of Event, and this
+        # project's real, always-on notification worker can insert one
+        # referencing this test's own Events at any time - delete the
+        # complete dependent set before the Event delete itself.
+        delete_events_and_dependents(self.db, company_profile_id=self.company_profile.id)
         self.db.query(CompanyProfile).filter(CompanyProfile.id == self.company_profile.id).delete()
         self.db.query(User).filter(User.id == self.user.id).delete()
         self.db.commit()

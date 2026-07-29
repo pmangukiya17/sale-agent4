@@ -292,6 +292,21 @@ class Settings(BaseSettings):
     # tier ordering without ever seeing the approval prompt.
     AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL: bool = True
 
+    # M8.3 Step 7 (Premium Approval UI). The pre-authorization window
+    # length: once an admin Approves a flagged capability/company via the
+    # Premium Approval Center, AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL's own
+    # gate above is skipped for that exact (company_profile_id, capability)
+    # pair for this many minutes (see
+    # app.ai_gateway.premium_approval_resolver's own docstring) - NOT a
+    # resume of the specific original request (there is nothing to resume -
+    # see docs/architecture/m8-3-ai-gateway-control-center-plan.md Section
+    # 13's own writeup of why pause/resume was explicitly ruled out). 120
+    # (CEO decision, 2026-07-29, revised up from an initial 60-minute
+    # recommendation): matches the realistic "user submits, admin is
+    # unavailable, admin approves later, user retries" operational cycle
+    # better than a tighter window would.
+    AI_GATEWAY_PREMIUM_PREAUTH_MINUTES: int = 120
+
     # Local inference - deliberately NOT a bespoke Ollama SDK integration.
     # Ollama, vLLM, LM Studio, and text-generation-webui all implement the
     # OpenAI chat-completions wire format, so LocalOllamaProviderClient

@@ -238,6 +238,156 @@ class TestProviderCapabilities(AIGatewayUIQueryTestBase):
             self.assertEqual(entry.provider_level.reasoning_support, cls.capabilities.reasoning_support)
 
 
+class TestGatewayDiagnostics(AIGatewayUIQueryTestBase):
+    """M8.3 Step 6 (Gateway Diagnostics). get_diagnostics()'s own
+    aggregation logic (severity assignment, per-category grouping) is
+    already fully covered by tests/test_ai_gateway_diagnostics_pure.py
+    against build_diagnostics() directly - this class covers only the
+    IMPURE glue this function adds on top of that: the grouped, GLOBAL
+    (not user-scoped - see this function's own docstring) AIRequestLog
+    failure query, and that generated_at/error_count/warning_count/
+    info_count are wired correctly off whatever build_diagnostics()
+    actually returns.
+
+    CEO review fix (2026-07-28): the recent-failures query is
+    deliberately GLOBAL/unscoped (see get_diagnostics()'s own docstring
+    for why), which means this shared Docker/Postgres database can
+    legitimately already contain OTHER failure rows - from a previous
+    manual verification pass, another test class, or real usage - by the
+    time any one of these tests runs. The original version of this class
+    asserted the ENTIRE findings list contained no "...time(s)..." title
+    (or was scoped to a real provider_key like "claude"/"groq" that
+    production code also uses), which is exactly the kind of assertion
+    pre-existing, unrelated failure noise can flip from pass to fail with
+    zero connection to the thing actually being tested - that is what
+    produced the reported failure, not a logic bug in the exclusion
+    itself (confirmed by code review: the SQL filter
+    `AIRequestLog.error_type != _PREMIUM_APPROVAL_ERROR_TYPE` already
+    excludes it correctly). Every test below is now written to be immune
+    to that noise: either a BEFORE/AFTER delta on the exact counts (so a
+    pre-existing finding contributes equally to both sides and cancels
+    out), or a synthetic provider_key (`__diag_test_provider__`) that
+    cannot collide with any real provider_key production code would ever
+    write."""
+
+    _SYNTHETIC_PROVIDER_KEY = "__diag_test_provider__"
+
+    def test_generated_at_is_a_fresh_timestamp(self):
+        before = datetime.now(timezone.utc)
+        result = ui_query.get_diagnostics(self.db)
+        after = datetime.now(timezone.utc)
+        generated_at = result.generated_at if result.generated_at.tzinfo else result.generated_at.replace(tzinfo=timezone.utc)
+        self.assertLessEqual(before, generated_at)
+        self.assertLessEqual(generated_at, after)
+
+    def test_severity_counts_match_findings(self):
+        result = ui_query.get_diagnostics(self.db)
+        self.assertEqual(result.error_count, sum(1 for f in result.findings if f.severity == "error"))
+        self.assertEqual(result.warning_count, sum(1 for f in result.findings if f.severity == "warning"))
+        self.assertEqual(result.info_count, sum(1 for f in result.findings if f.severity == "info"))
+        self.assertEqual(
+            len(result.findings), result.error_count + result.warning_count + result.info_count
+        )
+
+    def test_recent_failure_surfaces_as_a_routing_finding(self):
+        # company_profile_id is deliberately omitted (None) here - the
+        # recent-failure query is GLOBAL, unlike list_activity()/
+        # list_approvals(), so an unattributed row must still be counted.
+        # provider_key is a synthetic value unique to this test, so this
+        # assertion can safely require EXACTLY one match regardless of
+        # what else may already be in the database.
+        self._add_log(
+            company_profile_id=None,
+            provider_key=self._SYNTHETIC_PROVIDER_KEY,
+            success=False,
+            error_type="ProviderTimeoutError",
+            cost_usd=0.0,
+        )
+        result = ui_query.get_diagnostics(self.db)
+        matches = [f for f in result.findings if f.provider_key == self._SYNTHETIC_PROVIDER_KEY and f.category == "routing"]
+        self.assertEqual(len(matches), 1)
+        self.assertIn("1 time", matches[0].title)
+        self.assertEqual(matches[0].severity, "warning")
+        # A genuine execution failure (this one) DOES contribute to the
+        # warning count - confirms severity calculation still holds after
+        # the approval-exclusion fix below.
+        self.assertGreaterEqual(result.warning_count, 1)
+
+    def test_premium_approval_required_row_is_excluded_from_failure_findings(self):
+        # CEO's core requirement: "approval events do not increase
+        # failure counts." Captured as a BEFORE/AFTER delta on the
+        # error/warning/info counts, not an absolute "must be empty"
+        # assertion - this is the one change that makes the test immune
+        # to any pre-existing failure noise already in the database (see
+        # this class's own docstring) while still being a strictly
+        # stronger check: if inserting this row created even ONE new
+        # finding of any severity, the counts would differ and this
+        # assertion would correctly fail.
+        before = ui_query.get_diagnostics(self.db)
+
+        self._add_log(
+            company_profile_id=None,
+            provider_key=None,
+            success=False,
+            error_type="PremiumApprovalRequiredError",
+            cost_usd=0.0,
+        )
+
+        after = ui_query.get_diagnostics(self.db)
+        self.assertEqual(after.error_count, before.error_count)
+        self.assertEqual(after.warning_count, before.warning_count)
+        self.assertEqual(after.info_count, before.info_count)
+        self.assertEqual(len(after.findings), len(before.findings))
+
+        # Direct, surgical check for the exact bug this test exists to
+        # catch: no finding anywhere may attribute a failure specifically
+        # to PremiumApprovalRequiredError.
+        self.assertFalse(any("PremiumApprovalRequiredError" in f.detail for f in after.findings))
+
+    def test_premium_approval_required_row_remains_visible_in_approvals(self):
+        # The other half of "Premium Approval Required remains visible in
+        # approval-related views" - proven in the SAME test as the
+        # diagnostics exclusion so it's clear this is a redirection, not
+        # a deletion: the event is fully visible via list_approvals(),
+        # just never counted as a routing failure via get_diagnostics().
+        self._add_log(
+            company_profile_id=self.profile_a.id,
+            provider_key=None,
+            success=False,
+            error_type="PremiumApprovalRequiredError",
+            cost_usd=0.05,
+        )
+
+        approvals = ui_query.list_approvals(self.db, self.user_a)
+        self.assertEqual(len(approvals), 1)
+        self.assertAlmostEqual(approvals[0].estimated_cost_usd, 0.05)
+
+        diagnostics = ui_query.get_diagnostics(self.db)
+        self.assertFalse(any("PremiumApprovalRequiredError" in f.detail for f in diagnostics.findings))
+
+    def test_old_failure_outside_lookback_window_is_not_counted(self):
+        before = ui_query.get_diagnostics(self.db)
+
+        self._add_log(
+            company_profile_id=None,
+            provider_key=self._SYNTHETIC_PROVIDER_KEY,
+            success=False,
+            error_type="ProviderUnavailableError",
+            occurred_at=datetime.now(timezone.utc) - timedelta(hours=48),
+            cost_usd=0.0,
+        )
+
+        after = ui_query.get_diagnostics(self.db)
+        # A row outside the 24-hour lookback window must not change any
+        # count - same before/after-delta shape as the approval-required
+        # test above, for the same DB-noise-immunity reason.
+        self.assertEqual(after.error_count, before.error_count)
+        self.assertEqual(after.warning_count, before.warning_count)
+        self.assertEqual(after.info_count, before.info_count)
+        matches = [f for f in after.findings if f.provider_key == self._SYNTHETIC_PROVIDER_KEY]
+        self.assertEqual(matches, [])
+
+
 class TestSettings(AIGatewayUIQueryTestBase):
     def test_reflects_real_config_values(self):
         from app.core.config import settings as real_settings

@@ -65,12 +65,42 @@ def _fetch_new_events_sync(last_seen: int | None) -> list[Event]:
     """Runs on a worker thread via asyncio.to_thread - a fresh, short-
     lived session per tick, same discipline as every other worker's
     per-item session in this codebase (never one long-held session
-    spanning the whole process lifetime)."""
+    spanning the whole process lifetime).
+
+    `last_seen is None` (no watermark established yet) is handled as its
+    own case, fetching the NEWEST batch (DESC, then reversed back to
+    ascending) rather than the plain `ORDER BY sequence_no ASC LIMIT n`
+    every other tick uses. This was a real, latent bug (found + root-
+    caused during CEO review, 2026-07-28 - see this project's own
+    verify_m8_3_step6_gateway_diagnostics.sh for the full writeup):
+    fetching the OLDEST batch with no floor works only as long as
+    `events` holds fewer than REALTIME_STREAM_POLL_BATCH_SIZE rows total,
+    system-wide - once a long-lived `events` table accumulates more
+    history than that ahead of "now" (which any real, growing deployment
+    eventually will), a event published the moment the watermark is
+    unset would never fall inside that oldest-N window and would never
+    be dispatched. In real production this branch is essentially never
+    exercised - `_run_forever()` always calls `_initialize_watermark()`
+    (MAX(sequence_no)) before the poll loop starts, so `last_seen` is
+    only ever None here on a genuinely empty `events` table (where either
+    ordering trivially returns nothing) - but this poller's own
+    module docstring's contract ("push events published from the moment
+    the watermark was established, not all of history") only holds if
+    the None case means "catch me up starting now", not "start from the
+    dawn of time"."""
     db = SessionLocal()
     try:
-        stmt = select(Event).order_by(Event.sequence_no.asc()).limit(settings.REALTIME_STREAM_POLL_BATCH_SIZE)
-        if last_seen is not None:
-            stmt = stmt.where(Event.sequence_no > last_seen)
+        if last_seen is None:
+            stmt = select(Event).order_by(Event.sequence_no.desc()).limit(settings.REALTIME_STREAM_POLL_BATCH_SIZE)
+            rows = list(db.scalars(stmt).all())
+            rows.reverse()  # restore ascending order so the caller's watermark-advance loop stays monotonic
+            return rows
+        stmt = (
+            select(Event)
+            .where(Event.sequence_no > last_seen)
+            .order_by(Event.sequence_no.asc())
+            .limit(settings.REALTIME_STREAM_POLL_BATCH_SIZE)
+        )
         return list(db.scalars(stmt).all())
     finally:
         db.close()

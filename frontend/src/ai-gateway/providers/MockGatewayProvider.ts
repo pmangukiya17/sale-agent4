@@ -6,6 +6,9 @@ import type {
   GatewaySettings,
   ModelRole,
   ModelRoleWrite,
+  DiagnosticFinding,
+  GatewayDiagnostics,
+  PremiumPreauthorization,
   ProviderCapability,
   ProviderConfig,
   ProviderConfigAuditEntry,
@@ -235,9 +238,15 @@ const ACTIVITY: ActivityLogEntry[] = [
   },
 ];
 
+// M8.3 Step 7 (Premium Approval UI) addition - `status` is now a real,
+// mutable field (approveRequest()/rejectRequest() below flip it in place,
+// same "mutable module-level fixture" discipline PROVIDER_CONFIGS/
+// MODEL_ROLES above already establish) rather than every row being
+// implicitly "still pending" the way it was before this step.
 const APPROVALS: ApprovalRequest[] = [
   {
     id: "appr-1",
+    status: "pending",
     feature: "Outreach · Email draft generation",
     reason: "Local and free providers are unavailable for this capability.",
     providerKey: "claude",
@@ -249,6 +258,7 @@ const APPROVALS: ApprovalRequest[] = [
   },
   {
     id: "appr-2",
+    status: "pending",
     feature: "Research · Company analysis",
     reason: "Free-tier confidence below threshold; escalated to premium.",
     providerKey: "claude",
@@ -259,6 +269,14 @@ const APPROVALS: ApprovalRequest[] = [
     companyName: "Blue Harbor Freight",
   },
 ];
+
+// M8.3 Step 7 addition - a mutable, in-memory audit trail
+// approveRequest()/rejectRequest() append to, mirroring the real backend's
+// append-only AIPremiumPreauthorization table closely enough for offline
+// dev (see that model's own "never mutated once written" docstring) -
+// most-recent-first, same ordering listApprovalHistory() below returns.
+const APPROVAL_HISTORY: PremiumPreauthorization[] = [];
+const PREAUTH_WINDOW_MINUTES = 120;
 
 const ROUTING_DECISIONS: RoutingDecision[] = [
   {
@@ -528,6 +546,69 @@ const PROVIDER_CAPABILITIES: Record<ProviderKey, ProviderCapability> = {
   },
 };
 
+// M8.3 Step 6 (Gateway Diagnostics) addition - kept internally consistent
+// with PROVIDERS/PROVIDER_CONFIGS above (gemini_ai_studio and openai are
+// the two "not_configured" providers there, so they're the two
+// "enabled but not configured" findings here too) and with GATEWAY_SETTINGS
+// (requirePremiumApproval: true, aiMode: hybrid_recommended) and
+// ROUTING_DECISIONS (route-2/outreach_email_generation is "waiting" there,
+// so it's the one routing finding here) - same "one coherent story across
+// every mock method" discipline this file's own docstring already
+// establishes, even though this class is no longer instantiated by
+// default. generated_at is computed fresh per call (delay()'d), matching
+// the real backend's own "no caching, always a fresh snapshot" behavior.
+const DIAGNOSTIC_FINDINGS: DiagnosticFinding[] = [
+  {
+    category: "provider_health",
+    severity: "warning",
+    title: "Gemini AI Studio is enabled but not configured",
+    detail:
+      "Gemini AI Studio is enabled but has no valid credentials/base URL - the router will silently skip it at request time and fall through to the next candidate.",
+    recommendation: "Add credentials for Gemini AI Studio in Provider Management, or disable it there to make the gap explicit rather than silent.",
+    providerKey: "gemini_ai_studio",
+    capability: null,
+  },
+  {
+    category: "provider_health",
+    severity: "warning",
+    title: "OpenAI is enabled but not configured",
+    detail:
+      "OpenAI is enabled but has no valid credentials/base URL - the router will silently skip it at request time and fall through to the next candidate.",
+    recommendation: "Add credentials for OpenAI in Provider Management, or disable it there to make the gap explicit rather than silent.",
+    providerKey: "openai",
+    capability: null,
+  },
+  {
+    category: "routing",
+    severity: "info",
+    title: "'Email Drafting' will require premium approval",
+    detail:
+      "Local/free tier candidates are currently exhausted for 'Email Drafting'; the next request will pause for an explicit premium approval rather than complete automatically.",
+    recommendation: "This is expected behavior under the current settings - no action needed unless the approval step itself is undesired.",
+    providerKey: null,
+    capability: "outreach_email_generation",
+  },
+  {
+    category: "routing",
+    severity: "warning",
+    title: "Groq failed 2 times in the last 24 hours",
+    detail: "Recent AI Gateway requests to Groq failed with 'ProviderTimeoutError'.",
+    recommendation: "Check Groq's credentials/connectivity in Provider Management, or review recent Activity for this provider.",
+    providerKey: "groq",
+    capability: null,
+  },
+];
+
+function buildDiagnostics(): GatewayDiagnostics {
+  return {
+    generatedAt: new Date().toISOString(),
+    findings: DIAGNOSTIC_FINDINGS,
+    errorCount: DIAGNOSTIC_FINDINGS.filter((f) => f.severity === "error").length,
+    warningCount: DIAGNOSTIC_FINDINGS.filter((f) => f.severity === "warning").length,
+    infoCount: DIAGNOSTIC_FINDINGS.filter((f) => f.severity === "info").length,
+  };
+}
+
 export class MockGatewayProvider implements GatewayDataProvider {
   getOverview(): Promise<GatewayOverview> {
     return delay(OVERVIEW);
@@ -778,4 +859,60 @@ export class MockGatewayProvider implements GatewayDataProvider {
   listProviderCapabilities(): Promise<ProviderCapability[]> {
     return delay(PROVIDERS.map((p) => PROVIDER_CAPABILITIES[p.key]));
   }
+
+  getDiagnostics(): Promise<GatewayDiagnostics> {
+    return delay(buildDiagnostics());
+  }
+
+  approveRequest(approvalId: string): Promise<PremiumPreauthorization> {
+    return delay(decidePremiumRequest(approvalId, "approved"));
+  }
+
+  rejectRequest(approvalId: string): Promise<PremiumPreauthorization> {
+    return delay(decidePremiumRequest(approvalId, "rejected"));
+  }
+
+  listApprovalHistory(limit = 100): Promise<PremiumPreauthorization[]> {
+    return delay(APPROVAL_HISTORY.slice(0, limit));
+  }
+}
+
+// M8.3 Step 7 (Premium Approval UI) - shared by approveRequest()/
+// rejectRequest() above, mirroring the real backend's own
+// grant_preauthorization() (writes exactly one new AIPremiumPreauthorization
+// row, never updates) plus its route layer's own 404-for-unknown-id guard.
+// Every OTHER pending fixture row for the SAME feature/company also flips
+// status here - the real backend's `status` is scoped to (company,
+// capability), not the one literal row that happened to be Approved/
+// Rejected, and this fixture stays honest about that rather than only
+// updating the clicked card (see ApprovalRequestRead.status's own
+// docstring in ../types.ts for the real semantics this approximates).
+function decidePremiumRequest(approvalId: string, decision: PremiumPreauthorization["decision"]): PremiumPreauthorization {
+  const source = APPROVALS.find((a) => a.id === approvalId);
+  if (!source) {
+    throw new Error(`Unknown approval request "${approvalId}".`);
+  }
+
+  const decidedAt = new Date().toISOString();
+  const record: PremiumPreauthorization = {
+    id: `preauth-${approvalId}-${Date.now()}`,
+    companyName: source.companyName,
+    capability: source.feature,
+    feature: source.feature,
+    decision,
+    decidedBy: "you@example.com",
+    decidedAt,
+    expiresAt: decision === "approved" ? new Date(Date.now() + PREAUTH_WINDOW_MINUTES * 60_000).toISOString() : null,
+    sourceReason: source.reason,
+    sourceEstimatedCostUsd: source.estimatedCostUsd,
+  };
+  APPROVAL_HISTORY.unshift(record);
+
+  for (const approval of APPROVALS) {
+    if (approval.companyName === source.companyName && approval.feature === source.feature) {
+      approval.status = decision;
+    }
+  }
+
+  return record;
 }

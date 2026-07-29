@@ -96,3 +96,4 @@ from app.models.ai_request_log import AIRequestLog  # noqa
 from app.models.ai_provider_config import AIProviderConfig  # noqa
 from app.models.ai_provider_config_audit import AIProviderConfigAudit  # noqa
 from app.models.ai_model_role import AIModelRole  # noqa
+from app.models.ai_premium_preauthorization import AIPremiumPreauthorization  # noqa

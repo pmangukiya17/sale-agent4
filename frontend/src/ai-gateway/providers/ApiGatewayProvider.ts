@@ -9,6 +9,10 @@ import type {
   ModelRole,
   ModelRoleWrite,
   CapabilityValues,
+  DiagnosticFinding,
+  DiagnosticSeverity,
+  GatewayDiagnostics,
+  PremiumPreauthorization,
   ProviderCapability,
   ProviderConfig,
   ProviderConfigAuditEntry,
@@ -87,6 +91,7 @@ interface RawActivityLogEntry {
 
 interface RawApprovalRequest {
   id: string;
+  status: string;
   feature: string;
   reason: string;
   provider_key: string;
@@ -95,6 +100,34 @@ interface RawApprovalRequest {
   requested_at: string;
   waiting_minutes: number;
   company_name: string | null;
+}
+
+interface RawPremiumPreauthorization {
+  id: string;
+  company_name: string | null;
+  capability: string;
+  feature: string;
+  decision: string;
+  decided_by: string | null;
+  decided_at: string;
+  expires_at: string | null;
+  source_reason: string | null;
+  source_estimated_cost_usd: number | null;
+}
+
+function toPremiumPreauthorization(raw: RawPremiumPreauthorization): PremiumPreauthorization {
+  return {
+    id: raw.id,
+    companyName: raw.company_name,
+    capability: raw.capability,
+    feature: raw.feature,
+    decision: raw.decision as PremiumPreauthorization["decision"],
+    decidedBy: raw.decided_by,
+    decidedAt: raw.decided_at,
+    expiresAt: raw.expires_at,
+    sourceReason: raw.source_reason,
+    sourceEstimatedCostUsd: raw.source_estimated_cost_usd,
+  };
 }
 
 interface RawRoutingNode {
@@ -171,6 +204,7 @@ function toActivityLogEntry(raw: RawActivityLogEntry): ActivityLogEntry {
 function toApprovalRequest(raw: RawApprovalRequest): ApprovalRequest {
   return {
     id: raw.id,
+    status: raw.status as ApprovalRequest["status"],
     feature: raw.feature,
     reason: raw.reason,
     providerKey: raw.provider_key as ProviderKey,
@@ -383,6 +417,46 @@ function toProviderCapability(raw: RawProviderCapability): ProviderCapability {
   };
 }
 
+interface RawDiagnosticFinding {
+  category: string;
+  severity: string;
+  title: string;
+  detail: string;
+  recommendation: string;
+  provider_key: string | null;
+  capability: string | null;
+}
+
+interface RawGatewayDiagnostics {
+  generated_at: string;
+  findings: RawDiagnosticFinding[];
+  error_count: number;
+  warning_count: number;
+  info_count: number;
+}
+
+function toDiagnosticFinding(raw: RawDiagnosticFinding): DiagnosticFinding {
+  return {
+    category: raw.category,
+    severity: raw.severity as DiagnosticSeverity,
+    title: raw.title,
+    detail: raw.detail,
+    recommendation: raw.recommendation,
+    providerKey: raw.provider_key,
+    capability: raw.capability,
+  };
+}
+
+function toGatewayDiagnostics(raw: RawGatewayDiagnostics): GatewayDiagnostics {
+  return {
+    generatedAt: raw.generated_at,
+    findings: raw.findings.map(toDiagnosticFinding),
+    errorCount: raw.error_count,
+    warningCount: raw.warning_count,
+    infoCount: raw.info_count,
+  };
+}
+
 function toGatewaySettings(raw: RawGatewaySettings): GatewaySettings {
   return {
     aiMode: raw.ai_mode,
@@ -509,6 +583,26 @@ export class ApiGatewayProvider implements GatewayDataProvider {
   async listProviderCapabilities(): Promise<ProviderCapability[]> {
     const res = await this.http.get<RawProviderCapability[]>("/ai-gateway/capabilities");
     return res.data.map(toProviderCapability);
+  }
+
+  async getDiagnostics(): Promise<GatewayDiagnostics> {
+    const res = await this.http.get<RawGatewayDiagnostics>("/ai-gateway/diagnostics");
+    return toGatewayDiagnostics(res.data);
+  }
+
+  async approveRequest(approvalId: string): Promise<PremiumPreauthorization> {
+    const res = await this.http.post<RawPremiumPreauthorization>(`/ai-gateway/approvals/${approvalId}/approve`);
+    return toPremiumPreauthorization(res.data);
+  }
+
+  async rejectRequest(approvalId: string): Promise<PremiumPreauthorization> {
+    const res = await this.http.post<RawPremiumPreauthorization>(`/ai-gateway/approvals/${approvalId}/reject`);
+    return toPremiumPreauthorization(res.data);
+  }
+
+  async listApprovalHistory(limit = 100): Promise<PremiumPreauthorization[]> {
+    const res = await this.http.get<RawPremiumPreauthorization[]>("/ai-gateway/approvals/history", { params: { limit } });
+    return res.data.map(toPremiumPreauthorization);
   }
 }
 

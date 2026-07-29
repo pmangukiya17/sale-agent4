@@ -51,6 +51,20 @@ milestone's own docstring reasoning (still applies verbatim to the two new
 M11 provider clients, both lazily imported the same way via the real
 registry).
 
+M8.3 Step 7 (Premium Approval UI) addition: `premium_approval_resolver`
+(constructor param, same optional-injection shape as `provider_lookup`
+above) - both of the premium-approval gate checks below (`complete()` and
+`preflight()`) now also ask "is there a live pre-authorization for this
+(company_profile_id, capability)?" via `PremiumApprovalResolver.is_preauthorized()`
+before raising/reporting `PremiumApprovalRequiredError` - see
+app.ai_gateway.premium_approval_resolver's own module docstring for the
+full "AIGateway depends on the abstraction, never on SQLAlchemy directly"
+reasoning (CEO review, 2026-07-29). This is NOT a resume of the original
+request - see docs/architecture/m8-3-ai-gateway-control-center-plan.md
+Section 13 for why that was explicitly ruled out - it's a second,
+independent way for `request.premium_approved` to effectively be True,
+resolved by something other than the caller's own explicit flag.
+
 M-AIGW-1 (Provider-Neutral AI Gateway foundation) additions:
 
   - `complete()`'s "chain and premium both empty" branch now distinguishes
@@ -88,8 +102,9 @@ logger = logging.getLogger(__name__)
 
 
 class AIGateway:
-    def __init__(self, provider_lookup=None):
+    def __init__(self, provider_lookup=None, premium_approval_resolver=None):
         self._provider_lookup = provider_lookup
+        self._premium_approval_resolver = premium_approval_resolver
 
     def _resolve_provider(self, provider_key: str):
         if self._provider_lookup is not None:
@@ -97,6 +112,22 @@ class AIGateway:
         from app.ai_gateway.providers.registry import get_provider_client
 
         return get_provider_client(provider_key)
+
+    def _resolve_premium_approval_resolver(self):
+        """Lazy-import default, same discipline `_resolve_provider()`
+        already uses - keeps this module's own top-level imports
+        sqlalchemy-free (see app.ai_gateway.premium_approval_resolver's own
+        docstring)."""
+        if self._premium_approval_resolver is not None:
+            return self._premium_approval_resolver
+        from app.ai_gateway.premium_approval_resolver import get_premium_approval_resolver
+
+        return get_premium_approval_resolver()
+
+    def _is_premium_preauthorized(self, request: GatewayRequest) -> bool:
+        return self._resolve_premium_approval_resolver().is_preauthorized(
+            company_profile_id=request.company_profile_id, capability=request.capability
+        )
 
     def _walk(self, request: GatewayRequest, provider_keys: list[str]) -> tuple[GatewayResponse | None, GatewayError | None]:
         """Shared walk logic for both the auto-attempted chain and (once
@@ -255,7 +286,18 @@ class AIGateway:
         # mode already folded premium into `chain` and returned above) -
         # decision.premium is only ever non-empty here for
         # hybrid_recommended, where escalation requires approval.
-        if not request.premium_approved and settings.AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL:
+        #
+        # M8.3 Step 7: `request.premium_approved` (the caller's own explicit
+        # flag) is checked first, unchanged - `_is_premium_preauthorized()`
+        # (a DB read, via the injected resolver) is only ever consulted
+        # second, and only when the flag alone doesn't already clear the
+        # gate, so the common "premium_approved=True" path never pays for a
+        # DB round trip it doesn't need.
+        if (
+            not request.premium_approved
+            and settings.AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL
+            and not self._is_premium_preauthorized(request)
+        ):
             self._raise_premium_approval_required(request, decision)
 
         response, last_error = self._walk(request, decision.premium)
@@ -302,6 +344,20 @@ class AIGateway:
             return PreflightResult(approval_required=False)
 
         if not settings.AI_GATEWAY_REQUIRE_PREMIUM_APPROVAL:
+            return PreflightResult(approval_required=False)
+
+        # M8.3 Step 7: an admin-granted pre-authorization for this
+        # (company, capability) makes preflight's own answer "no, this
+        # won't need approval" too - honest, since complete() itself would
+        # also skip the gate for this exact request right now (see that
+        # method's own identical check above). Not yet effective for
+        # app.research.ai_preflight's own caller specifically, since that
+        # call site doesn't thread company_profile_id into its
+        # GatewayRequest yet - a disclosed, separate fast-follow (see
+        # docs/architecture/m8-3-ai-gateway-control-center-plan.md Section
+        # 13's own writeup) - but any future caller that DOES thread it
+        # benefits immediately, with zero change needed here.
+        if self._is_premium_preauthorized(request):
             return PreflightResult(approval_required=False)
 
         candidate = decision.premium[0]

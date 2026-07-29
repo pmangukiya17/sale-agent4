@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Bot, Cpu, DollarSign, Gauge, ShieldCheck, Sparkles, TrendingUp } from "lucide-react";
 import { Link } from "react-router-dom";
-import { Card, PlaceholderNotice, useToast } from "../../design-system";
+import { Card, ConfirmDialog, PlaceholderNotice, useToast } from "../../design-system";
+import { useAuth } from "../../auth/AuthContext";
 import { KpiCard } from "../../dashboard/KpiCard";
 import { useGatewayOverview } from "../../ai-gateway/hooks/useGatewayOverview";
 import { useActivity } from "../../ai-gateway/hooks/useActivity";
@@ -8,6 +10,8 @@ import { useApprovals } from "../../ai-gateway/hooks/useApprovals";
 import { ApprovalCard } from "../../ai-gateway/components/ApprovalCard";
 import { ProviderChip } from "../../ai-gateway/components/ProviderChip";
 import type { ApprovalRequest } from "../../ai-gateway/types";
+
+type PendingAction = { request: ApprovalRequest; decision: "approve" | "reject" };
 
 const HEALTH_LABEL: Record<string, string> = {
   healthy: "Healthy",
@@ -23,16 +27,42 @@ const HEALTH_LABEL: Record<string, string> = {
  * fabricated chart or an empty gap.
  */
 export default function AIGatewayOverview() {
+  const { user } = useAuth();
+  const isAdmin = user?.role === "admin";
+
   const { data: overview, isLoading: overviewLoading } = useGatewayOverview();
   const { data: activity, isLoading: activityLoading } = useActivity();
-  const { data: approvals, isLoading: approvalsLoading } = useApprovals();
+  const { data: approvals, isLoading: approvalsLoading, isMutating, approve, reject } = useApprovals();
   const { showToast } = useToast();
 
+  const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
+  const pendingApprovals = approvals.filter((a) => a.status === "pending");
+
   function handleApprove(request: ApprovalRequest) {
-    showToast({ message: `Approval workflow is not yet implemented (${request.feature}).`, tone: "neutral" });
+    setPendingAction({ request, decision: "approve" });
   }
   function handleReject(request: ApprovalRequest) {
-    showToast({ message: `Approval workflow is not yet implemented (${request.feature}).`, tone: "neutral" });
+    setPendingAction({ request, decision: "reject" });
+  }
+  function cancelAction() {
+    if (isMutating) return;
+    setPendingAction(null);
+  }
+  async function confirmAction() {
+    if (!pendingAction) return;
+    const { request, decision } = pendingAction;
+    try {
+      if (decision === "approve") {
+        await approve(request.id);
+        showToast({ message: `Approved premium access for "${request.feature}".`, tone: "success" });
+      } else {
+        await reject(request.id);
+        showToast({ message: `Rejected "${request.feature}".`, tone: "neutral" });
+      }
+      setPendingAction(null);
+    } catch {
+      showToast({ message: `Could not ${decision} "${request.feature}".`, tone: "danger" });
+    }
   }
 
   return (
@@ -118,12 +148,19 @@ export default function AIGatewayOverview() {
           </div>
           {approvalsLoading ? (
             <p className="text-xs text-slate-500">Loading…</p>
-          ) : approvals.length === 0 ? (
+          ) : pendingApprovals.length === 0 ? (
             <PlaceholderNotice kind="no-data" reason="Nothing needs your approval right now." />
           ) : (
             <div className="flex flex-col gap-3">
-              {approvals.slice(0, 2).map((request) => (
-                <ApprovalCard key={request.id} request={request} onApprove={handleApprove} onReject={handleReject} />
+              {pendingApprovals.slice(0, 2).map((request) => (
+                <ApprovalCard
+                  key={request.id}
+                  request={request}
+                  canDecide={isAdmin}
+                  isMutating={isMutating}
+                  onApprove={handleApprove}
+                  onReject={handleReject}
+                />
               ))}
             </div>
           )}
@@ -140,6 +177,27 @@ export default function AIGatewayOverview() {
           reason="7-day cost trend chart — charts are out of scope for this foundation milestone."
         />
       </div>
+
+      <ConfirmDialog
+        open={pendingAction !== null}
+        title={pendingAction?.decision === "reject" ? "Reject this request?" : "Approve premium access?"}
+        message={
+          pendingAction
+            ? pendingAction.decision === "approve"
+              ? `This pre-authorizes premium access for "${pendingAction.request.feature}"${
+                  pendingAction.request.companyName ? ` (${pendingAction.request.companyName})` : ""
+                } for the next 120 minutes. It does not resume this specific request — the next matching one will go through automatically.`
+              : `This records a rejection for "${pendingAction.request.feature}"${
+                  pendingAction.request.companyName ? ` (${pendingAction.request.companyName})` : ""
+                }. It's an audit annotation only — nothing is unblocked or undone.`
+            : ""
+        }
+        confirmLabel={pendingAction?.decision === "reject" ? "Reject" : "Approve"}
+        tone={pendingAction?.decision === "reject" ? "danger" : "neutral"}
+        isLoading={isMutating}
+        onConfirm={confirmAction}
+        onCancel={cancelAction}
+      />
     </div>
   );
 }

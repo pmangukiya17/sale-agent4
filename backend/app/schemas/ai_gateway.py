@@ -76,19 +76,32 @@ class ActivityLogEntryRead(BaseModel):
 
 
 class ApprovalRequestRead(BaseModel):
-    """M8.2. GET /ai-gateway/approvals. Read-only, per the approved M8.2
-    scope - see app.ai_gateway.ui_query's own module docstring for why
-    this reflects PAST premium-approval-required EVENTS (from
-    AIRequestLog, error_type='PremiumApprovalRequiredError'), not a live
-    blocking queue - this codebase's premium-approval gate is a
+    """M8.2, extended M8.3 Step 7. GET /ai-gateway/approvals. Read-only,
+    per the approved M8.2 scope - see app.ai_gateway.ui_query's own module
+    docstring for why this reflects PAST premium-approval-required EVENTS
+    (from AIRequestLog, error_type='PremiumApprovalRequiredError'), not a
+    live blocking queue - this codebase's premium-approval gate is a
     synchronous pre-flight check (AIGateway.preflight() /
     PremiumApprovalRequiredError), not a durable, still-pending request a
     human can act on later. `waiting_minutes` is reinterpreted honestly as
     "minutes since this was flagged," not "minutes still blocking a
     request" - the underlying request has already either been resubmitted
-    with premium_approved=True or abandoned by the time this is viewed."""
+    with premium_approved=True or abandoned by the time this is viewed.
+
+    `status` (Step 7 addition) - whether an admin has already acted on the
+    (company_profile_id, capability) pair this row belongs to:
+    "approved" (a LIVE, non-expired pre-authorization exists for it right
+    now - see app.ai_gateway.premium_preauthorization.latest_decision_for()),
+    "rejected" (the most recent decision for that pair was a rejection, or
+    an earlier approval has since expired with no later action),
+    "pending" (no decision recorded yet, or the most recent one expired -
+    an expired approval correctly reads as pending again, since it no
+    longer protects anything). Computed per-row by
+    app.ai_gateway.ui_query.list_approvals() - never persisted on
+    AIRequestLog itself."""
 
     id: uuid.UUID
+    status: str
     feature: str
     reason: str
     provider_key: str
@@ -97,6 +110,29 @@ class ApprovalRequestRead(BaseModel):
     requested_at: datetime
     waiting_minutes: float
     company_name: str | None
+
+
+class PremiumPreauthorizationRead(BaseModel):
+    """M8.3 Step 7. Returned by POST /ai-gateway/approvals/{id}/approve and
+    .../reject - the AIPremiumPreauthorization row just written. Also the
+    shape GET /ai-gateway/approvals/history returns (one per past
+    decision), joined back to `source_feature`/`source_reason` from its
+    `source_request_log_id` where that AIRequestLog row still exists (it
+    always will unless independently deleted - see that model's own
+    ondelete=SET NULL)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    company_name: str | None
+    capability: str
+    feature: str
+    decision: str
+    decided_by: str | None
+    decided_at: datetime
+    expires_at: datetime | None
+    source_reason: str | None
+    source_estimated_cost_usd: float | None
 
 
 class RoutingNodeRead(BaseModel):
@@ -371,3 +407,48 @@ class GatewaySettingsRead(BaseModel):
     capability_provider_preference: dict[str, list[str]]
     local_model_roles: dict[str, str | None]
     capability_local_model_role: dict[str, list[str]]
+
+
+class DiagnosticFindingRead(BaseModel):
+    """M8.3 Step 6 (AI Gateway Management & Control, Gateway Diagnostics).
+    One row of `GET /ai-gateway/diagnostics` - mirrors
+    `app.ai_gateway.diagnostics.DiagnosticFinding` field-for-field.
+    `severity` is one of "error" | "warning" | "info" (see that module's
+    own docstring for the exact meaning of each) - kept as `str` here too
+    (not a pydantic `Literal`) since `diagnostics.py` itself is the single
+    source of truth for which severities exist, and duplicating that as a
+    second, independently-maintained enum here would risk drifting out of
+    sync with it. `provider_key`/`capability` are `None` for a finding
+    that isn't about one specific provider/capability (e.g. the
+    'AI_MODE=local_only but nothing configured' configuration finding)."""
+
+    category: str
+    severity: str
+    title: str
+    detail: str
+    recommendation: str
+    provider_key: str | None
+    capability: str | None
+
+
+class GatewayDiagnosticsRead(BaseModel):
+    """M8.3 Step 6. Response for `GET /ai-gateway/diagnostics` - READ-ONLY,
+    a snapshot built entirely from EXISTING telemetry at request time
+    (provider health via `is_configured()`/`get_provider_config()`, live
+    routing outcomes via the same `list_routing_decisions()` preview the
+    Routing page already shows, and a grouped read of `AIRequestLog` for
+    observed failures in the last 24 hours) - see
+    `app.ai_gateway.diagnostics.build_diagnostics()`'s own docstring for
+    the full aggregation logic. `generated_at` is this snapshot's own
+    timestamp, not a cached/scheduled report - every call recomputes fresh
+    (same "no caching" discipline `provider_config.py`'s own module
+    docstring already establishes for configuration reads). The
+    `*_count` fields are a convenience projection of `findings` itself
+    (never an independently-tracked number) so a UI can render a
+    summary badge without counting client-side."""
+
+    generated_at: datetime
+    findings: list[DiagnosticFindingRead]
+    error_count: int
+    warning_count: int
+    info_count: int

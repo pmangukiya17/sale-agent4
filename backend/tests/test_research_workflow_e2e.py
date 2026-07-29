@@ -67,6 +67,7 @@ from app.models.user import User
 from app.models.workflow_event import Event
 from app.models.workflow_instance import WorkflowInstance
 from app.models.workflow_step_invocation import WorkflowStepInvocation
+from tests.event_backbone_cleanup import delete_events_and_dependents
 
 # Real production imports - deliberately not synthetic/faked.
 import app.workflow_actions  # noqa: F401  (registers RESEARCH_EXECUTION_ACTION_KEY for real)
@@ -190,8 +191,26 @@ class TestResearchWorkflowEndToEnd(unittest.TestCase):
         self.db.query(Prospect).filter(Prospect.company_profile_id == self.company_profile.id).delete(synchronize_session=False)
         self.db.commit()
 
-        self.db.query(Event).filter(Event.company_profile_id == self.company_profile.id).delete(synchronize_session=False)
-        self.db.commit()
+        # Generalized fix (CEO review, 2026-07-28): a plain `DELETE FROM
+        # events` here raced against this project's real, always-on
+        # event_dispatcher_worker/step_runner_worker/notification worker
+        # containers, which consume `events` independently of this test's
+        # own explicit run_one_tick() calls - one of them can insert a
+        # NotificationDispatch (or Notification) row referencing one of
+        # this test's Events at any point after that Event was created.
+        # NotificationDispatch/Notification are intentionally INDEPENDENT
+        # consumers of Event (ondelete=RESTRICT on both - see
+        # app.models.notification's own docstrings and this project's
+        # standing "archive-over-delete / RESTRICT-not-CASCADE"
+        # convention), so the fix is cleanup order, not a schema change:
+        # delete every row with a live FK to events.id (EventConsumption,
+        # Notification, NotificationDispatch - the complete set, see
+        # tests/event_backbone_cleanup.py's own docstring) before the
+        # Event delete itself, as the LAST thing before touching
+        # CompanyProfile/User - exactly the same helper
+        # test_discovery_workflow_e2e.py's own tearDown already uses for
+        # this identical race.
+        delete_events_and_dependents(self.db, company_profile_id=self.company_profile.id)
 
         self.db.query(CompanyProfile).filter(CompanyProfile.id == self.company_profile.id).delete()
         self.db.query(User).filter(User.id == self.user.id).delete()

@@ -33,6 +33,7 @@ from app.models.enums import UserRole
 from app.models.user import User
 from app.models.workflow_event import Event
 from app.workflow_engine.events import publish_event
+from tests.event_backbone_cleanup import delete_events_and_dependents
 
 
 def _now():
@@ -53,8 +54,17 @@ class TestPublishEvent(unittest.TestCase):
 
     def tearDown(self):
         self.db.rollback()
-        self.db.query(Event).filter(Event.company_profile_id == self.company_profile.id).delete(synchronize_session=False)
-        self.db.commit()
+        # Generalized fix (CEO review, 2026-07-28 - see
+        # test_research_workflow_e2e.py's own tearDown for the full
+        # writeup): a real, always-on notification worker container polls
+        # `events` independently of this test, and inserts a
+        # NotificationDispatch row (decision="skipped" for these
+        # synthetic test.* event types, but still a row referencing this
+        # Event) for ANY committed Event - a bare Event delete can race
+        # it. delete_events_and_dependents() deletes the complete
+        # dependent set (EventConsumption/Notification/NotificationDispatch)
+        # before the Event delete itself.
+        delete_events_and_dependents(self.db, company_profile_id=self.company_profile.id)
         self.db.query(CompanyProfile).filter(CompanyProfile.id == self.company_profile.id).delete()
         self.db.query(User).filter(User.id == self.user.id).delete()
         self.db.commit()

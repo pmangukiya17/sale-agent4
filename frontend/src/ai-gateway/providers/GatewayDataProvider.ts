@@ -2,10 +2,12 @@ import type {
   ActivityLogEntry,
   ApprovalRequest,
   ConnectionTestResult,
+  GatewayDiagnostics,
   GatewayOverview,
   GatewaySettings,
   ModelRole,
   ModelRoleWrite,
+  PremiumPreauthorization,
   ProviderCapability,
   ProviderConfig,
   ProviderConfigAuditEntry,
@@ -78,4 +80,24 @@ export interface GatewayDataProvider {
    * signed-in user can see what a provider does/doesn't support. See
    * ProviderCapability's own docstring in ../types.ts. */
   listProviderCapabilities(): Promise<ProviderCapability[]>;
+  /** M8.3 Step 6 (Gateway Diagnostics) addition. READ-ONLY, admin-gated
+   * server-side (same trust level as getProviderConfig/listModelRoles
+   * above - see GatewayDiagnostics' own docstring in ../types.ts for why
+   * this is a heavier trust level than listProviderCapabilities). */
+  getDiagnostics(): Promise<GatewayDiagnostics>;
+  /** M8.3 Step 7 (Premium Approval UI) additions. Admin-only server-side
+   * (403 for a non-admin caller) - same convention the Step 2/3 write
+   * methods above already use (CEO decision, 2026-07-29: "keep this
+   * consistent" with the rest of Gateway administration). `approveRequest`/
+   * `rejectRequest` grant a PRE-AUTHORIZATION for the flagged event's own
+   * (company, capability) pair - not a resume of that specific request -
+   * see PremiumPreauthorization's own docstring in ../types.ts. Calling
+   * either DOES change what `listApprovals()` above reports for every
+   * OTHER still-pending event with the same (company, capability) pair,
+   * since `status` is computed live from the same underlying grant this
+   * method just wrote - callers should `refresh()` the approvals list
+   * after either call, not just patch the one row locally. */
+  approveRequest(approvalId: string): Promise<PremiumPreauthorization>;
+  rejectRequest(approvalId: string): Promise<PremiumPreauthorization>;
+  listApprovalHistory(limit?: number): Promise<PremiumPreauthorization[]>;
 }

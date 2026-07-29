@@ -59,6 +59,7 @@ from app.models.user import User
 from app.models.workflow_event import Event
 from app.models.workflow_instance import WorkflowInstance
 from app.models.workflow_step_invocation import WorkflowStepInvocation
+from tests.event_backbone_cleanup import delete_events_and_dependents
 
 # Real production imports - deliberately not synthetic/faked.
 import app.workflow_actions  # noqa: F401  (registers PERSONALIZATION_EXECUTION_ACTION_KEY for real)
@@ -174,8 +175,17 @@ class TestPersonalizationWorkflowEndToEnd(unittest.TestCase):
         self.db.query(Prospect).filter(Prospect.company_profile_id == self.company_profile.id).delete(synchronize_session=False)
         self.db.commit()
 
-        self.db.query(Event).filter(Event.company_profile_id == self.company_profile.id).delete(synchronize_session=False)
-        self.db.commit()
+        # Generalized fix (CEO review, 2026-07-28 - see
+        # test_research_workflow_e2e.py's own tearDown for the full
+        # writeup of this identical race): NotificationDispatch/
+        # Notification are intentionally independent, RESTRICT-FK'd
+        # consumers of Event, and this project's real, always-on
+        # notification worker can insert one referencing this test's own
+        # Events at any time - delete the complete dependent set
+        # (EventConsumption/Notification/NotificationDispatch) before the
+        # Event delete itself, as the LAST thing before touching
+        # CompanyProfile/User.
+        delete_events_and_dependents(self.db, company_profile_id=self.company_profile.id)
 
         self.db.query(CompanyProfile).filter(CompanyProfile.id == self.company_profile.id).delete()
         self.db.query(User).filter(User.id == self.user.id).delete()

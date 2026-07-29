@@ -46,11 +46,26 @@ tiers.partition(), and each registered provider's own declared
 capabilities - so a future provider addition to the default preference
 list changes what this test expects automatically, instead of silently
 breaking it again.
+
+M8.3 Step 7 (Premium Approval UI) addition: TestPremiumApprovalGate below
+gained a second cluster of tests covering the new `premium_approval_resolver`
+constructor-injection seam (see client.py's own docstring) - a fake
+PremiumApprovalResolver, injected the exact same way a fake `provider_lookup`
+already is via `_make_gateway()`, proves the gate now also consults
+`is_preauthorized()` (and, just as importantly, when it does NOT: the
+`request.premium_approved=True` fast path must never pay for that call -
+see client.py's own comment on `complete()`'s gate check for why that
+ordering matters). Genuinely needs Docker for the same reason every other
+test in this class does (constructing `AIGateway` needs `settings` at
+`client.py` import time) - the resolver module itself IS pure and has its
+own dedicated pure test file, tests/test_premium_approval_resolver_pure.py,
+for the parts that don't need AIGateway at all.
 """
 import unittest
 
 from app.ai_gateway.client import AIGateway
 from app.ai_gateway.errors import NoCapableProviderError, PremiumApprovalRequiredError
+from app.ai_gateway.premium_approval_resolver import PremiumApprovalResolver
 from app.ai_gateway.providers.base import ProviderClient
 from app.ai_gateway.providers.registry import PROVIDER_CLIENT_REGISTRY
 from app.ai_gateway.request import GatewayRequest, GatewayResponse, TokenUsage
@@ -102,14 +117,29 @@ class _OkPremiumProviderClient(ProviderClient):
         return _response("premium response", provider_key=self.key)
 
 
-def _make_gateway(clients: dict[str, ProviderClient]) -> AIGateway:
+def _make_gateway(clients: dict[str, ProviderClient], *, premium_approval_resolver=None) -> AIGateway:
     def provider_lookup(key: str) -> ProviderClient:
         client = clients.get(key)
         if client is None:
             raise KeyError(key)
         return client
 
-    return AIGateway(provider_lookup=provider_lookup)
+    return AIGateway(provider_lookup=provider_lookup, premium_approval_resolver=premium_approval_resolver)
+
+
+class _FakePremiumApprovalResolver(PremiumApprovalResolver):
+    """M8.3 Step 7 - the same injected-fake shape `_make_gateway()`'s own
+    `provider_lookup` closure already establishes, extended to the new
+    seam. Records every call so tests can assert not just the return value
+    but whether/how the gate actually consulted it."""
+
+    def __init__(self, *, result: bool):
+        self.result = result
+        self.calls: list[tuple[str | None, str]] = []
+
+    def is_preauthorized(self, *, company_profile_id: str | None, capability: str) -> bool:
+        self.calls.append((company_profile_id, capability))
+        return self.result
 
 
 class TestPremiumApprovalGate(unittest.TestCase):
@@ -185,6 +215,145 @@ class TestPremiumApprovalGate(unittest.TestCase):
         with self.assertRaises(Exception) as ctx:
             gateway.complete(request)
         self.assertNotIsInstance(ctx.exception, PremiumApprovalRequiredError)
+
+    # -- M8.3 Step 7: injected PremiumApprovalResolver wiring -----------
+
+    def test_injected_resolver_true_bypasses_gate_without_the_flag(self):
+        resolver = _FakePremiumApprovalResolver(result=True)
+        gateway = _make_gateway(
+            {
+                "fake_local_down": _AlwaysUnavailableProviderClient(),
+                "fake_free_unconfigured": _UnconfiguredProviderClient(),
+                "fake_premium_ok": _OkPremiumProviderClient(),
+            },
+            premium_approval_resolver=resolver,
+        )
+        # No company_profile_id here (defaults to None, same as every
+        # OTHER test in this class) - CEO review fix (2026-07-29): a
+        # syntactically-valid-but-nonexistent UUID here would still parse
+        # cleanly in `_persist_ai_request_log()`'s own `_as_uuid()` and get
+        # attempted as a real company_profiles.id FK on the successful
+        # completion this test triggers below, producing a real (silently
+        # swallowed, but noisy) ForeignKeyViolation on every run. None ->
+        # `_as_uuid(None)` -> None -> no FK ever attempted, matching every
+        # pre-existing test in this class's own established convention.
+        request = GatewayRequest(capability=self.CAPABILITY, premium_approved=False)
+
+        response = gateway.complete(request)
+
+        self.assertEqual(response.provider_key, "fake_premium_ok")
+        self.assertEqual(len(resolver.calls), 1)
+
+    def test_injected_resolver_false_still_raises_premium_approval_required(self):
+        resolver = _FakePremiumApprovalResolver(result=False)
+        gateway = _make_gateway(
+            {"fake_local_down": _AlwaysUnavailableProviderClient(), "fake_free_unconfigured": _UnconfiguredProviderClient()},
+            premium_approval_resolver=resolver,
+        )
+        # No company_profile_id - see the identical CEO review fix comment
+        # on test_injected_resolver_true_bypasses_gate_without_the_flag
+        # above (this test also reaches log_ai_request(), via
+        # _raise_premium_approval_required() this time).
+        request = GatewayRequest(capability=self.CAPABILITY)
+
+        with self.assertRaises(PremiumApprovalRequiredError):
+            gateway.complete(request)
+        self.assertEqual(len(resolver.calls), 1)
+
+    def test_resolver_receives_the_requests_own_company_profile_id_and_capability(self):
+        resolver = _FakePremiumApprovalResolver(result=False)
+        gateway = _make_gateway(
+            {"fake_local_down": _AlwaysUnavailableProviderClient(), "fake_free_unconfigured": _UnconfiguredProviderClient()},
+            premium_approval_resolver=resolver,
+        )
+        # CEO review fix (2026-07-29): this test genuinely needs a non-None
+        # value to prove pass-through, unlike the two tests above - but a
+        # syntactically-valid `str(uuid.uuid4())` still triggers the same
+        # real-but-swallowed ForeignKeyViolation noise those two now avoid
+        # (this test also raises PremiumApprovalRequiredError, which also
+        # calls log_ai_request()). A deliberately NON-UUID string sidesteps
+        # that entirely: `_persist_ai_request_log()`'s own `_as_uuid()`
+        # fails to parse it and substitutes None (no FK ever attempted),
+        # while the FAKE resolver below - which never validates UUID-ness,
+        # it only records whatever it's given - still receives and records
+        # this exact string, so the pass-through assertion is just as
+        # strong as a real-looking UUID would have been.
+        company_id = "not-a-real-company-profile-id"
+        request = GatewayRequest(capability=self.CAPABILITY, company_profile_id=company_id)
+
+        with self.assertRaises(PremiumApprovalRequiredError):
+            gateway.complete(request)
+
+        self.assertEqual(resolver.calls, [(company_id, self.CAPABILITY)])
+
+    def test_premium_approved_flag_short_circuits_before_resolver_is_consulted(self):
+        # client.py's own comment on this check: "request.premium_approved
+        # ... is checked first, unchanged - _is_premium_preauthorized() ...
+        # is only ever consulted second" - the common already-approved
+        # path must never pay for a resolver round trip it doesn't need.
+        resolver = _FakePremiumApprovalResolver(result=False)
+        gateway = _make_gateway(
+            {
+                "fake_local_down": _AlwaysUnavailableProviderClient(),
+                "fake_free_unconfigured": _UnconfiguredProviderClient(),
+                "fake_premium_ok": _OkPremiumProviderClient(),
+            },
+            premium_approval_resolver=resolver,
+        )
+        request = GatewayRequest(capability=self.CAPABILITY, premium_approved=True)
+
+        response = gateway.complete(request)
+
+        self.assertEqual(response.provider_key, "fake_premium_ok")
+        self.assertEqual(resolver.calls, [])
+
+    def test_preflight_reports_no_approval_needed_when_resolver_returns_true(self):
+        # CEO review fix (2026-07-29): this originally used
+        # _AlwaysUnavailableProviderClient (is_configured() -> True,
+        # complete() raises) for "fake_local_down" - preflight() only ever
+        # calls is_configured(), never complete() (see its own docstring),
+        # so that fixture made chain_has_configured_candidate True and
+        # preflight() returned approval_required=False BEFORE ever reaching
+        # the resolver - the resolver.calls==1 assertion below was failing
+        # for the wrong reason entirely (never consulted, not "consulted
+        # and correctly returned False"). TestPreflight's own
+        # test_nothing_configured_in_chain_reports_approval_required_with_estimate
+        # (this same file, ~40 lines below) already documents this EXACT
+        # fixture mistake from an earlier milestone - this test repeated
+        # it. Fixed by using _UnconfiguredProviderClient (is_configured()
+        # -> False) for BOTH chain entries, so chain_has_configured_candidate
+        # is genuinely False and the resolver is actually reached - no
+        # change to preflight() itself, which was already correctly wired
+        # to `_is_premium_preauthorized()` (see client.py's own
+        # docstring/code, unchanged by this fix).
+        resolver = _FakePremiumApprovalResolver(result=True)
+        gateway = _make_gateway(
+            {"fake_local_down": _UnconfiguredProviderClient(), "fake_free_unconfigured": _UnconfiguredProviderClient()},
+            premium_approval_resolver=resolver,
+        )
+        request = GatewayRequest(capability=self.CAPABILITY)
+
+        result = gateway.preflight(request)
+
+        self.assertFalse(result.approval_required)
+        self.assertEqual(len(resolver.calls), 1)
+
+    def test_preflight_still_reports_approval_needed_when_resolver_returns_false(self):
+        # Same fixture fix as test_preflight_reports_no_approval_needed_when_resolver_returns_true
+        # immediately above - see that test's own comment for the full
+        # root-cause explanation (CEO review, 2026-07-29).
+        resolver = _FakePremiumApprovalResolver(result=False)
+        gateway = _make_gateway(
+            {"fake_local_down": _UnconfiguredProviderClient(), "fake_free_unconfigured": _UnconfiguredProviderClient()},
+            premium_approval_resolver=resolver,
+        )
+        request = GatewayRequest(capability=self.CAPABILITY)
+
+        result = gateway.preflight(request)
+
+        self.assertTrue(result.approval_required)
+        self.assertEqual(result.candidate_provider_key, "fake_premium_ok")
+        self.assertEqual(len(resolver.calls), 1)
 
 
 class TestCapabilityAwareRouting(unittest.TestCase):

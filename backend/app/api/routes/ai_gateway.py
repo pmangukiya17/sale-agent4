@@ -1,7 +1,9 @@
+import uuid
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from app.ai_gateway import ui_query
+from app.ai_gateway import premium_preauthorization, ui_query
 from app.ai_gateway.local_model_policy import delete_model_role, save_model_role
 from app.ai_gateway.provider_config import save_provider_config
 from app.ai_gateway.providers.registry import PROVIDER_CLIENT_REGISTRY
@@ -13,10 +15,12 @@ from app.schemas.ai_gateway import (
     AIProviderConfigAuditRead,
     ApprovalRequestRead,
     ConnectionTestResultRead,
+    GatewayDiagnosticsRead,
     GatewayOverviewRead,
     GatewaySettingsRead,
     ModelRoleRead,
     ModelRoleWrite,
+    PremiumPreauthorizationRead,
     ProviderCapabilityRead,
     ProviderConfigRead,
     ProviderConfigWrite,
@@ -45,11 +49,18 @@ router = APIRouter()
 # user, NOT admin-gated - it never mutates anything, it's a read-only
 # connectivity probe) calls the real ProviderClient.test_connection().
 #
+# M8.3 Step 7 (Premium Approval UI) adds this router's second WRITE
+# surface: POST .../approvals/{id}/approve and .../reject (both admin-
+# gated), plus GET .../approvals/history (admin-gated) - see
+# PremiumPreauthorizationRead's own docstring. These grant/record a
+# PRE-AUTHORIZATION (CEO-approved, 2026-07-29 - see
+# docs/architecture/m8-3-ai-gateway-control-center-plan.md Section 13), not
+# a resume of the specific flagged request - GET /ai-gateway/approvals
+# itself is unchanged (any authenticated user, own companies only).
+#
 # Still explicitly NOT implemented (see M8.2/M8.3 approved scope):
-# settings persistence (GET /settings only - no PUT), approval ACTIONS (no
-# POST to approve/reject - Approvals is read-only, see
-# ApprovalRequestRead's own docstring for why there is nothing to action
-# against), charts, live updates, polling, or WebSockets.
+# settings persistence (GET /settings only - no PUT), charts, live
+# updates, polling, or WebSockets.
 
 
 @router.get("/ai-gateway/overview", response_model=GatewayOverviewRead)
@@ -109,6 +120,75 @@ def list_approvals(
     current_user: User = Depends(get_current_user),
 ) -> list[ApprovalRequestRead]:
     return ui_query.list_approvals(db, current_user, limit=limit)
+
+
+@router.get("/ai-gateway/approvals/history", response_model=list[PremiumPreauthorizationRead])
+def list_approval_history(
+    limit: int = Query(100, le=500),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_admin),
+) -> list[PremiumPreauthorizationRead]:
+    """M8.3 Step 7 (Premium Approval UI). Admin-gated (CEO decision,
+    2026-07-29 - consistent with Approve/Reject below and with every other
+    WRITE-adjacent surface this milestone has added)."""
+    return ui_query.list_approval_history(db, current_user, limit=limit)
+
+
+@router.post("/ai-gateway/approvals/{approval_id}/approve", response_model=PremiumPreauthorizationRead)
+def approve_premium_request(
+    approval_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_admin),
+) -> PremiumPreauthorizationRead:
+    """M8.3 Step 7 (Premium Approval UI). Admin-gated (CEO decision,
+    2026-07-29 - keeps Approve/Reject consistent with the same admin
+    boundary Provider Management/Model Role Management already use, rather
+    than introducing a looser "company owner" tier for this step alone).
+
+    Grants a PRE-AUTHORIZATION, NOT a resume of this specific request -
+    see AIPremiumPreauthorization's own docstring and
+    docs/architecture/m8-3-ai-gateway-control-center-plan.md Section 13 for
+    the full "why" - this clears the NEXT attempt of
+    `row.capability`/`row.company_profile_id` for
+    `settings.AI_GATEWAY_PREMIUM_PREAUTH_MINUTES`, it does not and cannot
+    make the flagged run itself continue."""
+    row = ui_query.get_approval_request_log(db, current_user, approval_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown approval request")
+    grant = premium_preauthorization.grant_preauthorization(
+        db,
+        company_profile_id=row.company_profile_id,
+        capability=row.capability,
+        decision=premium_preauthorization.DECISION_APPROVED,
+        decided_by_user_id=current_user.id,
+        source_request_log_id=row.id,
+    )
+    return ui_query.to_premium_preauthorization_read(db, grant)
+
+
+@router.post("/ai-gateway/approvals/{approval_id}/reject", response_model=PremiumPreauthorizationRead)
+def reject_premium_request(
+    approval_id: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_admin),
+) -> PremiumPreauthorizationRead:
+    """M8.3 Step 7 (Premium Approval UI). Admin-gated, same reasoning as
+    approve above. Per Decision 1c: an audit annotation only - changes
+    nothing about the gate (no `expires_at`), unblocks nothing, undoes
+    nothing (the flagged run already completed, degraded, before this was
+    ever reviewed)."""
+    row = ui_query.get_approval_request_log(db, current_user, approval_id)
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Unknown approval request")
+    grant = premium_preauthorization.grant_preauthorization(
+        db,
+        company_profile_id=row.company_profile_id,
+        capability=row.capability,
+        decision=premium_preauthorization.DECISION_REJECTED,
+        decided_by_user_id=current_user.id,
+        source_request_log_id=row.id,
+    )
+    return ui_query.to_premium_preauthorization_read(db, grant)
 
 
 @router.get("/ai-gateway/routing", response_model=list[RoutingDecisionRead])
@@ -319,3 +399,28 @@ def test_provider_connection(
         latency_ms=result.latency_ms,
         available_models=result.available_models,
     )
+
+
+@router.get("/ai-gateway/diagnostics", response_model=GatewayDiagnosticsRead)
+def get_diagnostics(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_active_admin),
+) -> GatewayDiagnosticsRead:
+    """M8.3 Step 6 (Gateway Diagnostics). READ-ONLY end to end - never
+    mutates any setting, never actions a finding. Admin-gated, same
+    precedent as Provider Management's config routes and Model Role
+    Management (see get_current_active_admin above) rather than the
+    lighter trust level GET /ai-gateway/providers or GET
+    /ai-gateway/capabilities use: unlike those two, this endpoint reveals
+    cross-user aggregate operational data (recent AIRequestLog failure
+    counts, are NOT scoped to the calling user's own companies - see
+    ui_query.get_diagnostics()'s own docstring) and each provider's
+    admin-set enabled/disabled state - both are instance-wide operational
+    visibility, not something every signed-in user needs.
+
+    Built entirely from EXISTING telemetry - provider health
+    (is_configured()/get_provider_config()), the SAME live routing preview
+    GET /ai-gateway/routing already computes, and a grouped AIRequestLog
+    read - never a second routing/capability engine (the CEO's own Step 6
+    requirement)."""
+    return ui_query.get_diagnostics(db)

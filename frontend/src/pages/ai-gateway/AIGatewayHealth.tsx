@@ -3,6 +3,7 @@ import type { StatusKind } from "../../design-system";
 import { useProviders } from "../../ai-gateway/hooks/useProviders";
 import { useProviderCapabilities } from "../../ai-gateway/hooks/useProviderCapabilities";
 import { ProviderCapabilityViewer } from "../../ai-gateway/components/ProviderCapabilityViewer";
+import { GatewayDiagnosticsPanel } from "../../ai-gateway/components/GatewayDiagnosticsPanel";
 import { getProviderIdentity } from "../../ai-gateway/identity/providerIdentity";
 import type { ProviderSummary } from "../../ai-gateway/types";
 
@@ -15,14 +16,16 @@ const STATUS_DISPLAY: Record<ProviderSummary["status"], { kind: StatusKind; labe
 
 /**
  * AIGatewayHealth — /ai-gateway/health. Admin/diagnostics page.
- * Per-provider connection status, plus (M8.3 Step 5) the real Provider
- * Capability Viewer sourced from `GET /ai-gateway/capabilities` - the
- * earlier `CapabilityMatrix` placeholder (M8.1, mock-only flat capability
- * list) has been replaced by `ProviderCapabilityViewer`, which distinguishes
- * provider-level capabilities from the currently-configured model's
- * effective ones. Failover events, routing statistics, and diagnostics
- * warnings all still depend on live/backend signals this milestone doesn't
- * have, so they render as one PlaceholderNotice rather than fabricated rows.
+ * Per-provider connection status, the real Provider Capability Viewer
+ * (M8.3 Step 5, sourced from `GET /ai-gateway/capabilities` - replaced the
+ * earlier mock-only `CapabilityMatrix` placeholder), and (M8.3 Step 6) the
+ * real Gateway Diagnostics panel (`GatewayDiagnosticsPanel`, sourced from
+ * `GET /ai-gateway/diagnostics`) - built entirely from existing telemetry
+ * (provider health, live routing outcomes, recent request failures), never
+ * a second routing/capability engine. Failover events and routing
+ * statistics (as distinct, historical CHARTS - not the same thing as the
+ * diagnostic findings Step 6 now surfaces) remain out of scope for this
+ * milestone, per Section 11's own remaining build order.
  */
 export default function AIGatewayHealth() {
   const { data: providers, isLoading, error } = useProviders();
@@ -59,9 +62,11 @@ export default function AIGatewayHealth() {
         )}
       </Card>
 
+      <GatewayDiagnosticsPanel />
+
       <PlaceholderNotice
         kind="not-implemented"
-        reason="Failover events, routing statistics, and diagnostics warnings — not yet implemented in this foundation milestone."
+        reason="Failover event history and routing statistics charts — not yet implemented in this foundation milestone."
       />
     </div>
   );
